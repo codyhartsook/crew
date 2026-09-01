@@ -36,6 +36,7 @@ harnesses, backing up anything it touches. Upgrade by running it again;
 | `post` / `resolve` | Post an entry to the room, or answer and close one. |
 | `room` / `inbox` | The room briefing, or what is addressed to you. |
 | `search` | Find runbooks, state and entries by topic. |
+| `promote` | Move an entry, review or state key up to the repository room. |
 | `state` | What is currently true here, including runbooks. |
 | `review` | Batched code review, each finding resolved on its own. |
 | `join` / `leave` / `clear` | Room membership, and deleting a room's entries. |

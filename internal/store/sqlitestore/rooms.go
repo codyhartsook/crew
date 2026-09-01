@@ -503,6 +503,79 @@ func (s *Store) States(ctx context.Context, f room.StateFilter) ([]*room.State, 
 	return out, rows.Err()
 }
 
+// Promote moves a thread: the entry and anything that resolves it, so a
+// question and its answer never end up in different rooms.
+func (s *Store) Promote(ctx context.Context, id int64, toRoom string, scope room.Scope) (int, error) {
+	const q = `UPDATE entries SET room = ?, scope = ? WHERE id = ? OR resolves = ?`
+	res, err := s.db.ExecContext(ctx, q, toRoom, string(scope), id, id)
+	if err != nil {
+		return 0, fmt.Errorf("promote entry %d: %w", id, err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("promote entry %d: %w", id, err)
+	}
+	if n == 0 {
+		return 0, fmt.Errorf("no entry [%d]: %w", id, store.ErrNotFound)
+	}
+	return int(n), nil
+}
+
+// PromoteReview moves the batch whole; a review split across rooms could not be
+// reported on.
+func (s *Store) PromoteReview(ctx context.Context, reviewID int64, toRoom string, scope room.Scope) (int, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("promote review r%d: %w", reviewID, err)
+	}
+	defer tx.Rollback()
+
+	res, err := tx.ExecContext(ctx, `UPDATE reviews SET room = ? WHERE id = ?`, toRoom, reviewID)
+	if err != nil {
+		return 0, fmt.Errorf("promote review r%d: %w", reviewID, err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return 0, fmt.Errorf("no review r%d: %w", reviewID, store.ErrNotFound)
+	}
+	res, err = tx.ExecContext(ctx,
+		`UPDATE entries SET room = ?, scope = ? WHERE review_id = ?`, toRoom, string(scope), reviewID)
+	if err != nil {
+		return 0, fmt.Errorf("promote review r%d: %w", reviewID, err)
+	}
+	moved, _ := res.RowsAffected()
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("promote review r%d: %w", reviewID, err)
+	}
+	return int(moved), nil
+}
+
+func (s *Store) PromoteState(ctx context.Context, fromRoom, key, toRoom string, scope room.Scope) error {
+	if _, err := s.GetState(ctx, fromRoom, key); err != nil {
+		return err
+	}
+	// State is keyed per room, so a clash is a real conflict rather than
+	// something to silently overwrite.
+	if existing, err := s.GetState(ctx, toRoom, key); err == nil {
+		return fmt.Errorf("%q already exists in the destination room (%s)", key, truncateValue(existing.Value))
+	} else if !errors.Is(err, store.ErrNotFound) {
+		return err
+	}
+
+	const q = `UPDATE state SET room = ?, scope = ? WHERE room = ? AND key = ?`
+	if _, err := s.db.ExecContext(ctx, q, toRoom, string(scope), fromRoom, key); err != nil {
+		return fmt.Errorf("promote state %s: %w", key, err)
+	}
+	return nil
+}
+
+func truncateValue(v string) string {
+	v = strings.Join(strings.Fields(v), " ")
+	if len(v) > 40 {
+		return v[:40] + "…"
+	}
+	return v
+}
+
 // Search matches with LIKE rather than a full-text index. A room holds
 // hundreds of rows, not millions, so a scan is instant - and an FTS table would
 // need keeping in step with the rows, which is the drift a single source of

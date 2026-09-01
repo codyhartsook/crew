@@ -89,6 +89,18 @@ finds them by topic. Read one with `state get` when you are about to run the
 process, and update it in place when the process changes. Write steps someone could follow without you: exact
 commands, the order they go in, and what to do when one fails.
 
+## Promoting to the repository
+
+Post to the worktree room by default. When something turns out to be about the
+repository rather than the task at hand, move it:
+
+    multiplayer promote 12          # an entry, with anything that answered it
+    multiplayer promote r3          # a review, with all its findings
+    multiplayer promote build/flake # a state key
+
+Promote when the fact would still be true in a fresh worktree: a flaky test, a
+repo-wide convention, a build quirk. Leave task-specific things where they are.
+
 ## Reviews
 
 A review is a batch of findings, not one large entry:

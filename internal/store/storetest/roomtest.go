@@ -36,6 +36,7 @@ func RunRooms(t *testing.T, newStore RoomFactory) {
 		"StateOverwrites":         testStateOverwrites,
 		"StateFilters":            testStateFilters,
 		"StateValidates":          testStateValidates,
+		"Promote":                 testPromote,
 		"Search":                  testSearch,
 		"Clear":                   testClear,
 		"ConcurrentPost":          testConcurrentPost,
@@ -674,6 +675,84 @@ func testStateValidates(t *testing.T, newStore RoomFactory) {
 	// An empty value is legitimate: it can mean "known to be nothing".
 	if err := s.SetState(ctx, state(worktreeRoom, "k", "", agentA)); err != nil {
 		t.Errorf("SetState rejected an empty value: %v", err)
+	}
+}
+
+// A question and its answer, or a review and its findings, must never end up in
+// different rooms.
+func testPromote(t *testing.T, newStore RoomFactory) {
+	s := newStore(t)
+	ctx := context.Background()
+
+	question := mustPost(t, s, entry(worktreeRoom, room.KindQuestion, agentA, "repo-wide?"))
+	answer := entry(worktreeRoom, room.KindQuestion, agentB, "yes")
+	answer.Resolves = question.ID
+	mustPost(t, s, answer)
+	staying := mustPost(t, s, entry(worktreeRoom, room.KindFinding, agentA, "local to this worktree"))
+
+	moved, err := s.Promote(ctx, question.ID, repoRoom, room.ScopeRepo)
+	if err != nil {
+		t.Fatalf("Promote: %v", err)
+	}
+	if moved != 2 {
+		t.Errorf("moved %d rows, want the question and its answer", moved)
+	}
+	inRepo, err := s.Entries(ctx, room.Filter{Rooms: []string{repoRoom}})
+	if err != nil {
+		t.Fatalf("Entries: %v", err)
+	}
+	assertIDs(t, inRepo, []int64{question.ID, answer.ID})
+	if inRepo[0].Scope != room.ScopeRepo {
+		t.Errorf("scope = %q, want %q", inRepo[0].Scope, room.ScopeRepo)
+	}
+	left, err := s.Entries(ctx, room.Filter{Rooms: []string{worktreeRoom}})
+	if err != nil {
+		t.Fatalf("Entries: %v", err)
+	}
+	assertIDs(t, left, []int64{staying.ID})
+
+	if _, err := s.Promote(ctx, 9999, repoRoom, room.ScopeRepo); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("promoting an unknown entry: err = %v, want store.ErrNotFound", err)
+	}
+
+	// A review takes its findings with it.
+	v := review(worktreeRoom, agentA, "batch")
+	if err := s.StartReview(ctx, v); err != nil {
+		t.Fatalf("StartReview: %v", err)
+	}
+	mustPost(t, s, finding(worktreeRoom, v.ID, room.SeverityMust, "a.go", 1, "one"))
+	mustPost(t, s, finding(worktreeRoom, v.ID, room.SeverityShould, "b.go", 2, "two"))
+
+	if moved, err := s.PromoteReview(ctx, v.ID, repoRoom, room.ScopeRepo); err != nil || moved != 2 {
+		t.Fatalf("PromoteReview = (%d, %v), want 2 findings moved", moved, err)
+	}
+	reviews, err := s.Reviews(ctx, room.ReviewFilter{Rooms: []string{repoRoom}})
+	if err != nil {
+		t.Fatalf("Reviews: %v", err)
+	}
+	if len(reviews) != 1 || reviews[0].Findings != 2 {
+		t.Errorf("reviews in the repo room = %+v, want one batch with both findings", reviews)
+	}
+
+	// State moves, and refuses to clobber a value already there.
+	if err := s.SetState(ctx, state(worktreeRoom, "build/flake", "arm64", agentA)); err != nil {
+		t.Fatalf("SetState: %v", err)
+	}
+	if err := s.PromoteState(ctx, worktreeRoom, "build/flake", repoRoom, room.ScopeRepo); err != nil {
+		t.Fatalf("PromoteState: %v", err)
+	}
+	if _, err := s.GetState(ctx, repoRoom, "build/flake"); err != nil {
+		t.Errorf("GetState in the destination: %v", err)
+	}
+	if _, err := s.GetState(ctx, worktreeRoom, "build/flake"); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("the value is still in the origin room: %v", err)
+	}
+
+	if err := s.SetState(ctx, state(worktreeRoom, "build/flake", "a different local value", agentA)); err != nil {
+		t.Fatalf("SetState: %v", err)
+	}
+	if err := s.PromoteState(ctx, worktreeRoom, "build/flake", repoRoom, room.ScopeRepo); err == nil {
+		t.Error("PromoteState clobbered a value already in the destination")
 	}
 }
 

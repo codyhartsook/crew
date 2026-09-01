@@ -50,6 +50,17 @@ type RoomStore interface {
 	// DeleteState removes a value. Deleting an absent key returns ErrNotFound.
 	DeleteState(ctx context.Context, roomKey, key string) error
 
+	// Promote moves an entry, and anything resolving it, to another room.
+	// Returns how many rows moved.
+	Promote(ctx context.Context, id int64, toRoom string, scope room.Scope) (int, error)
+
+	// PromoteReview moves a review and every one of its findings.
+	PromoteReview(ctx context.Context, reviewID int64, toRoom string, scope room.Scope) (int, error)
+
+	// PromoteState moves a keyed value. It returns an error naming the clash if
+	// the key is already taken in the destination.
+	PromoteState(ctx context.Context, fromRoom, key, toRoom string, scope room.Scope) error
+
 	// Search finds state and entries whose text contains the query term.
 	Search(ctx context.Context, q room.Query) (*room.Results, error)
 
