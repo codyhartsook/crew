@@ -33,7 +33,7 @@ harnesses, backing up anything it touches. Upgrade by running it again;
 | `install` / `uninstall` | Set up or remove the automatic integration. |
 | `ls` | List active agent sessions. |
 | `fleet` | Open the dashboard. |
-| `post` / `resolve` | Post an entry to the room, or answer and close one. |
+| `post` / `resolve` / `remove` | Post an entry, answer one, or remove one of your unthreaded entries. |
 | `room` | Show the room; `--inbox --ack` reads new addressed entries. |
 | `search` | Find runbooks, state and entries by topic. |
 | `promote` | Move an entry or state key up to the repository room. |

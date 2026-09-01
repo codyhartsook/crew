@@ -49,6 +49,7 @@ Bad: `found a bug in the auth code`
     multiplayer room --inbox --ack      # addressed to you, not yet seen
     multiplayer room                    # everything this room knows
     multiplayer resolve <id> "<answer>"
+    multiplayer remove <id>             # retract your unthreaded entry
 
 **Search before starting anything multi-step or unfamiliar** - a deploy, a
 cluster build, a migration, a release. A runbook for it may already exist, and

@@ -209,6 +209,33 @@ const openPredicate = `e.kind IN ('question', 'handoff', 'review') AND e.resolve
 const answersToMe = `e.resolves != 0 AND EXISTS (
     SELECT 1 FROM entries t WHERE t.id = e.resolves AND t.author = ?)`
 
+func (s *Store) Clear(ctx context.Context, roomKey string) (int, error) {
+	res, err := s.db.ExecContext(ctx, `DELETE FROM entries WHERE room = ?`, roomKey)
+	if err != nil {
+		return 0, fmt.Errorf("clear room %s: %w", roomKey, err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("clear room %s: %w", roomKey, err)
+	}
+	return int(n), nil
+}
+
+func (s *Store) RemoveEntry(ctx context.Context, id int64, author string) (bool, error) {
+	const q = `DELETE FROM entries
+WHERE id = ? AND author = ? AND resolves = 0
+  AND NOT EXISTS (SELECT 1 FROM entries reply WHERE reply.resolves = entries.id)`
+	res, err := s.db.ExecContext(ctx, q, id, author)
+	if err != nil {
+		return false, fmt.Errorf("remove entry %d: %w", id, err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("remove entry %d: %w", id, err)
+	}
+	return n != 0, nil
+}
+
 func (s *Store) Unread(ctx context.Context, sessionKey string) ([]*room.Entry, error) {
 	const q = `
 SELECT ` + entryColumns + entryFrom + `

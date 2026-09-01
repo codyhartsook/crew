@@ -35,6 +35,8 @@ func RunRooms(t *testing.T, newStore RoomFactory) {
 		"StateValidates":          testStateValidates,
 		"Promote":                 testPromote,
 		"Search":                  testSearch,
+		"Clear":                   testClear,
+		"RemoveEntry":             testRemoveEntry,
 		"ConcurrentPost":          testConcurrentPost,
 	}
 	for name, fn := range tests {
@@ -663,6 +665,59 @@ func testSearch(t *testing.T, newStore RoomFactory) {
 	if _, err := s.Search(ctx, room.Query{Text: "  "}); err == nil {
 		t.Error("Search accepted an empty term")
 	}
+}
+
+func testClear(t *testing.T, newStore RoomFactory) {
+	s := newStore(t)
+	ctx := context.Background()
+	mustPost(t, s, entry(worktreeRoom, room.KindDecision, agentA, "one"))
+	kept := mustPost(t, s, entry(repoRoom, room.KindFinding, agentB, "elsewhere"))
+
+	n, err := s.Clear(ctx, worktreeRoom)
+	if err != nil || n != 1 {
+		t.Fatalf("Clear = (%d, %v), want (1, nil)", n, err)
+	}
+	entries, err := s.Entries(ctx, room.Filter{})
+	if err != nil {
+		t.Fatalf("Entries: %v", err)
+	}
+	assertIDs(t, entries, []int64{kept.ID})
+}
+
+func testRemoveEntry(t *testing.T, newStore RoomFactory) {
+	s := newStore(t)
+	ctx := context.Background()
+	removable := mustPost(t, s, entry(worktreeRoom, room.KindFinding, agentA, "wrong"))
+	other := mustPost(t, s, entry(worktreeRoom, room.KindFinding, agentB, "keep"))
+	answered := mustPost(t, s, entry(worktreeRoom, room.KindFinding, agentA, "answered"))
+	answer := entry(worktreeRoom, room.KindFinding, agentB, "reply")
+	answer.Resolves = answered.ID
+	mustPost(t, s, answer)
+
+	if removed, err := s.RemoveEntry(ctx, removable.ID, agentA); err != nil || !removed {
+		t.Fatalf("RemoveEntry = (%v, %v), want (true, nil)", removed, err)
+	}
+	for _, tc := range []struct {
+		name   string
+		id     int64
+		author string
+	}{
+		{"other author", other.ID, agentA},
+		{"has reply", answered.ID, agentA},
+		{"is reply", answer.ID, agentB},
+		{"missing", 9999, agentA},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if removed, err := s.RemoveEntry(ctx, tc.id, tc.author); err != nil || removed {
+				t.Errorf("RemoveEntry = (%v, %v), want (false, nil)", removed, err)
+			}
+		})
+	}
+	entries, err := s.Entries(ctx, room.Filter{})
+	if err != nil {
+		t.Fatalf("Entries: %v", err)
+	}
+	assertIDs(t, entries, []int64{other.ID, answered.ID, answer.ID})
 }
 
 func ids(entries []*room.Entry) []int64 {

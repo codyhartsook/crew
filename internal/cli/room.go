@@ -144,6 +144,50 @@ func newResolveCmd(opts *options) *cobra.Command {
 	return cmd
 }
 
+func newRemoveCmd(opts *options) *cobra.Command {
+	var as string
+
+	cmd := &cobra.Command{
+		Use:   "remove <id>",
+		Short: "Remove one of your unthreaded entries",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			id, err := strconv.ParseInt(args[0], 10, 64)
+			if err != nil || id <= 0 {
+				return fmt.Errorf("invalid entry id %q", args[0])
+			}
+			rc, closeFn, err := openRoomContext(cmd.Context(), opts, cwdOf(cmd))
+			if err != nil {
+				return err
+			}
+			defer closeFn()
+
+			target, err := entryByID(cmd.Context(), rc.rooms, id)
+			if err != nil {
+				return err
+			}
+			if !contains(room.Keys(rc.here), target.Room) {
+				return fmt.Errorf("entry [%d] is not in this room", id)
+			}
+			author, err := authorFor(cmd.Context(), rc, as)
+			if err != nil {
+				return err
+			}
+			removed, err := rc.rooms.RemoveEntry(cmd.Context(), id, author)
+			if err != nil {
+				return err
+			}
+			if !removed {
+				return fmt.Errorf("entry [%d] is not yours or is part of a thread", id)
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "removed [%d]\n", id)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&as, "as", "", "session key, if not inferable")
+	return cmd
+}
+
 func post(cmd *cobra.Command, opts *options, kind room.Kind, body string, toRepo bool, resolves int64, as string) error {
 	rc, closeFn, err := openRoomContext(cmd.Context(), opts, cwdOf(cmd))
 	if err != nil {

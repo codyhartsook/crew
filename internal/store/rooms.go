@@ -55,6 +55,13 @@ type RoomStore interface {
 	// Search finds state and entries whose text contains the query term.
 	Search(ctx context.Context, q room.Query) (*room.Results, error)
 
+	// Clear removes every entry in a room and reports how many went.
+	Clear(ctx context.Context, roomKey string) (int, error)
+
+	// RemoveEntry removes an author's unthreaded entry. It reports false when
+	// the entry does not exist, belongs to someone else, or has a reply.
+	RemoveEntry(ctx context.Context, id int64, author string) (bool, error)
+
 	// Unread returns the open, addressed entries in the rooms this session has
 	// joined that it has not yet been shown and did not write itself.
 	Unread(ctx context.Context, sessionKey string) ([]*room.Entry, error)
