@@ -1,0 +1,618 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>multiplayer</title>
+<style>
+  /* macOS system palette. Light values first; dark overrides below. */
+  :root {
+    --window: #f2f2f7;
+    --card: #ffffff;
+    --fill: rgba(116, 116, 128, 0.08);
+    --fill-strong: rgba(116, 116, 128, 0.14);
+    --elevated: #ffffff;
+    --label: rgba(0, 0, 0, 0.88);
+    --label-2: rgba(60, 60, 67, 0.6);
+    --label-3: rgba(60, 60, 67, 0.35);
+    --separator: rgba(60, 60, 67, 0.14);
+    --green: #34c759;
+    --orange: #ff9500;
+    --teal: #0fa3b1;
+    --gray: #8e8e93;
+    --shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.06);
+    --knob-shadow: 0 1px 2.5px rgba(0, 0, 0, 0.22);
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --window: #1c1c1e;
+      --card: #2c2c2e;
+      --fill: rgba(118, 118, 128, 0.18);
+      --fill-strong: rgba(118, 118, 128, 0.28);
+      --elevated: #48484a;
+      --label: rgba(255, 255, 255, 0.92);
+      --label-2: rgba(235, 235, 245, 0.58);
+      --label-3: rgba(235, 235, 245, 0.32);
+      --separator: rgba(84, 84, 88, 0.6);
+      --green: #30d158;
+      --orange: #ff9f0a;
+      --teal: #40c8e0;
+      --gray: #98989d;
+      --shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.22);
+      --knob-shadow: 0 1px 2.5px rgba(0, 0, 0, 0.4);
+    }
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 40px 22px 80px;
+    background: var(--window);
+    color: var(--label);
+    font: 13px/1.45 var(--sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; }
+
+  /* ---- title ---- */
+  header { margin-bottom: 26px; }
+  h1 {
+    margin: 0;
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: -0.022em;
+  }
+  .summary { margin-top: 2px; font-size: 13px; color: var(--label-2); letter-spacing: -0.006em; }
+  .summary strong { color: var(--label); font-weight: 590; }
+
+  /* ---- toolbar ---- */
+  .toolbar { display: flex; align-items: center; gap: 16px; margin-top: 18px; flex-wrap: wrap; }
+
+  .segmented {
+    display: inline-flex; gap: 2px; padding: 2px;
+    background: var(--fill); border-radius: 8px;
+  }
+  .segmented button {
+    appearance: none; border: 0; background: transparent; color: var(--label);
+    font: inherit; font-size: 12px; font-weight: 500; letter-spacing: -0.006em;
+    padding: 3.5px 12px; border-radius: 6px; cursor: pointer;
+    transition: background 0.15s ease;
+  }
+  .segmented button[aria-pressed="true"] {
+    background: var(--elevated); font-weight: 590;
+    box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.12);
+  }
+  .segmented button:not([aria-pressed="true"]):hover { background: var(--fill); }
+
+  .switch-row { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--label-2); }
+  .switch { position: relative; width: 30px; height: 18px; flex: none; }
+  .switch input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; z-index: 1; }
+  .switch .track {
+    position: absolute; inset: 0; border-radius: 9px;
+    background: var(--fill-strong); transition: background 0.2s ease;
+  }
+  .switch .knob {
+    position: absolute; top: 2px; left: 2px; width: 14px; height: 14px;
+    border-radius: 50%; background: #fff; box-shadow: var(--knob-shadow);
+    transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.3, 1);
+  }
+  .switch input:checked ~ .track { background: var(--green); }
+  .switch input:checked ~ .knob { transform: translateX(12px); }
+  .switch input:focus-visible ~ .track { outline: 2px solid var(--teal); outline-offset: 2px; }
+
+  .conn { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--label-3); }
+  .conn .beacon { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
+  .conn[data-state="error"] { color: var(--orange); }
+  .conn[data-state="error"] .beacon { background: var(--orange); }
+
+  /* ---- inset grouped sections ---- */
+  .group { margin-bottom: 26px; }
+  .group-head {
+    display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+    padding: 0 14px 7px;
+  }
+  .group-name { font-size: 13px; font-weight: 590; letter-spacing: -0.006em; }
+  .group-count { margin-left: auto; font-size: 11.5px; color: var(--label-3); white-space: nowrap; }
+
+  .tag {
+    font-size: 11px; font-weight: 500; letter-spacing: 0;
+    padding: 1px 7px; border-radius: 5px;
+    background: var(--fill); color: var(--label-2); white-space: nowrap;
+  }
+  .tag.pool { background: color-mix(in srgb, var(--teal) 16%, transparent); color: var(--teal); font-family: var(--mono); font-size: 10.5px; }
+  .tag.collide { background: color-mix(in srgb, var(--orange) 18%, transparent); color: var(--orange); }
+
+  .card {
+    background: var(--card); border-radius: 10px;
+    box-shadow: var(--shadow); overflow: hidden;
+  }
+
+  .group-path {
+    padding: 6px 14px 0;
+    font-family: var(--mono); font-size: 10.5px; color: var(--label-3);
+    word-break: break-all;
+  }
+
+  /* ---- rows ---- */
+  .row { display: flex; align-items: center; gap: 10px; padding: 9px 14px; flex-wrap: wrap; }
+  .row + .row { box-shadow: inset 0 0.5px 0 var(--separator); }
+  .row.ended { opacity: 0.5; }
+
+  .beacon { width: 7px; height: 7px; border-radius: 50%; background: var(--green); flex: none; }
+  .row.ended .beacon { background: var(--gray); }
+  .row:not(.ended) .beacon { animation: breathe 2.6s ease-in-out infinite; }
+  @keyframes breathe { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+  @media (prefers-reduced-motion: reduce) { .row .beacon { animation: none; } }
+
+  .harness { font-size: 12.5px; font-weight: 550; letter-spacing: -0.006em; min-width: 52px; }
+  .harness.claude { color: var(--orange); }
+  .harness.codex { color: var(--teal); }
+  .harness.unknown { color: var(--gray); }
+
+  .branch { font-family: var(--mono); font-size: 11.5px; color: var(--label); }
+  .branch.detached { color: var(--label-3); font-style: italic; font-family: var(--sans); font-size: 12px; }
+  .sid { font-family: var(--mono); font-size: 10.5px; color: var(--label-3); }
+  .age { margin-left: auto; font-size: 11.5px; color: var(--label-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .note {
+    flex-basis: 100%; padding-left: 17px;
+    font-size: 11px; color: var(--label-3); font-family: var(--mono); word-break: break-all;
+  }
+
+  /* ---- room entries ---- */
+  .entries { box-shadow: inset 0 0.5px 0 var(--separator); background: color-mix(in srgb, var(--fill) 45%, transparent); }
+  .entry { display: flex; align-items: baseline; gap: 8px; padding: 7px 14px; flex-wrap: wrap; }
+  .entry + .entry { box-shadow: inset 0 0.5px 0 var(--separator); }
+  .entry.resolved { opacity: 0.45; }
+  .eid { font-family: var(--mono); font-size: 10.5px; color: var(--label-3); min-width: 22px; }
+  .kind {
+    font-size: 10.5px; font-weight: 600; letter-spacing: 0.01em; text-transform: uppercase;
+    padding: 1px 6px; border-radius: 4px; white-space: nowrap;
+    background: var(--fill); color: var(--label-2);
+  }
+  .kind.question, .kind.handoff, .kind.review {
+    background: color-mix(in srgb, var(--orange) 16%, transparent); color: var(--orange);
+  }
+  .entry.resolved .kind { background: var(--fill); color: var(--label-3); }
+  .ebody { flex: 1 1 220px; font-size: 12.5px; }
+  .emeta { font-size: 11px; color: var(--label-3); white-space: nowrap; font-family: var(--mono); }
+
+  /* ---- room state ---- */
+  .state { box-shadow: inset 0 0.5px 0 var(--separator); background: color-mix(in srgb, var(--fill) 30%, transparent); }
+  .kv { display: flex; align-items: baseline; gap: 8px; padding: 6px 14px; flex-wrap: wrap; }
+  .kv + .kv { box-shadow: inset 0 0.5px 0 var(--separator); }
+  .kvkey { font-family: var(--mono); font-size: 11.5px; color: var(--label-2); }
+  .kvval { flex: 1 1 200px; font-size: 12.5px; }
+  .kvrev { font-family: var(--mono); font-size: 10.5px; color: var(--label-3); white-space: nowrap; }
+
+  .empty {
+    background: var(--card); border-radius: 10px; box-shadow: var(--shadow);
+    padding: 52px 20px; text-align: center; color: var(--label-2);
+  }
+  .empty p { margin: 0 0 4px; }
+  .empty p:last-child { margin: 0; font-size: 12px; color: var(--label-3); }
+  .empty code { font-family: var(--mono); font-size: 11.5px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>multiplayer</h1>
+    <div class="summary" id="summary">Loading…</div>
+    <div class="toolbar">
+      <div class="segmented" role="group" aria-label="Group sessions by">
+        <button type="button" data-group="worktree" aria-pressed="true">Worktree</button>
+        <button type="button" data-group="repo" aria-pressed="false">Repository</button>
+      </div>
+      <label class="switch-row">
+        <span class="switch">
+          <input type="checkbox" id="show-ended">
+          <span class="track"></span><span class="knob"></span>
+        </span>
+        Show ended
+      </label>
+      <span class="conn" id="conn" data-state="ok"><span class="beacon"></span><span id="conn-text">Live</span></span>
+    </div>
+  </header>
+  <main id="groups"></main>
+</div>
+
+<script>
+"use strict";
+
+// The page owns no state beyond these two view choices, both remembered per browser.
+const params = new URLSearchParams(location.search);
+const view = {
+  groupBy: pick(params.get("group"), ["worktree", "repo"], load("multiplayer.groupBy", "worktree")),
+  showEnded: params.get("ended") === "1" || load("multiplayer.showEnded", "false") === "true",
+};
+
+function pick(value, allowed, fallback) {
+  return allowed.includes(value) ? value : fallback;
+}
+
+function load(key, fallback) {
+  try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; }
+}
+function save(key, value) {
+  try { localStorage.setItem(key, String(value)); } catch { /* private browsing */ }
+}
+
+const els = {
+  summary: document.getElementById("summary"),
+  groups: document.getElementById("groups"),
+  conn: document.getElementById("conn"),
+  connText: document.getElementById("conn-text"),
+  showEnded: document.getElementById("show-ended"),
+};
+
+els.showEnded.checked = view.showEnded;
+els.showEnded.addEventListener("change", () => {
+  view.showEnded = els.showEnded.checked;
+  save("multiplayer.showEnded", view.showEnded);
+  refresh();
+});
+
+for (const button of document.querySelectorAll(".segmented button")) {
+  button.setAttribute("aria-pressed", String(button.dataset.group === view.groupBy));
+  button.addEventListener("click", () => {
+    view.groupBy = button.dataset.group;
+    save("multiplayer.groupBy", view.groupBy);
+    for (const other of document.querySelectorAll(".segmented button")) {
+      other.setAttribute("aria-pressed", String(other.dataset.group === view.groupBy));
+    }
+    refresh();
+  });
+}
+
+// ---- data ----
+
+async function refresh() {
+  const query = view.showEnded ? "" : "?status=active";
+  try {
+    const [sessions, entries, state] = await Promise.all([
+      getJSON("/v1/sessions" + query),
+      getJSON("/v1/entries"),
+      getJSON("/v1/state"),
+    ]);
+    render(sessions.sessions || [], entries.entries || [], state.state || []);
+    setConnection("ok", "Live");
+  } catch {
+    setConnection("error", "Disconnected");
+  }
+}
+
+async function getJSON(path) {
+  const response = await fetch(path, { cache: "no-store" });
+  if (!response.ok) throw new Error("HTTP " + response.status);
+  return response.json();
+}
+
+function setConnection(state, text) {
+  els.conn.dataset.state = state;
+  els.connText.textContent = text;
+}
+
+// ---- grouping ----
+//
+// Worktree is the fine-grained view: every working tree is its own group, so a
+// pooled treehouse slot stands apart from the main checkout of the same repo.
+// Repository is the coarse view, collapsing every worktree of one repo together.
+// A session outside any git checkout falls back to grouping on its directory.
+
+function groupOf(session) {
+  const repo = session.repo;
+  if (!repo) {
+    return { key: "dir:" + session.cwd, name: "No repository", path: session.cwd, tag: null };
+  }
+  if (view.groupBy === "repo") {
+    const root = repo.main_root || repo.root;
+    return { key: "repo:" + root, name: repo.name, path: root, tag: null };
+  }
+  return { key: "wt:" + repo.root, name: repo.name, path: repo.root, tag: worktreeTag(session) };
+}
+
+// worktreeTag names the checkout: a pool slot, another linked worktree, or the
+// primary checkout.
+function worktreeTag(session) {
+  if (session.treehouse) {
+    return { text: session.treehouse.pool + "/" + session.treehouse.slot, kind: "pool" };
+  }
+  const repo = session.repo;
+  if (!repo) return null;
+  if (!repo.is_worktree) return { text: "Main checkout", kind: "plain" };
+  const suffix = repo.main_root && repo.root.startsWith(repo.main_root + "/")
+    ? repo.root.slice(repo.main_root.length + 1)
+    : repo.root.split("/").pop();
+  return { text: suffix, kind: "pool" };
+}
+
+function render(sessions, entries, state) {
+  // Two agents live in one working tree is the situation this tool exists to
+  // catch, so it is counted regardless of how the view is grouped.
+  const perWorktree = new Map();
+  for (const s of sessions) {
+    if (s.status !== "active" || !s.repo) continue;
+    perWorktree.set(s.repo.root, (perWorktree.get(s.repo.root) || 0) + 1);
+  }
+
+  const byRoom = new Map();
+  for (const e of entries) {
+    if (!byRoom.has(e.room)) byRoom.set(e.room, []);
+    byRoom.get(e.room).push(e);
+  }
+  const stateByRoom = new Map();
+  for (const v of state) {
+    if (!stateByRoom.has(v.room)) stateByRoom.set(v.room, []);
+    stateByRoom.get(v.room).push(v);
+  }
+
+  const groups = new Map();
+  for (const session of sessions) {
+    const meta = groupOf(session);
+    if (!groups.has(meta.key)) groups.set(meta.key, { ...meta, sessions: [], entries: [] });
+    groups.get(meta.key).sessions.push(session);
+  }
+  for (const group of groups.values()) {
+    group.entries = byRoom.get(group.path) || [];
+    group.state = stateByRoom.get(group.path) || [];
+  }
+
+  // A room with context but no live agent still matters: it is what the next
+  // agent to arrive there will be told.
+  for (const roomKey of new Set([...byRoom.keys(), ...stateByRoom.keys()])) {
+    if ([...groups.values()].some((g) => g.path === roomKey)) continue;
+    groups.set("room:" + roomKey, {
+      key: "room:" + roomKey,
+      name: roomKey.split("/").filter(Boolean).pop() || roomKey,
+      path: roomKey,
+      tag: null,
+      sessions: [],
+      entries: byRoom.get(roomKey) || [],
+      state: stateByRoom.get(roomKey) || [],
+    });
+  }
+
+  // Sorted by name and then path rather than by recency: the page re-renders
+  // every two seconds, and sections that reorder under the cursor are unusable.
+  // Keeping the sort stable also holds a repository's worktrees next to
+  // each other.
+  // Two checkouts can share a name - a fork and its upstream both end up called
+  // "kagent". Where a tag is not already telling them apart, qualify the label
+  // with the parent directory so the sections are distinguishable at a glance.
+  const nameCounts = new Map();
+  for (const group of groups.values()) {
+    nameCounts.set(group.name, (nameCounts.get(group.name) || 0) + 1);
+  }
+  for (const group of groups.values()) {
+    if (!group.tag && nameCounts.get(group.name) > 1) {
+      group.qualifier = parentName(group.path);
+    }
+  }
+
+  const ordered = [...groups.values()].sort(
+    (a, b) => a.name.localeCompare(b.name) || a.path.localeCompare(b.path)
+  );
+
+  const activeCount = sessions.filter((s) => s.status === "active").length;
+  const openCount = entries.filter((e) => isOpen(e)).length;
+  const noun = view.groupBy === "repo" ? "repository" : "worktree";
+  els.summary.textContent = "";
+  if (ordered.length) {
+    els.summary.append(
+      strong(String(activeCount)), " active across ",
+      strong(String(groups.size)), " " + plural(noun, groups.size)
+    );
+    if (openCount) {
+      els.summary.append(" · ", strong(String(openCount)), " open " + plural("entry", openCount, "entries"));
+    }
+  } else {
+    els.summary.textContent = "Nothing running";
+  }
+
+  els.groups.replaceChildren(
+    ...(ordered.length
+      ? ordered.map((group) => renderGroup(group, perWorktree))
+      : [emptyState()])
+  );
+}
+
+function renderGroup(group, perWorktree) {
+  const section = document.createElement("section");
+  section.className = "group";
+
+  // macOS inset-grouped style: the section label sits above the card, and the
+  // path below it as a footnote, keeping the card itself uncluttered.
+  const head = div("group-head");
+  head.append(span("group-name", group.name));
+  if (group.tag) head.append(span("tag " + group.tag.kind, group.tag.text));
+  if (group.qualifier) head.append(span("tag", "in " + group.qualifier));
+
+  const active = group.sessions.filter((s) => s.status === "active").length;
+  if (view.groupBy === "worktree" && active > 1) {
+    head.append(span("tag collide", active + " agents here"));
+  }
+  const open = group.entries.filter(isOpen).length;
+  if (open) head.append(span("tag collide", open + " open"));
+  head.append(span("group-count", group.sessions.length === 0
+    ? `${group.entries.length + group.state.length} ${plural("item", group.entries.length + group.state.length)}`
+    : active === group.sessions.length
+      ? `${active} ${plural("agent", active)}`
+      : `${active} active · ${group.sessions.length} total`));
+
+  const card = div("card");
+  const rows = [...group.sessions].sort(
+    (a, b) => rank(a) - rank(b) || (Date.parse(b.last_seen) || 0) - (Date.parse(a.last_seen) || 0)
+  );
+  for (const session of rows) card.append(renderRow(session, perWorktree));
+
+  // State first: what is currently true outranks what happened.
+  if (group.state.length) {
+    const box = div("state");
+    for (const v of [...group.state].sort((a, b) => a.key.localeCompare(b.key))) {
+      const el = div("kv");
+      el.append(span("kvkey", v.key));
+      el.append(span("kvval", v.value));
+      el.append(span("kvrev", "r" + v.revision + " · " + age(v.updated_at)));
+      box.append(el);
+    }
+    card.append(box);
+  }
+
+  if (group.entries.length) {
+    const box = div("entries");
+    // Open items first, then most recent; a briefing reads the same way.
+    const ordered = [...group.entries].sort(
+      (a, b) => (isOpen(b) ? 1 : 0) - (isOpen(a) ? 1 : 0) || b.id - a.id
+    );
+    for (const e of ordered.slice(0, 8)) box.append(renderEntry(e));
+    card.append(box);
+  }
+
+  const path = div("group-path");
+  path.textContent = group.path;
+
+  section.append(head, card, path);
+  return section;
+}
+
+const ADDRESSED = new Set(["question", "handoff", "review"]);
+
+function isOpen(entry) {
+  return ADDRESSED.has(entry.kind) && !entry.resolves && !entry.resolved_by;
+}
+
+function renderEntry(entry) {
+  // Only a closed question, handoff or review is spent. Decisions and findings
+  // are reference material and stay at full weight.
+  const spent = ADDRESSED.has(entry.kind) && !isOpen(entry);
+  const el = div("entry" + (spent ? " resolved" : ""));
+  el.append(span("eid", "#" + entry.id));
+  el.append(span("kind " + entry.kind, entry.kind));
+  el.append(span("ebody", entry.body));
+  el.append(span("emeta", shortAuthor(entry.author) + " · " + age(entry.created_at)));
+  return el;
+}
+
+function shortAuthor(key) {
+  const [harness, id] = key.split(":");
+  return id ? harness + " " + id.slice(0, 6) : key;
+}
+
+function rank(session) {
+  return session.status === "active" ? 0 : 1;
+}
+
+function renderRow(session, perWorktree) {
+  const row = div("row" + (session.status === "active" ? "" : " ended"));
+  row.append(span("beacon", ""));
+  row.append(span("harness " + harnessClass(session.harness), session.harness));
+
+  const repo = session.repo;
+  if (repo && repo.branch) {
+    row.append(span("branch", repo.branch));
+  } else if (repo && repo.detached) {
+    row.append(span("branch detached", "detached"));
+  }
+
+  // The repository view mixes worktrees together, so each row has to say which
+  // one it is in; the worktree view already said so on the section label.
+  if (view.groupBy === "repo") {
+    const tag = worktreeTag(session);
+    if (tag) row.append(span("tag " + tag.kind, tag.text));
+    if (repo && session.status === "active" && (perWorktree.get(repo.root) || 0) > 1) {
+      row.append(span("tag collide", "Shared tree"));
+    }
+  }
+
+  row.append(span("sid", shortID(session.id)));
+  row.append(span("age", session.status === "active"
+    ? age(session.last_seen)
+    : "ended " + age(session.ended_at || session.last_seen)));
+
+  const notes = [];
+  if (session.treehouse && session.treehouse.lease_holder) {
+    notes.push("lease " + session.treehouse.lease_holder);
+  }
+  if (session.meta && session.meta.model) {
+    notes.push("model " + session.meta.model);
+  }
+  if (notes.length) row.append(span("note", notes.join("   ·   ")));
+  return row;
+}
+
+function emptyState() {
+  const el = div("empty");
+  const first = document.createElement("p");
+  const second = document.createElement("p");
+  if (view.showEnded) {
+    first.textContent = "No sessions recorded yet.";
+    second.textContent = "Start Claude Code or Codex in a repository.";
+  } else {
+    first.textContent = "No agents running.";
+    second.textContent = "Turn on Show ended to see finished sessions.";
+  }
+  el.append(first, second);
+  return el;
+}
+
+// ---- formatting ----
+
+function harnessClass(harness) {
+  return harness === "claude" || harness === "codex" ? harness : "unknown";
+}
+
+// parentName is the directory one level above path, which is usually enough to
+// tell two same-named checkouts apart.
+function parentName(path) {
+  const parts = path.split("/").filter(Boolean);
+  return parts.length > 1 ? parts[parts.length - 2] : path;
+}
+
+function shortID(id) {
+  return id.length > 8 ? id.slice(0, 8) + "…" : id;
+}
+
+function plural(word, n, many) {
+  if (n === 1) return word;
+  if (many) return many;
+  return word === "repository" ? "repositories" : word + "s";
+}
+
+// age mirrors the CLI, showing the largest unit that stays readable.
+function age(timestamp) {
+  const then = Date.parse(timestamp);
+  if (!then) return "";
+  const seconds = Math.max(0, (Date.now() - then) / 1000);
+  if (seconds < 60) return Math.floor(seconds) + "s ago";
+  if (seconds < 3600) return Math.floor(seconds / 60) + "m ago";
+  if (seconds < 86400) return Math.floor(seconds / 3600) + "h ago";
+  return Math.floor(seconds / 86400) + "d ago";
+}
+
+function div(className) {
+  const el = document.createElement("div");
+  el.className = className;
+  return el;
+}
+
+function span(className, text) {
+  const el = document.createElement("span");
+  el.className = className;
+  el.textContent = text;
+  return el;
+}
+
+function strong(text) {
+  const el = document.createElement("strong");
+  el.textContent = text;
+  return el;
+}
+
+refresh();
+setInterval(refresh, 2000);
+</script>
+</body>
+</html>
