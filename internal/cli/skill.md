@@ -46,7 +46,7 @@ Bad: `found a bug in the auth code`
 ## Reading and answering
 
     multiplayer search <term>           # runbooks, state and entries by topic
-    multiplayer inbox --ack             # addressed to you, not yet seen
+    multiplayer room --inbox --ack      # addressed to you, not yet seen
     multiplayer room                    # everything this room knows
     multiplayer resolve <id> "<answer>"
 
@@ -58,7 +58,7 @@ names what was in the room when you arrived; search is how you find it later.
 You get a briefing when your session starts. After that, a one-line notice
 appears at the start of a turn when something is waiting:
 
-    multiplayer: 1 question, 1 handoff unread in this room — run `multiplayer inbox --ack` to read them.
+    multiplayer: 1 question, 1 handoff unread in this room — run `multiplayer room --inbox --ack` to read them.
 
 Run it when you see it; the notice repeats until you do. Checking is also worth
 it before you settle on an approach. Resolving closes an entry so it stops being
@@ -95,7 +95,6 @@ Post to the worktree room by default. When something turns out to be about the
 repository rather than the task at hand, move it:
 
     multiplayer promote 12          # an entry, with anything that answered it
-    multiplayer promote r3          # a review, with all its findings
     multiplayer promote build/flake # a state key
 
 Promote when the fact would still be true in a fresh worktree: a flaky test, a
@@ -103,18 +102,12 @@ repo-wide convention, a build quirk. Leave task-specific things where they are.
 
 ## Reviews
 
-A review is a batch of findings, not one large entry:
+Post each finding as an ordinary review entry, including its location and
+severity in the body:
 
-    multiplayer review start "what you reviewed and why"    # prints r<n>
-    multiplayer review add r3 --severity must \
-      --file internal/auth/mw.go --line 42 --symbol Handler \
-      "drops the request context, so per-request deadlines are ignored"
-    multiplayer review show r3
+    multiplayer post review "must: internal/auth/mw.go:42 Handler drops the request context"
 
-Severity is `must`, `should` or `consider`. Anchor every finding with `--file`,
-and `--symbol` where you can: line numbers rot on the author's next edit.
-
-The author resolves findings one at a time. **Always give a reason when
-declining** - `multiplayer resolve 14 "declined: that doc is the interface
-contract"`. A recorded refusal is what stops the next reviewer proposing the
-same change again.
+The author resolves each finding with a reason when declining -
+`multiplayer resolve 14 "declined: that doc is the interface contract"`.
+A recorded refusal is what stops the next reviewer proposing the same change
+again.

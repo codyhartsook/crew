@@ -48,8 +48,8 @@ type Session struct {
 
 	// Repo is nil when the session opened outside any git checkout.
 	Repo *Repo `json:"repo,omitempty"`
-	// Treehouse is nil unless Repo points at a pooled treehouse worktree.
-	Treehouse *Treehouse `json:"treehouse,omitempty"`
+	// Pool is nil unless Repo points at a worktree lent out by a pool manager.
+	Pool *Pool `json:"pool,omitempty"`
 
 	StartedAt time.Time  `json:"started_at"`
 	LastSeen  time.Time  `json:"last_seen"`
@@ -82,13 +82,14 @@ type Repo struct {
 	IsWorktree bool   `json:"is_worktree"`
 }
 
-// Treehouse describes a worktree drawn from a treehouse pool.
+// Pool is a worktree manager that lends out checkouts, and the one it lent here.
 //
-// Pool is the pool directory name (repo plus a hash of its origin), Slot is the
-// numbered worktree within it. Leased is what treehouse itself recorded, which
-// is independent of whether an agent session is currently registered here.
-type Treehouse struct {
-	Pool        string `json:"pool"`
+// Manager names the tool (treehouse, ...), Name identifies the pool and Slot the
+// worktree within it. Leased is what the manager recorded, independent of
+// whether an agent session is currently registered here.
+type Pool struct {
+	Manager     string `json:"manager"`
+	Name        string `json:"name"`
 	Slot        string `json:"slot"`
 	Root        string `json:"root"`
 	Leased      bool   `json:"leased"`

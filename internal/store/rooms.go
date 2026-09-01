@@ -31,12 +31,6 @@ type RoomStore interface {
 	// Entries lists entries matching f, oldest first.
 	Entries(ctx context.Context, f room.Filter) ([]*room.Entry, error)
 
-	// StartReview opens a review batch and assigns its ID.
-	StartReview(ctx context.Context, r *room.Review) error
-
-	// Reviews lists review batches with their finding counts, newest first.
-	Reviews(ctx context.Context, f room.ReviewFilter) ([]*room.Review, error)
-
 	// SetState writes a keyed value, replacing any previous one and bumping its
 	// revision.
 	SetState(ctx context.Context, st *room.State) error
@@ -54,18 +48,12 @@ type RoomStore interface {
 	// Returns how many rows moved.
 	Promote(ctx context.Context, id int64, toRoom string, scope room.Scope) (int, error)
 
-	// PromoteReview moves a review and every one of its findings.
-	PromoteReview(ctx context.Context, reviewID int64, toRoom string, scope room.Scope) (int, error)
-
 	// PromoteState moves a keyed value. It returns an error naming the clash if
 	// the key is already taken in the destination.
 	PromoteState(ctx context.Context, fromRoom, key, toRoom string, scope room.Scope) error
 
 	// Search finds state and entries whose text contains the query term.
 	Search(ctx context.Context, q room.Query) (*room.Results, error)
-
-	// Clear removes every entry in a room and reports how many went.
-	Clear(ctx context.Context, roomKey string) (int, error)
 
 	// Unread returns the open, addressed entries in the rooms this session has
 	// joined that it has not yet been shown and did not write itself.

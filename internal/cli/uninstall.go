@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 
 	"github.com/spf13/cobra"
+
+	"github.com/codyhartsook/multiplayer/internal/harness"
 )
 
 func newUninstallCmd(opts *options) *cobra.Command {
@@ -31,9 +33,9 @@ nothing is removed; what would go is listed instead.`,
 			out := cmd.OutOrStdout()
 			dryRun := !confirm
 
-			for _, t := range targets {
+			for _, t := range harness.Specs() {
 				if err := uninstallFrom(cmd, home, t, dryRun); err != nil {
-					return fmt.Errorf("%s: %w", t.name, err)
+					return fmt.Errorf("%s: %w", t.Harness, err)
 				}
 			}
 
@@ -68,10 +70,11 @@ nothing is removed; what would go is listed instead.`,
 	return cmd
 }
 
-func uninstallFrom(cmd *cobra.Command, home string, t target, dryRun bool) error {
+func uninstallFrom(cmd *cobra.Command, home string, t harness.Spec, dryRun bool) error {
 	out := cmd.OutOrStdout()
+	name := string(t.Harness)
 
-	path := filepath.Join(home, t.path)
+	path := filepath.Join(home, t.ConfigPath)
 	original, config, err := readConfig(path)
 	if err != nil {
 		return err
@@ -80,11 +83,11 @@ func uninstallFrom(cmd *cobra.Command, home string, t target, dryRun bool) error
 		// An empty tracked set makes the same merge that installs also
 		// uninstall: every managed event is visited and this tool's entries
 		// swept.
-		hooks := mergeHooks(mapAt(config, t.root), nil, "", t.harness)
+		hooks := mergeHooks(mapAt(config, t.ConfigRoot), nil, "", name)
 		if len(hooks) == 0 {
-			delete(config, t.root)
+			delete(config, t.ConfigRoot)
 		} else {
-			config[t.root] = hooks
+			config[t.ConfigRoot] = hooks
 		}
 
 		// A file that held nothing but our hooks is ours to remove; one with
@@ -97,9 +100,9 @@ func uninstallFrom(cmd *cobra.Command, home string, t target, dryRun bool) error
 		if empty || string(original) != string(updated) {
 			switch {
 			case dryRun && empty:
-				fmt.Fprintf(out, "%s: would delete %s\n", t.name, path)
+				fmt.Fprintf(out, "%s: would delete %s\n", name, path)
 			case dryRun:
-				fmt.Fprintf(out, "%s: would remove hooks from %s\n", t.name, path)
+				fmt.Fprintf(out, "%s: would remove hooks from %s\n", name, path)
 			default:
 				if err := backup(path, original); err != nil {
 					return err
@@ -108,23 +111,23 @@ func uninstallFrom(cmd *cobra.Command, home string, t target, dryRun bool) error
 					if err := os.Remove(path); err != nil {
 						return fmt.Errorf("remove %s: %w", path, err)
 					}
-					fmt.Fprintf(out, "%s: deleted %s\n", t.name, path)
+					fmt.Fprintf(out, "%s: deleted %s\n", name, path)
 					break
 				}
 				if err := os.WriteFile(path, updated, 0o644); err != nil {
 					return fmt.Errorf("write %s: %w", path, err)
 				}
-				fmt.Fprintf(out, "%s: hooks removed from %s\n", t.name, path)
+				fmt.Fprintf(out, "%s: hooks removed from %s\n", name, path)
 			}
 		}
 	}
 
-	skillDir := filepath.Join(home, t.skills, skillName)
-	if err := removeSkill(cmd, t.name, skillDir, dryRun); err != nil {
+	skillDir := filepath.Join(home, t.SkillsDir, skillName)
+	if err := removeSkill(cmd, name, skillDir, dryRun); err != nil {
 		return err
 	}
 
-	if t.sandbox == "" {
+	if t.SandboxTOML == "" {
 		return nil
 	}
 	// The store directory is the grant; resolve it the same way install did.
@@ -132,7 +135,7 @@ func uninstallFrom(cmd *cobra.Command, home string, t target, dryRun bool) error
 	if err != nil {
 		return err
 	}
-	sandboxPath := filepath.Join(home, t.sandbox)
+	sandboxPath := filepath.Join(home, t.SandboxTOML)
 	removed, err := removeWritableRoot(sandboxPath, storeDir, dryRun)
 	if err != nil {
 		return err
@@ -142,7 +145,7 @@ func uninstallFrom(cmd *cobra.Command, home string, t target, dryRun bool) error
 		if dryRun {
 			verb = "would remove sandbox grant from"
 		}
-		fmt.Fprintf(out, "%s: %s %s\n", t.name, verb, sandboxPath)
+		fmt.Fprintf(out, "%s: %s %s\n", name, verb, sandboxPath)
 	}
 	return nil
 }

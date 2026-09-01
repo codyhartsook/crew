@@ -298,7 +298,7 @@ function setConnection(state, text) {
 // ---- grouping ----
 //
 // Worktree is the fine-grained view: every working tree is its own group, so a
-// pooled treehouse slot stands apart from the main checkout of the same repo.
+// pooled slot stands apart from the main checkout of the same repo.
 // Repository is the coarse view, collapsing every worktree of one repo together.
 // A session outside any git checkout falls back to grouping on its directory.
 
@@ -317,8 +317,8 @@ function groupOf(session) {
 // worktreeTag names the checkout: a pool slot, another linked worktree, or the
 // primary checkout.
 function worktreeTag(session) {
-  if (session.treehouse) {
-    return { text: session.treehouse.pool + "/" + session.treehouse.slot, kind: "pool" };
+  if (session.pool) {
+    return { text: session.pool.name + "/" + session.pool.slot, kind: "pool" };
   }
   const repo = session.repo;
   if (!repo) return null;
@@ -533,8 +533,8 @@ function renderRow(session, perWorktree) {
     : "ended " + age(session.ended_at || session.last_seen)));
 
   const notes = [];
-  if (session.treehouse && session.treehouse.lease_holder) {
-    notes.push("lease " + session.treehouse.lease_holder);
+  if (session.pool && session.pool.lease_holder) {
+    notes.push("lease " + session.pool.lease_holder);
   }
   if (session.meta && session.meta.model) {
     notes.push("model " + session.meta.model);

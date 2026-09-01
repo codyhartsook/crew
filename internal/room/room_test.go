@@ -1,7 +1,6 @@
 package room_test
 
 import (
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -35,7 +34,7 @@ func TestForRooms(t *testing.T) {
 	cases := []struct {
 		name  string
 		repo  *session.Repo
-		th    *session.Treehouse
+		pool  *session.Pool
 		cwd   string
 		want  []room.Scope
 		first string
@@ -55,7 +54,7 @@ func TestForRooms(t *testing.T) {
 				Name: "widget", Root: "/pool/widget-abc/3/widget",
 				MainRoot: "/src/widget", IsWorktree: true,
 			},
-			th:    &session.Treehouse{Pool: "widget-abc", Slot: "3"},
+			pool:  &session.Pool{Manager: "treehouse", Name: "widget-abc", Slot: "3"},
 			want:  []room.Scope{room.ScopeWorktree, room.ScopeRepo},
 			first: "/pool/widget-abc/3/widget",
 			label: "widget/3",
@@ -82,7 +81,7 @@ func TestForRooms(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := room.For(tc.repo, tc.th, tc.cwd)
+			got := room.For(tc.repo, tc.pool, tc.cwd)
 			if len(got) != len(tc.want) {
 				t.Fatalf("got %d rooms, want %d: %+v", len(got), len(tc.want), got)
 			}
@@ -129,7 +128,7 @@ func TestBriefing(t *testing.T) {
 		{ID: 4, Room: "/src/widget", Kind: room.KindReview, Author: "claude:zzz", Body: "this leaks", CreatedAt: now},
 	}
 
-	out := room.Briefing(here, entries, nil, nil, []string{"claude zzz (just now)"})
+	out := room.Briefing(here, entries, nil, []string{"claude zzz (just now)"})
 	for _, want := range []string{"chose sqlite", "Open", "this leaks", "Answered", "the gateway does", "claude zzz"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("briefing is missing %q:\n%s", want, out)
@@ -148,103 +147,11 @@ func TestBriefing(t *testing.T) {
 
 func TestBriefingEmpty(t *testing.T) {
 	here := []room.Room{{Key: "/src/widget", Scope: room.ScopeWorktree, Name: "widget"}}
-	if out := room.Briefing(here, nil, nil, nil, nil); out != "" {
+	if out := room.Briefing(here, nil, nil, nil); out != "" {
 		t.Errorf("briefing on an empty room = %q, want empty", out)
 	}
 	if out := room.Delivery(nil); out != "" {
 		t.Errorf("delivery with nothing new = %q, want empty", out)
-	}
-}
-
-func TestReport(t *testing.T) {
-	now := time.Now()
-	v := &room.Review{
-		ID: 1, Room: "/src/widget", Author: "claude:abc123def",
-		Target: "HEAD~1..HEAD", Summary: "verbosity in the store layer", CreatedAt: now,
-	}
-	entries := []*room.Entry{
-		{ID: 1, Kind: room.KindReview, ReviewID: 1, Severity: room.SeverityMust,
-			Anchor: &room.Anchor{File: "a.go", Line: 23, Symbol: "Do"}, Body: "orphaned hook", CreatedAt: now},
-		{ID: 2, Kind: room.KindReview, ReviewID: 1, Severity: room.SeverityConsider,
-			Anchor: &room.Anchor{File: "b.go", Line: 9}, Body: "could lose a sentence", CreatedAt: now},
-		{ID: 3, Kind: room.KindReview, ReviewID: 1, Resolves: 2, Author: "codex:zzz",
-			Body: "declined: that doc is the contract", CreatedAt: now},
-	}
-
-	out := room.Report(v, entries)
-	for _, want := range []string{
-		"# Review r1 — verbosity in the store layer",
-		"Target: HEAD~1..HEAD",
-		"1 of 2 findings open",
-		"## must", "`a.go:23`", "orphaned hook",
-		"## consider", "`b.go:9`",
-		// The reason a finding was declined is the record a report cannot hold
-		// unless it is stored per finding.
-		"closed: declined: that doc is the contract",
-	} {
-		if !strings.Contains(out, want) {
-			t.Errorf("report is missing %q:\n%s", want, out)
-		}
-	}
-}
-
-// Thirty findings must not become thirty lines of briefing.
-func TestBriefingCollapsesReviewBatches(t *testing.T) {
-	here := []room.Room{{Key: "/src/widget", Scope: room.ScopeWorktree, Name: "widget"}}
-	now := time.Now()
-	reviews := []*room.Review{{ID: 7, Author: "claude:abc", Summary: "style pass", CreatedAt: now}}
-
-	entries := []*room.Entry{
-		{ID: 1, Room: "/src/widget", Kind: room.KindQuestion, Author: "codex:z", Body: "standalone question", CreatedAt: now},
-	}
-	for i := int64(2); i <= 20; i++ {
-		entries = append(entries, &room.Entry{
-			ID: i, Room: "/src/widget", Kind: room.KindReview, ReviewID: 7,
-			Author: "claude:abc", Body: "finding " + strconv.FormatInt(i, 10), CreatedAt: now,
-		})
-	}
-
-	out := room.Briefing(here, entries, reviews, nil, nil)
-	if strings.Count(out, "finding ") != 0 {
-		t.Errorf("individual findings leaked into the briefing:\n%s", out)
-	}
-	if !strings.Contains(out, "[r7] review: style pass — 19 open") {
-		t.Errorf("batch was not collapsed with its open count:\n%s", out)
-	}
-	if !strings.Contains(out, "multiplayer review show r7") {
-		t.Errorf("briefing does not say how to read the review:\n%s", out)
-	}
-	// A standalone entry is still listed in full.
-	if !strings.Contains(out, "standalone question") {
-		t.Errorf("standalone entry was collapsed too:\n%s", out)
-	}
-}
-
-func TestSeverityValid(t *testing.T) {
-	for _, s := range room.Severities {
-		if !s.Valid() {
-			t.Errorf("%s should be valid", s)
-		}
-	}
-	if room.Severity("nit").Valid() {
-		t.Error("unknown severity reported valid")
-	}
-}
-
-func TestAnchorRef(t *testing.T) {
-	cases := map[string]*room.Anchor{
-		"a.go:23": {File: "a.go", Line: 23, Symbol: "Do"},
-		"a.go:Do": {File: "a.go", Symbol: "Do"},
-		"a.go":    {File: "a.go"},
-		"":        nil,
-	}
-	for want, anchor := range cases {
-		if got := anchor.Ref(); got != want {
-			t.Errorf("Ref() = %q, want %q", got, want)
-		}
-	}
-	if !(&room.Anchor{}).Empty() || (&room.Anchor{File: "a.go"}).Empty() {
-		t.Error("Empty() is wrong")
 	}
 }
 
@@ -269,7 +176,7 @@ func TestBriefingIncludesState(t *testing.T) {
 		{Room: "/src/widget", Key: "build/status", Value: "green", Author: "codex:a", Revision: 3, UpdatedAt: now},
 	}
 
-	out := room.Briefing(here, nil, nil, values, nil)
+	out := room.Briefing(here, nil, values, nil)
 	if !strings.Contains(out, "### State") || !strings.Contains(out, "build/status: green") {
 		t.Errorf("briefing is missing state:\n%s", out)
 	}
@@ -292,7 +199,7 @@ func TestBriefingNamesLongStateWithoutReproducingIt(t *testing.T) {
 		{Room: "/src/widget", Key: "build/status", Value: "green", Author: "codex:a", Revision: 1, UpdatedAt: time.Now()},
 	}
 
-	out := room.Briefing(here, nil, nil, values, nil)
+	out := room.Briefing(here, nil, values, nil)
 	if strings.Contains(out, "helm upgrade") {
 		t.Errorf("the runbook body leaked into the briefing:\n%s", out)
 	}
@@ -327,5 +234,45 @@ func TestStateLong(t *testing.T) {
 	}
 	if got := short.Lines(); got != 1 {
 		t.Errorf("Lines() = %d, want 1", got)
+	}
+}
+
+// A pooled slot's path is handed to the next lease, so the room must not be.
+func TestForSeparatesWorktreeRoomsByLease(t *testing.T) {
+	repo := &session.Repo{
+		Name: "widget", Root: "/pool/widget-abc/3/widget",
+		MainRoot: "/src/widget", IsWorktree: true,
+	}
+	slot := func(lease string) *session.Pool {
+		return &session.Pool{Manager: "treehouse", Name: "widget-abc", Slot: "3", LeaseID: lease}
+	}
+
+	first := room.For(repo, slot("aaa"), "")
+	second := room.For(repo, slot("bbb"), "")
+	again := room.For(repo, slot("aaa"), "")
+
+	if first[0].Key == second[0].Key {
+		t.Errorf("two leases of one slot share room key %q", first[0].Key)
+	}
+	if first[0].Key != again[0].Key {
+		t.Errorf("same lease gave %q then %q, want one room", first[0].Key, again[0].Key)
+	}
+	// The repository room is shared across leases, which is the point of it.
+	if first[1].Key != second[1].Key {
+		t.Errorf("repo rooms differ: %q and %q", first[1].Key, second[1].Key)
+	}
+}
+
+// Without a lease there is nothing to scope to, so the path stands alone.
+func TestForKeysUnleasedWorktreeOnPathAlone(t *testing.T) {
+	repo := &session.Repo{
+		Name: "widget", Root: "/elsewhere/widget",
+		MainRoot: "/src/widget", IsWorktree: true,
+	}
+	for _, pool := range []*session.Pool{nil, {Manager: "treehouse", Name: "widget-abc", Slot: "3"}} {
+		got := room.For(repo, pool, "")
+		if got[0].Key != repo.Root {
+			t.Errorf("Key = %q, want the path %q", got[0].Key, repo.Root)
+		}
 	}
 }

@@ -16,12 +16,12 @@ import (
 
 func newListCmd(opts *options) *cobra.Command {
 	var (
-		filter    store.Filter
-		harness   string
-		status    string
-		all       bool
-		asJSON    bool
-		treehouse bool
+		filter  store.Filter
+		harness string
+		status  string
+		all     bool
+		asJSON  bool
+		pooled  bool
 	)
 
 	cmd := &cobra.Command{
@@ -37,7 +37,7 @@ func newListCmd(opts *options) *cobra.Command {
 			defer st.Close()
 
 			filter.Harness = session.Harness(harness)
-			filter.TreehouseOnly = treehouse
+			filter.PooledOnly = pooled
 			// Live sessions are what you almost always want; --all or an
 			// explicit --status opens it up to finished ones.
 			switch {
@@ -62,58 +62,13 @@ func newListCmd(opts *options) *cobra.Command {
 	cmd.Flags().StringVar(&status, "status", "", "filter by status (active, ended)")
 	cmd.Flags().StringVar(&filter.RepoName, "repo", "", "filter by repository")
 	cmd.Flags().StringVar(&filter.RepoRoot, "repo-root", "", "filter by exact working tree")
-	cmd.Flags().BoolVar(&treehouse, "treehouse", false, "only treehouse pool worktrees")
+	cmd.Flags().BoolVar(&pooled, "pooled", false, "only worktrees lent out by a pool manager")
+	cmd.Flags().BoolVar(&pooled, "treehouse", false, "only treehouse pool worktrees")
+	_ = cmd.Flags().MarkDeprecated("treehouse", "use --pooled")
 	cmd.Flags().BoolVarP(&all, "all", "a", false, "include sessions that have ended")
 	cmd.Flags().IntVar(&filter.Limit, "limit", 0, "max sessions to show")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of a table")
 	return cmd
-}
-
-func newGetCmd(opts *options) *cobra.Command {
-	return &cobra.Command{
-		Use:   "get <harness:session-id>",
-		Short: "Show one session as JSON",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			st, err := opts.openStore()
-			if err != nil {
-				return err
-			}
-			defer st.Close()
-
-			sess, err := st.Get(cmd.Context(), args[0])
-			if err != nil {
-				return err
-			}
-			enc := json.NewEncoder(cmd.OutOrStdout())
-			enc.SetIndent("", "  ")
-			return enc.Encode(sess)
-		},
-	}
-}
-
-func newRemoveCmd(opts *options) *cobra.Command {
-	return &cobra.Command{
-		Use:     "rm <harness:session-id>...",
-		Aliases: []string{"remove"},
-		Short:   "Delete session records",
-		Args:    cobra.MinimumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			st, err := opts.openStore()
-			if err != nil {
-				return err
-			}
-			defer st.Close()
-
-			for _, key := range args {
-				if err := st.Delete(cmd.Context(), key); err != nil {
-					return err
-				}
-				fmt.Fprintln(cmd.OutOrStdout(), "deleted", key)
-			}
-			return nil
-		},
-	}
 }
 
 func writeJSONList(w io.Writer, sessions []*session.Session) error {
@@ -164,12 +119,12 @@ func branchOf(s *session.Session) string {
 	return "-"
 }
 
-// worktreeOf names the checkout: the pool slot for a treehouse worktree, the
+// worktreeOf names the checkout: the pool slot for a lent-out worktree, the
 // directory name for any other linked worktree, and "main" for the primary
 // checkout.
 func worktreeOf(s *session.Session) string {
-	if s.Treehouse != nil {
-		return s.Treehouse.Pool + "/" + s.Treehouse.Slot
+	if s.Pool != nil {
+		return s.Pool.Name + "/" + s.Pool.Slot
 	}
 	if s.Repo == nil {
 		return "-"
@@ -181,7 +136,7 @@ func worktreeOf(s *session.Session) string {
 }
 
 // shortID trims a session id to a prefix long enough to stay unique in practice
-// while keeping the table narrow. The full id is in --json and get.
+// while keeping the table narrow. The full id is in --json.
 func shortID(id string) string {
 	const width = 8
 	if len(id) <= width {

@@ -15,6 +15,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/codyhartsook/multiplayer/internal/detect"
+	"github.com/codyhartsook/multiplayer/internal/harness"
 	"github.com/codyhartsook/multiplayer/internal/hook"
 	"github.com/codyhartsook/multiplayer/internal/session"
 )
@@ -29,10 +30,11 @@ func newHookCmd(opts *options) *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "hook",
-		Short: "Record a session lifecycle event read from stdin",
+		Use:    "hook",
+		Short:  "Record a session lifecycle event read from stdin",
+		Hidden: true,
 		Long: `Reads the hook payload as JSON on stdin, detects the git checkout and
-any treehouse worktree, and writes the session to the store.
+any pooled worktree, and writes the session to the store.
 
 Never fails the calling harness: errors go to ~/.multiplayer/hook.log and the
 process exits 0. Set MULTIPLAYER_DEBUG=1 to log every invocation and payload.`,
@@ -55,7 +57,7 @@ process exits 0. Set MULTIPLAYER_DEBUG=1 to log every invocation and payload.`,
 }
 
 func runHook(cmd *cobra.Command, opts *options, harnessFlag string) error {
-	harness, err := resolveHarness(harnessFlag)
+	h, err := resolveHarness(harnessFlag)
 	if err != nil {
 		return err
 	}
@@ -67,7 +69,7 @@ func runHook(cmd *cobra.Command, opts *options, harnessFlag string) error {
 		return fmt.Errorf("read hook payload: %w", err)
 	}
 	if debugEnabled() {
-		logHookLine(opts, fmt.Sprintf("invoked harness=%s payload=%s", harness, compact(raw)))
+		logHookLine(opts, fmt.Sprintf("invoked harness=%s payload=%s", h, compact(raw)))
 	}
 
 	payload, err := hook.ParsePayload(bytes.NewReader(raw))
@@ -81,15 +83,15 @@ func runHook(cmd *cobra.Command, opts *options, harnessFlag string) error {
 	}
 	defer st.Close()
 
-	// The budget depends on the event: a harness gives a session-end hook far
-	// less time than a session-start hook.
-	ctx, cancel := context.WithTimeout(cmd.Context(), payload.Budget())
+	// The budget depends on the event and the harness: a session-end hook gets
+	// far less time than a session-start one, and each harness caps it its own way.
+	ctx, cancel := context.WithTimeout(cmd.Context(), hook.BudgetFor(h, payload))
 	defer cancel()
 
 	recorder := &hook.Recorder{Store: st, Detector: detect.New()}
-	sess, recordErr := recorder.Record(ctx, harness, payload)
+	sess, recordErr := recorder.Record(ctx, h, payload)
 
-	injected, roomErr := roomsFor(ctx, st, payload.Event(), sess, sessionKeyFrom(harness, payload))
+	injected, roomErr := roomsFor(ctx, st, payload.Event(), sess, sessionKeyFrom(h, payload))
 	if writeErr := writeContext(cmd.OutOrStdout(), payload.Event(), injected); writeErr != nil {
 		roomErr = errors.Join(roomErr, writeErr)
 	}
@@ -99,7 +101,7 @@ func runHook(cmd *cobra.Command, opts *options, harnessFlag string) error {
 func resolveHarness(flag string) (session.Harness, error) {
 	switch flag {
 	case "", "auto":
-		return hook.DetectHarness(), nil
+		return harness.Detect(), nil
 	case string(session.HarnessClaude), string(session.HarnessCodex):
 		return session.Harness(flag), nil
 	default:

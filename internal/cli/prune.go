@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/codyhartsook/multiplayer/internal/detect"
+	"github.com/codyhartsook/multiplayer/internal/harness"
 	"github.com/codyhartsook/multiplayer/internal/proc"
 	"github.com/codyhartsook/multiplayer/internal/session"
 	"github.com/codyhartsook/multiplayer/internal/store"
@@ -26,8 +27,9 @@ func newPruneCmd(opts *options) *cobra.Command {
 	var dryRun bool
 
 	cmd := &cobra.Command{
-		Use:   "prune",
-		Short: "End sessions whose agent process is gone",
+		Use:    "prune",
+		Short:  "End sessions whose agent process is gone",
+		Hidden: true,
 		Long: `A harness that is killed, or whose terminal closes, never fires
 SessionEnd, so its session would stay active forever. Only sessions on this
 machine can be checked. Also runs automatically when a session starts.`,
@@ -97,7 +99,7 @@ func deadAmong(active []*session.Session, table proc.Table, host string, now tim
 		if now.Sub(s.LastSeen) < graceperiod {
 			continue
 		}
-		if !table.Running(s.PID, string(s.Harness)) {
+		if !table.Running(s.PID, binaryOf(s.Harness)) {
 			dead = append(dead, s)
 		}
 	}
@@ -123,4 +125,13 @@ func pruneQuietly(ctx context.Context, st store.Store) {
 		return
 	}
 	_, _ = endAll(ctx, st, dead, time.Now().UTC())
+}
+
+// binaryOf is the process name a harness's sessions run under. Falling back to
+// the registry key keeps a session recorded by a newer binary checkable.
+func binaryOf(h session.Harness) string {
+	if spec, ok := harness.For(h); ok {
+		return spec.Binary
+	}
+	return string(h)
 }

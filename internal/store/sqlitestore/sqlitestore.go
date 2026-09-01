@@ -29,7 +29,7 @@ const timeFormat = time.RFC3339Nano
 
 // SchemaVersion is the store layout this binary understands. Raise it whenever
 // a migration changes what older binaries can safely assume.
-const SchemaVersion = 1
+const SchemaVersion = 2
 
 const schema = `
 CREATE TABLE IF NOT EXISTS sessions (
@@ -52,13 +52,14 @@ CREATE TABLE IF NOT EXISTS sessions (
     repo_detached    INTEGER NOT NULL DEFAULT 0,
     repo_is_worktree INTEGER NOT NULL DEFAULT 0,
 
-    has_treehouse    INTEGER NOT NULL DEFAULT 0,
-    th_pool          TEXT NOT NULL DEFAULT '',
-    th_slot          TEXT NOT NULL DEFAULT '',
-    th_root          TEXT NOT NULL DEFAULT '',
-    th_leased        INTEGER NOT NULL DEFAULT 0,
-    th_lease_id      TEXT NOT NULL DEFAULT '',
-    th_lease_holder  TEXT NOT NULL DEFAULT '',
+    has_pool         INTEGER NOT NULL DEFAULT 0,
+    pool_manager     TEXT NOT NULL DEFAULT '',
+    pool_name        TEXT NOT NULL DEFAULT '',
+    pool_slot        TEXT NOT NULL DEFAULT '',
+    pool_root        TEXT NOT NULL DEFAULT '',
+    pool_leased      INTEGER NOT NULL DEFAULT 0,
+    pool_lease_id    TEXT NOT NULL DEFAULT '',
+    pool_lease_holder TEXT NOT NULL DEFAULT '',
 
     started_at       TEXT NOT NULL,
     last_seen        TEXT NOT NULL,
@@ -77,8 +78,31 @@ CREATE INDEX IF NOT EXISTS sessions_last_seen ON sessions(last_seen DESC);
 // columns is the projection every read shares, so scanRow stays in step with it.
 const columns = `key, id, harness, status, pid, host, username, cwd,
     has_repo, repo_name, repo_root, repo_main_root, repo_remote, repo_branch, repo_head, repo_detached, repo_is_worktree,
-    has_treehouse, th_pool, th_slot, th_root, th_leased, th_lease_id, th_lease_holder,
+    has_pool, pool_manager, pool_name, pool_slot, pool_root, pool_leased, pool_lease_id, pool_lease_holder,
     started_at, last_seen, ended_at, end_reason, meta`
+
+// sessionMigrations bring a pre-v2 database up to date: the pooled-worktree
+// columns were named after treehouse before any other manager was modelled.
+// Each is ignored when the column already exists.
+var sessionMigrations = []string{
+	`ALTER TABLE sessions ADD COLUMN has_pool          INTEGER NOT NULL DEFAULT 0`,
+	`ALTER TABLE sessions ADD COLUMN pool_manager      TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE sessions ADD COLUMN pool_name         TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE sessions ADD COLUMN pool_slot         TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE sessions ADD COLUMN pool_root         TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE sessions ADD COLUMN pool_leased       INTEGER NOT NULL DEFAULT 0`,
+	`ALTER TABLE sessions ADD COLUMN pool_lease_id     TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE sessions ADD COLUMN pool_lease_holder TEXT NOT NULL DEFAULT ''`,
+}
+
+// backfillPool carries the treehouse-named columns forward. It runs only where
+// they exist, since a database created at v2 never had them.
+const backfillPool = `
+UPDATE sessions SET
+    has_pool = has_treehouse, pool_manager = 'treehouse', pool_name = th_pool,
+    pool_slot = th_slot, pool_root = th_root, pool_leased = th_leased,
+    pool_lease_id = th_lease_id, pool_lease_holder = th_lease_holder
+WHERE has_treehouse = 1 AND has_pool = 0`
 
 // Store is a SQLite-backed store.Store.
 type Store struct {
@@ -132,9 +156,14 @@ func migrate(db *sql.DB) error {
 	if _, err := db.ExecContext(ctx, schema+roomSchema); err != nil {
 		return fmt.Errorf("apply schema: %w", err)
 	}
-	for _, stmt := range columnMigrations {
+	for _, stmt := range sessionMigrations {
 		if _, err := db.ExecContext(ctx, stmt); err != nil && !isDuplicateColumn(err) {
 			return fmt.Errorf("migrate: %s: %w", stmt, err)
+		}
+	}
+	if hasColumn(ctx, db, "sessions", "has_treehouse") {
+		if _, err := db.ExecContext(ctx, backfillPool); err != nil {
+			return fmt.Errorf("backfill pool columns: %w", err)
 		}
 	}
 	if _, err := db.ExecContext(ctx, roomIndexes); err != nil {
@@ -149,6 +178,17 @@ func migrate(db *sql.DB) error {
 
 // isDuplicateColumn reports the error SQLite gives when a column is already
 // there, which is the normal outcome on every open after the first.
+// hasColumn reports whether a table carries the column, so a migration reading a
+// legacy column is skipped on a database that never had one.
+func hasColumn(ctx context.Context, db *sql.DB, table, column string) bool {
+	rows, err := db.QueryContext(ctx, `SELECT 1 FROM pragma_table_info(?) WHERE name = ?`, table, column)
+	if err != nil {
+		return false
+	}
+	defer rows.Close()
+	return rows.Next()
+}
+
 func isDuplicateColumn(err error) bool {
 	return strings.Contains(err.Error(), "duplicate column name")
 }
@@ -194,16 +234,16 @@ func (s *Store) Upsert(ctx context.Context, sess *session.Session) error {
 	if repo == nil {
 		repo = &session.Repo{}
 	}
-	th := sess.Treehouse
-	if th == nil {
-		th = &session.Treehouse{}
+	pool := sess.Pool
+	if pool == nil {
+		pool = &session.Pool{}
 	}
 
 	const q = `
 INSERT INTO sessions (` + columns + `)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?, ?, ?, ?, ?, ?,
-        ?, ?, ?, ?, ?, ?, ?,
+        ?, ?, ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?, ?)
 ON CONFLICT(key) DO UPDATE SET
     status = excluded.status,
@@ -220,13 +260,14 @@ ON CONFLICT(key) DO UPDATE SET
     repo_head = excluded.repo_head,
     repo_detached = excluded.repo_detached,
     repo_is_worktree = excluded.repo_is_worktree,
-    has_treehouse = excluded.has_treehouse,
-    th_pool = excluded.th_pool,
-    th_slot = excluded.th_slot,
-    th_root = excluded.th_root,
-    th_leased = excluded.th_leased,
-    th_lease_id = excluded.th_lease_id,
-    th_lease_holder = excluded.th_lease_holder,
+    has_pool = excluded.has_pool,
+    pool_manager = excluded.pool_manager,
+    pool_name = excluded.pool_name,
+    pool_slot = excluded.pool_slot,
+    pool_root = excluded.pool_root,
+    pool_leased = excluded.pool_leased,
+    pool_lease_id = excluded.pool_lease_id,
+    pool_lease_holder = excluded.pool_lease_holder,
     last_seen = excluded.last_seen,
     ended_at = excluded.ended_at,
     end_reason = excluded.end_reason,
@@ -235,7 +276,7 @@ ON CONFLICT(key) DO UPDATE SET
 	_, err = s.db.ExecContext(ctx, q,
 		sess.Key(), sess.ID, string(sess.Harness), string(sess.Status), sess.PID, sess.Host, sess.User, sess.CWD,
 		sess.Repo != nil, repo.Name, repo.Root, repo.MainRoot, repo.Remote, repo.Branch, repo.Head, repo.Detached, repo.IsWorktree,
-		sess.Treehouse != nil, th.Pool, th.Slot, th.Root, th.Leased, th.LeaseID, th.LeaseHolder,
+		sess.Pool != nil, pool.Manager, pool.Name, pool.Slot, pool.Root, pool.Leased, pool.LeaseID, pool.LeaseHolder,
 		formatTime(sess.StartedAt), formatTime(sess.LastSeen), formatTimePtr(sess.EndedAt), sess.EndReason, string(meta),
 	)
 	if err != nil {
@@ -313,8 +354,8 @@ func (s *Store) List(ctx context.Context, f store.Filter) ([]*session.Session, e
 		where = append(where, "repo_root = ?")
 		args = append(args, f.RepoRoot)
 	}
-	if f.TreehouseOnly {
-		where = append(where, "has_treehouse = 1")
+	if f.PooledOnly {
+		where = append(where, "has_pool = 1")
 	}
 
 	q := `SELECT ` + columns + ` FROM sessions`
@@ -375,8 +416,8 @@ func scanSession(sc scanner) (*session.Session, error) {
 		status    string
 		hasRepo   bool
 		repo      session.Repo
-		hasTH     bool
-		th        session.Treehouse
+		hasPool   bool
+		pool      session.Pool
 		startedAt string
 		lastSeen  string
 		endedAt   sql.NullString
@@ -386,7 +427,7 @@ func scanSession(sc scanner) (*session.Session, error) {
 	err := sc.Scan(
 		&key, &sess.ID, &harness, &status, &sess.PID, &sess.Host, &sess.User, &sess.CWD,
 		&hasRepo, &repo.Name, &repo.Root, &repo.MainRoot, &repo.Remote, &repo.Branch, &repo.Head, &repo.Detached, &repo.IsWorktree,
-		&hasTH, &th.Pool, &th.Slot, &th.Root, &th.Leased, &th.LeaseID, &th.LeaseHolder,
+		&hasPool, &pool.Manager, &pool.Name, &pool.Slot, &pool.Root, &pool.Leased, &pool.LeaseID, &pool.LeaseHolder,
 		&startedAt, &lastSeen, &endedAt, &sess.EndReason, &metaJSON,
 	)
 	if err != nil {
@@ -398,8 +439,8 @@ func scanSession(sc scanner) (*session.Session, error) {
 	if hasRepo {
 		sess.Repo = &repo
 	}
-	if hasTH {
-		sess.Treehouse = &th
+	if hasPool {
+		sess.Pool = &pool
 	}
 	if sess.StartedAt, err = parseTime(startedAt); err != nil {
 		return nil, fmt.Errorf("parse started_at: %w", err)

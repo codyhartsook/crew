@@ -39,7 +39,7 @@ func Run(t *testing.T, newStore Factory) {
 	}
 }
 
-// base is a fully populated session: a codex agent holding a leased treehouse slot.
+// base is a fully populated session: a codex agent holding a leased pool slot.
 func base() *session.Session {
 	start := time.Date(2026, 8, 31, 10, 0, 0, 0, time.UTC)
 	return &session.Session{
@@ -59,8 +59,9 @@ func base() *session.Session {
 			Detached:   true,
 			IsWorktree: true,
 		},
-		Treehouse: &session.Treehouse{
-			Pool:        "kagent-9f7087",
+		Pool: &session.Pool{
+			Manager:     "treehouse",
+			Name:        "kagent-9f7087",
 			Slot:        "2",
 			Root:        "/pool/kagent-9f7087/2/kagent",
 			Leased:      true,
@@ -261,7 +262,7 @@ func testListFilters(t *testing.T, newStore Factory) {
 	plain := base()
 	plain.ID = "sess-2"
 	plain.Harness = session.HarnessClaude
-	plain.Treehouse = nil
+	plain.Pool = nil
 	plain.Repo = &session.Repo{Name: "kagent", Root: "/src/kagent", MainRoot: "/src/kagent", Branch: "main"}
 	plain.CWD = "/src/kagent"
 	plain.LastSeen = now.Add(-time.Minute)
@@ -270,7 +271,7 @@ func testListFilters(t *testing.T, newStore Factory) {
 	ended.ID = "sess-3"
 	ended.Harness = session.HarnessClaude
 	ended.Status = session.StatusEnded
-	ended.Treehouse = nil
+	ended.Pool = nil
 	ended.Repo = &session.Repo{Name: "home-base", Root: "/src/home-base", MainRoot: "/src/home-base", Branch: "main"}
 	ended.CWD = "/src/home-base"
 	ended.LastSeen = now.Add(-2 * time.Minute)
@@ -291,7 +292,7 @@ func testListFilters(t *testing.T, newStore Factory) {
 		{"status", store.Filter{Status: session.StatusActive}, []string{pooled.Key(), plain.Key()}},
 		{"repo name", store.Filter{RepoName: "kagent"}, []string{pooled.Key(), plain.Key()}},
 		{"repo root", store.Filter{RepoRoot: "/src/kagent"}, []string{plain.Key()}},
-		{"treehouse only", store.Filter{TreehouseOnly: true}, []string{pooled.Key()}},
+		{"pooled only", store.Filter{PooledOnly: true}, []string{pooled.Key()}},
 		{"combined", store.Filter{Harness: session.HarnessClaude, Status: session.StatusActive}, []string{plain.Key()}},
 		{"limit", store.Filter{Limit: 2}, []string{pooled.Key(), plain.Key()}},
 		{"no match", store.Filter{RepoName: "absent"}, nil},
@@ -412,8 +413,8 @@ func assertSameSession(t *testing.T, want, got *session.Session) {
 	if got.Repo == nil || *got.Repo != *want.Repo {
 		t.Errorf("Repo = %+v, want %+v", got.Repo, want.Repo)
 	}
-	if got.Treehouse == nil || *got.Treehouse != *want.Treehouse {
-		t.Errorf("Treehouse = %+v, want %+v", got.Treehouse, want.Treehouse)
+	if got.Pool == nil || *got.Pool != *want.Pool {
+		t.Errorf("Pool = %+v, want %+v", got.Pool, want.Pool)
 	}
 	if !got.StartedAt.Equal(want.StartedAt) {
 		t.Errorf("StartedAt = %v, want %v", got.StartedAt, want.StartedAt)

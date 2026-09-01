@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/codyhartsook/multiplayer/internal/cli"
+	"github.com/codyhartsook/multiplayer/internal/harness"
 )
 
 // runInstall executes the install command against a throwaway home directory
@@ -90,29 +91,29 @@ func timeoutsFor(t *testing.T, hooks map[string]any, event string) []float64 {
 	return out
 }
 
-// A session-end hook runs while the user waits for the harness to exit. Codex
-// clamps it to three seconds and warns about anything larger, so the installed
-// configuration must not ask for more.
-func TestInstallSessionEndFitsHarnessCap(t *testing.T) {
+// Each harness's hooks are installed with that harness's own timeouts. Sharing
+// one number across harnesses is how Claude Code ended up on Codex's cap.
+func TestInstallUsesPerHarnessTimeouts(t *testing.T) {
 	home := t.TempDir()
 	runInstall(t, home)
 
-	for _, path := range []string{
-		filepath.Join(home, ".claude", "settings.json"),
-		filepath.Join(home, ".codex", "hooks.json"),
-	} {
-		hooks := readHooks(t, path)
-		for _, timeout := range timeoutsFor(t, hooks, "SessionEnd") {
-			if timeout > 3 {
-				t.Errorf("%s: SessionEnd timeout = %v, want at most 3", path, timeout)
+	for _, spec := range harness.Specs() {
+		hooks := readHooks(t, filepath.Join(home, spec.ConfigPath))
+		for event, want := range spec.Timeouts {
+			got := timeoutsFor(t, hooks, event)
+			if len(got) != 1 {
+				t.Errorf("%s: %s has %d entries, want 1", spec.Harness, event, len(got))
+				continue
+			}
+			if got[0] != float64(want) {
+				t.Errorf("%s: %s timeout = %v, want its spec's %d", spec.Harness, event, got[0], want)
 			}
 		}
-		// A session-start hook may take longer, and should, since it does the
-		// git and treehouse detection.
-		for _, timeout := range timeoutsFor(t, hooks, "SessionStart") {
-			if timeout <= 3 {
-				t.Errorf("%s: SessionStart timeout = %v, want more headroom", path, timeout)
-			}
+		// A session-start hook needs more headroom than the rest, since it is
+		// the one doing the git and pool detection.
+		if spec.Timeouts["SessionStart"] <= spec.Timeouts["SessionEnd"] {
+			t.Errorf("%s: SessionStart timeout %d should exceed SessionEnd %d",
+				spec.Harness, spec.Timeouts["SessionStart"], spec.Timeouts["SessionEnd"])
 		}
 	}
 }

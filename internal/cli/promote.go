@@ -3,7 +3,6 @@ package cli
 import (
 	"fmt"
 	"strconv"
-	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -12,14 +11,13 @@ import (
 
 func newPromoteCmd(opts *options) *cobra.Command {
 	return &cobra.Command{
-		Use:   "promote <id|r<n>|state-key>...",
+		Use:   "promote <id|state-key>...",
 		Short: "Move something from this worktree's room to the repository's",
 		Long: `Move something out of this worktree's room into the wider repository room,
 for when a finding turns out to be about the repository rather than the task.
 
-A numeric argument is an entry, "r3" is a review, anything else is a state key.
-A thread moves whole: an entry takes anything that resolves it, and a review
-takes all its findings.`,
+A numeric argument is an entry; anything else is a state key. A thread moves
+whole: an entry takes anything that resolves it.`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rc, closeFn, err := openRoomContext(cmd.Context(), opts, cwdOf(cmd))
@@ -56,28 +54,11 @@ func promoteOne(cmd *cobra.Command, rc *roomContext, arg string, from, to room.R
 		if err != nil {
 			return "", err
 		}
-		if entry.ReviewID != 0 {
-			return "", fmt.Errorf("[%d] belongs to review r%d; promote the review so its findings stay together", id, entry.ReviewID)
-		}
 		n, err := rc.rooms.Promote(ctx, id, to.Key, to.Scope)
 		if err != nil {
 			return "", err
 		}
 		return fmt.Sprintf("[%d] %s promoted%s", id, entry.Kind, alsoMoved(n-1, "reply", "replies")), nil
-	}
-
-	if strings.HasPrefix(arg, "r") {
-		if id, err := parseReviewID(arg); err == nil {
-			v, err := reviewByID(ctx, rc, id)
-			if err != nil {
-				return "", err
-			}
-			n, err := rc.rooms.PromoteReview(ctx, v.ID, to.Key, to.Scope)
-			if err != nil {
-				return "", err
-			}
-			return fmt.Sprintf("%s promoted%s", v.Label(), alsoMoved(n, "finding", "findings")), nil
-		}
 	}
 
 	if err := rc.rooms.PromoteState(ctx, from.Key, arg, to.Key, to.Scope); err != nil {

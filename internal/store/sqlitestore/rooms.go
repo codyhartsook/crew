@@ -24,25 +24,8 @@ CREATE TABLE IF NOT EXISTS entries (
     author     TEXT    NOT NULL,
     body       TEXT    NOT NULL,
     resolves   INTEGER NOT NULL DEFAULT 0,
-    review_id  INTEGER NOT NULL DEFAULT 0,
-    file       TEXT    NOT NULL DEFAULT '',
-    symbol     TEXT    NOT NULL DEFAULT '',
-    line_hint  INTEGER NOT NULL DEFAULT 0,
-    blob_sha   TEXT    NOT NULL DEFAULT '',
-    severity   TEXT    NOT NULL DEFAULT '',
     created_at TEXT    NOT NULL
 );
-
-CREATE TABLE IF NOT EXISTS reviews (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    room       TEXT NOT NULL,
-    author     TEXT NOT NULL,
-    target     TEXT NOT NULL DEFAULT '',
-    summary    TEXT NOT NULL,
-    created_at TEXT NOT NULL
-);
-
-
 
 CREATE TABLE IF NOT EXISTS memberships (
     session_key TEXT NOT NULL,
@@ -69,28 +52,12 @@ CREATE TABLE IF NOT EXISTS cursors (
 );
 `
 
-// roomIndexes run after the column migrations, since some index columns were
-// added to entries after the table first shipped.
 const roomIndexes = `
 CREATE INDEX IF NOT EXISTS entries_room     ON entries(room);
 CREATE INDEX IF NOT EXISTS entries_resolves ON entries(resolves) WHERE resolves != 0;
-CREATE INDEX IF NOT EXISTS entries_review   ON entries(review_id) WHERE review_id != 0;
 CREATE INDEX IF NOT EXISTS memberships_room ON memberships(room);
-CREATE INDEX IF NOT EXISTS reviews_room     ON reviews(room);
 CREATE INDEX IF NOT EXISTS state_room       ON state(room);
 `
-
-// columnMigrations bring a database created by an earlier version up to date.
-// Each is applied on every open and ignored when the column already exists,
-// which is idempotent without needing a version to be tracked correctly.
-var columnMigrations = []string{
-	`ALTER TABLE entries ADD COLUMN review_id INTEGER NOT NULL DEFAULT 0`,
-	`ALTER TABLE entries ADD COLUMN file      TEXT    NOT NULL DEFAULT ''`,
-	`ALTER TABLE entries ADD COLUMN symbol    TEXT    NOT NULL DEFAULT ''`,
-	`ALTER TABLE entries ADD COLUMN line_hint INTEGER NOT NULL DEFAULT 0`,
-	`ALTER TABLE entries ADD COLUMN blob_sha  TEXT    NOT NULL DEFAULT ''`,
-	`ALTER TABLE entries ADD COLUMN severity  TEXT    NOT NULL DEFAULT ''`,
-}
 
 var _ store.RoomStore = (*Store)(nil)
 
@@ -98,7 +65,6 @@ var _ store.RoomStore = (*Store)(nil)
 // derived rather than stored, so resolution stays an append and never a write
 // back over somebody else's row.
 const entryColumns = `e.id, e.room, e.scope, e.kind, e.author, e.body, e.resolves,
-    e.review_id, e.file, e.symbol, e.line_hint, e.blob_sha, e.severity,
     COALESCE(r.id, 0) AS resolved_by, e.created_at`
 
 const entryFrom = ` FROM entries e LEFT JOIN entries r ON r.resolves = e.id`
@@ -176,19 +142,13 @@ func (s *Store) Post(ctx context.Context, e *room.Entry) error {
 		return errors.New("post: body is empty")
 	}
 
-	anchor := e.Anchor
-	if anchor == nil {
-		anchor = &room.Anchor{}
-	}
 	const q = `
 INSERT INTO entries (room, scope, kind, author, body, resolves,
-                     review_id, file, symbol, line_hint, blob_sha, severity, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+                     created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?)`
 
 	res, err := s.db.ExecContext(ctx, q,
-		e.Room, string(e.Scope), string(e.Kind), e.Author, e.Body, e.Resolves,
-		e.ReviewID, anchor.File, anchor.Symbol, anchor.Line, anchor.BlobSHA, string(e.Severity),
-		formatTime(e.CreatedAt))
+		e.Room, string(e.Scope), string(e.Kind), e.Author, e.Body, e.Resolves, formatTime(e.CreatedAt))
 	if err != nil {
 		return fmt.Errorf("post entry: %w", err)
 	}
@@ -223,10 +183,6 @@ func (s *Store) Entries(ctx context.Context, f room.Filter) ([]*room.Entry, erro
 			args = append(args, string(k))
 		}
 	}
-	if f.ReviewID != 0 {
-		where = append(where, "e.review_id = ?")
-		args = append(args, f.ReviewID)
-	}
 	if f.OpenOnly {
 		where = append(where, openPredicate)
 	}
@@ -252,18 +208,6 @@ const openPredicate = `e.kind IN ('question', 'handoff', 'review') AND e.resolve
 // is by definition not open.
 const answersToMe = `e.resolves != 0 AND EXISTS (
     SELECT 1 FROM entries t WHERE t.id = e.resolves AND t.author = ?)`
-
-func (s *Store) Clear(ctx context.Context, roomKey string) (int, error) {
-	res, err := s.db.ExecContext(ctx, `DELETE FROM entries WHERE room = ?`, roomKey)
-	if err != nil {
-		return 0, fmt.Errorf("clear room %s: %w", roomKey, err)
-	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return 0, fmt.Errorf("clear room %s: %w", roomKey, err)
-	}
-	return int(n), nil
-}
 
 func (s *Store) Unread(ctx context.Context, sessionKey string) ([]*room.Entry, error) {
 	const q = `
@@ -310,107 +254,19 @@ func scanEntry(sc scanner) (*room.Entry, error) {
 		e         room.Entry
 		scope     string
 		kind      string
-		severity  string
-		anchor    room.Anchor
 		createdAt string
 	)
 	err := sc.Scan(&e.ID, &e.Room, &scope, &kind, &e.Author, &e.Body, &e.Resolves,
-		&e.ReviewID, &anchor.File, &anchor.Symbol, &anchor.Line, &anchor.BlobSHA, &severity,
 		&e.ResolvedBy, &createdAt)
 	if err != nil {
 		return nil, err
 	}
 	e.Scope = room.Scope(scope)
 	e.Kind = room.Kind(kind)
-	e.Severity = room.Severity(severity)
-	if !anchor.Empty() {
-		e.Anchor = &anchor
-	}
 	if e.CreatedAt, err = parseTime(createdAt); err != nil {
 		return nil, fmt.Errorf("parse created_at: %w", err)
 	}
 	return &e, nil
-}
-
-func (s *Store) StartReview(ctx context.Context, r *room.Review) error {
-	if r == nil || r.Room == "" || r.Author == "" {
-		return errors.New("start review: room and author are required")
-	}
-	if strings.TrimSpace(r.Summary) == "" {
-		return errors.New("start review: summary is empty")
-	}
-	const q = `INSERT INTO reviews (room, author, target, summary, created_at) VALUES (?, ?, ?, ?, ?)`
-	res, err := s.db.ExecContext(ctx, q, r.Room, r.Author, r.Target, r.Summary, formatTime(r.CreatedAt))
-	if err != nil {
-		return fmt.Errorf("start review: %w", err)
-	}
-	if r.ID, err = res.LastInsertId(); err != nil {
-		return fmt.Errorf("start review: %w", err)
-	}
-	return nil
-}
-
-func (s *Store) Reviews(ctx context.Context, f room.ReviewFilter) ([]*room.Review, error) {
-	var (
-		where []string
-		args  []any
-	)
-	if len(f.IDs) > 0 {
-		where = append(where, "v.id IN ("+placeholders(len(f.IDs))+")")
-		for _, id := range f.IDs {
-			args = append(args, id)
-		}
-	}
-	if len(f.Rooms) > 0 {
-		where = append(where, "v.room IN ("+placeholders(len(f.Rooms))+")")
-		for _, r := range f.Rooms {
-			args = append(args, r)
-		}
-	}
-
-	// Counts come from the findings themselves, so a review can never disagree
-	// with the entries it is made of.
-	q := `
-SELECT v.id, v.room, v.author, v.target, v.summary, v.created_at,
-       (SELECT COUNT(*) FROM entries f
-         WHERE f.review_id = v.id AND f.resolves = 0) AS findings,
-       (SELECT COUNT(*) FROM entries f
-          LEFT JOIN entries fr ON fr.resolves = f.id
-         WHERE f.review_id = v.id AND f.resolves = 0 AND fr.id IS NULL) AS open
-  FROM reviews v`
-	if len(where) > 0 {
-		q += " WHERE " + strings.Join(where, " AND ")
-	}
-	if f.OpenOnly {
-		q = "SELECT * FROM (" + q + ") WHERE open > 0"
-	}
-	q += " ORDER BY id DESC"
-	if f.Limit > 0 {
-		q += " LIMIT ?"
-		args = append(args, f.Limit)
-	}
-
-	rows, err := s.db.QueryContext(ctx, q, args...)
-	if err != nil {
-		return nil, fmt.Errorf("list reviews: %w", err)
-	}
-	defer rows.Close()
-
-	out := []*room.Review{}
-	for rows.Next() {
-		var (
-			v         room.Review
-			createdAt string
-		)
-		if err := rows.Scan(&v.ID, &v.Room, &v.Author, &v.Target, &v.Summary, &createdAt, &v.Findings, &v.Open); err != nil {
-			return nil, fmt.Errorf("list reviews: %w", err)
-		}
-		if v.CreatedAt, err = parseTime(createdAt); err != nil {
-			return nil, fmt.Errorf("parse created_at: %w", err)
-		}
-		out = append(out, &v)
-	}
-	return out, rows.Err()
 }
 
 const stateColumns = `room, scope, key, value, author, revision, updated_at`
@@ -521,34 +377,6 @@ func (s *Store) Promote(ctx context.Context, id int64, toRoom string, scope room
 	return int(n), nil
 }
 
-// PromoteReview moves the batch whole; a review split across rooms could not be
-// reported on.
-func (s *Store) PromoteReview(ctx context.Context, reviewID int64, toRoom string, scope room.Scope) (int, error) {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return 0, fmt.Errorf("promote review r%d: %w", reviewID, err)
-	}
-	defer tx.Rollback()
-
-	res, err := tx.ExecContext(ctx, `UPDATE reviews SET room = ? WHERE id = ?`, toRoom, reviewID)
-	if err != nil {
-		return 0, fmt.Errorf("promote review r%d: %w", reviewID, err)
-	}
-	if n, _ := res.RowsAffected(); n == 0 {
-		return 0, fmt.Errorf("no review r%d: %w", reviewID, store.ErrNotFound)
-	}
-	res, err = tx.ExecContext(ctx,
-		`UPDATE entries SET room = ?, scope = ? WHERE review_id = ?`, toRoom, string(scope), reviewID)
-	if err != nil {
-		return 0, fmt.Errorf("promote review r%d: %w", reviewID, err)
-	}
-	moved, _ := res.RowsAffected()
-	if err := tx.Commit(); err != nil {
-		return 0, fmt.Errorf("promote review r%d: %w", reviewID, err)
-	}
-	return int(moved), nil
-}
-
 func (s *Store) PromoteState(ctx context.Context, fromRoom, key, toRoom string, scope room.Scope) error {
 	if _, err := s.GetState(ctx, fromRoom, key); err != nil {
 		return err
@@ -626,9 +454,9 @@ func (s *Store) Search(ctx context.Context, q room.Query) (*room.Results, error)
 
 	entryRoomFilter := strings.ReplaceAll(roomFilter, "room IN", "e.room IN")
 	entryQ := `SELECT ` + entryColumns + entryFrom + `
- WHERE (e.body LIKE ? ESCAPE '!' OR e.file LIKE ? ESCAPE '!')` + entryRoomFilter + `
+ WHERE e.body LIKE ? ESCAPE '!'` + entryRoomFilter + `
  ORDER BY e.id DESC`
-	args = append([]any{like, like}, roomArgs...)
+	args = append([]any{like}, roomArgs...)
 	if q.Limit > 0 {
 		entryQ += " LIMIT ?"
 		args = append(args, q.Limit)

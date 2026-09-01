@@ -6,38 +6,31 @@ import (
 	"os"
 	"strings"
 
+	"github.com/codyhartsook/multiplayer/internal/harness"
 	"github.com/codyhartsook/multiplayer/internal/proc"
 	"github.com/codyhartsook/multiplayer/internal/session"
 	"github.com/codyhartsook/multiplayer/internal/store"
 )
 
-// sessionEnv maps a harness's own session-id variable onto the harness name.
-// Both harnesses put this in the environment of the commands they run, which is
-// exact and, unlike process inspection, survives a sandbox.
-var sessionEnv = []struct {
-	env     string
-	harness session.Harness
-}{
-	{"CLAUDE_CODE_SESSION_ID", session.HarnessClaude},
-	{"CODEX_THREAD_ID", session.HarnessCodex},
-	{"CODEX_SESSION_ID", session.HarnessCodex},
-}
-
-// sessionKeysFromEnv lists every identity the environment advertises. A
-// harness launched from inside another inherits its variables, so the first one
-// found is not necessarily ours.
+// sessionKeysFromEnv lists every identity the environment advertises. A harness
+// puts its session id in the environment of the commands it runs, which is exact
+// and, unlike process inspection, survives a sandbox. A harness launched from
+// inside another inherits its variables, so the first one found is not
+// necessarily ours.
 func sessionKeysFromEnv() []string {
 	var keys []string
 	seen := map[string]bool{}
-	for _, candidate := range sessionEnv {
-		id := os.Getenv(candidate.env)
-		if id == "" {
-			continue
-		}
-		key := string(candidate.harness) + ":" + id
-		if !seen[key] {
-			seen[key] = true
-			keys = append(keys, key)
+	for _, spec := range harness.Specs() {
+		for _, env := range spec.SessionEnv {
+			id := os.Getenv(env)
+			if id == "" {
+				continue
+			}
+			key := string(spec.Harness) + ":" + id
+			if !seen[key] {
+				seen[key] = true
+				keys = append(keys, key)
+			}
 		}
 	}
 	return keys

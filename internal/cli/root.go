@@ -75,7 +75,7 @@ func New() *cobra.Command {
 		Long: `multiplayer is a registry of running coding-agent sessions.
 
 Claude Code and Codex call "multiplayer hook" from their lifecycle hooks; each
-call records the git checkout, and the treehouse slot if there is one.`,
+call records the git checkout, and the pool slot if there is one.`,
 		Version:       Version(),
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -85,26 +85,19 @@ call records the git checkout, and the treehouse slot if there is one.`,
 		"SQLite database path (default ~/.multiplayer/sessions.db) [$"+envDB+"]")
 	root.PersistentFlags().StringVar(&opts.server, "server", opts.server,
 		"registry server URL, used instead of the local database [$"+envServer+"]")
+	root.CompletionOptions.HiddenDefaultCmd = true
 
 	root.AddCommand(
 		newHookCmd(opts),
 		newListCmd(opts),
-		newGetCmd(opts),
-		newRemoveCmd(opts),
 		newServeCmd(opts),
 		newFleetCmd(opts),
 		newPostCmd(opts),
 		newResolveCmd(opts),
 		newRoomCmd(opts),
-		newInboxCmd(opts),
-		newJoinCmd(opts),
-		newLeaveCmd(opts),
-		newVersionCmd(opts),
 		newSearchCmd(opts),
 		newPromoteCmd(opts),
 		newStateCmd(opts),
-		newReviewCmd(opts),
-		newClearCmd(opts),
 		newPruneCmd(opts),
 		newInstallCmd(opts),
 		newUninstallCmd(opts),

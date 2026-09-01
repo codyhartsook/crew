@@ -91,8 +91,8 @@ func (s *Store) List(ctx context.Context, f store.Filter) ([]*session.Session, e
 	if f.RepoRoot != "" {
 		q.Set("repo_root", f.RepoRoot)
 	}
-	if f.TreehouseOnly {
-		q.Set("treehouse", "true")
+	if f.PooledOnly {
+		q.Set("pooled", "true")
 	}
 	if f.Limit > 0 {
 		q.Set("limit", strconv.Itoa(f.Limit))

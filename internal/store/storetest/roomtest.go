@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -31,14 +30,11 @@ func RunRooms(t *testing.T, newStore RoomFactory) {
 		"UnreadStopsAtResolved":   testUnreadStopsAtResolved,
 		"UnreadDeliversAnswers":   testUnreadDeliversAnswers,
 		"AckMovesForwardOnly":     testAckMovesForwardOnly,
-		"Reviews":                 testReviews,
-		"ReviewFindingsResolve":   testReviewFindingsResolve,
 		"StateOverwrites":         testStateOverwrites,
 		"StateFilters":            testStateFilters,
 		"StateValidates":          testStateValidates,
 		"Promote":                 testPromote,
 		"Search":                  testSearch,
-		"Clear":                   testClear,
 		"ConcurrentPost":          testConcurrentPost,
 	}
 	for name, fn := range tests {
@@ -417,133 +413,6 @@ func testConcurrentPost(t *testing.T, newStore RoomFactory) {
 	}
 }
 
-func review(roomKey, author, summary string) *room.Review {
-	return &room.Review{
-		Room: roomKey, Author: author, Target: "HEAD~1..HEAD", Summary: summary,
-		CreatedAt: time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC),
-	}
-}
-
-func finding(roomKey string, reviewID int64, sev room.Severity, file string, line int, body string) *room.Entry {
-	e := entry(roomKey, room.KindReview, agentB, body)
-	e.ReviewID = reviewID
-	e.Severity = sev
-	e.Anchor = &room.Anchor{File: file, Line: line, Symbol: "doThing", BlobSHA: "abc123"}
-	return e
-}
-
-func testReviews(t *testing.T, newStore RoomFactory) {
-	s := newStore(t)
-	ctx := context.Background()
-
-	v := review(worktreeRoom, agentB, "naming across the store layer")
-	if err := s.StartReview(ctx, v); err != nil {
-		t.Fatalf("StartReview: %v", err)
-	}
-	if v.ID == 0 {
-		t.Fatal("StartReview did not assign an id")
-	}
-
-	mustPost(t, s, finding(worktreeRoom, v.ID, room.SeverityMust, "internal/cli/install.go", 23, "orphaned hook"))
-	mustPost(t, s, finding(worktreeRoom, v.ID, room.SeverityShould, "internal/room/room.go", 9, "restates the name"))
-	// A standalone review entry belongs to no batch.
-	mustPost(t, s, entry(worktreeRoom, room.KindReview, agentB, "unbatched review note"))
-
-	got, err := s.Reviews(ctx, room.ReviewFilter{})
-	if err != nil {
-		t.Fatalf("Reviews: %v", err)
-	}
-	if len(got) != 1 {
-		t.Fatalf("Reviews returned %d, want 1", len(got))
-	}
-	if got[0].Findings != 2 || got[0].Open != 2 {
-		t.Errorf("counts = %d findings / %d open, want 2/2", got[0].Findings, got[0].Open)
-	}
-	if got[0].Target != "HEAD~1..HEAD" || got[0].Summary != v.Summary {
-		t.Errorf("review = %+v, want the target and summary as written", got[0])
-	}
-	if got[0].Label() != "r"+itoa(v.ID) {
-		t.Errorf("Label() = %q, want r%d", got[0].Label(), v.ID)
-	}
-
-	// The batch's findings are addressable on their own.
-	inBatch, err := s.Entries(ctx, room.Filter{ReviewID: v.ID})
-	if err != nil {
-		t.Fatalf("Entries: %v", err)
-	}
-	if len(inBatch) != 2 {
-		t.Fatalf("batch has %d findings, want 2", len(inBatch))
-	}
-	if inBatch[0].Anchor == nil || inBatch[0].Anchor.Ref() != "internal/cli/install.go:23" {
-		t.Errorf("anchor = %+v, want file:line preserved", inBatch[0].Anchor)
-	}
-	if inBatch[0].Severity != room.SeverityMust {
-		t.Errorf("severity = %q, want %q", inBatch[0].Severity, room.SeverityMust)
-	}
-}
-
-// Declining a finding with a reason is the record a markdown report cannot hold,
-// so resolution has to work per finding and move the batch's open count.
-func testReviewFindingsResolve(t *testing.T, newStore RoomFactory) {
-	s := newStore(t)
-	ctx := context.Background()
-
-	v := review(worktreeRoom, agentB, "style pass")
-	if err := s.StartReview(ctx, v); err != nil {
-		t.Fatalf("StartReview: %v", err)
-	}
-	first := mustPost(t, s, finding(worktreeRoom, v.ID, room.SeverityMust, "a.go", 1, "delete this"))
-	mustPost(t, s, finding(worktreeRoom, v.ID, room.SeverityConsider, "b.go", 2, "consider this"))
-
-	declined := entry(worktreeRoom, room.KindReview, agentA, "declined: this doc is the interface contract")
-	declined.Resolves = first.ID
-	declined.ReviewID = v.ID
-	mustPost(t, s, declined)
-
-	got, err := s.Reviews(ctx, room.ReviewFilter{})
-	if err != nil {
-		t.Fatalf("Reviews: %v", err)
-	}
-	if got[0].Open != 1 {
-		t.Errorf("open = %d, want 1 after one finding was declined", got[0].Open)
-	}
-	// The declining entry carries the review id so the report can show it, but
-	// it is not itself a finding.
-	if got[0].Findings != 2 {
-		t.Errorf("findings = %d, want 2; resolutions are not findings", got[0].Findings)
-	}
-
-	// Only reviews with something outstanding.
-	open, err := s.Reviews(ctx, room.ReviewFilter{OpenOnly: true})
-	if err != nil {
-		t.Fatalf("Reviews open: %v", err)
-	}
-	if len(open) != 1 {
-		t.Fatalf("open reviews = %d, want 1", len(open))
-	}
-
-	// Close the rest and the batch drops out.
-	rest, err := s.Entries(ctx, room.Filter{ReviewID: v.ID, OpenOnly: true})
-	if err != nil {
-		t.Fatalf("Entries: %v", err)
-	}
-	for _, f := range rest {
-		fix := entry(worktreeRoom, room.KindReview, agentA, "fixed")
-		fix.Resolves = f.ID
-		fix.ReviewID = v.ID
-		mustPost(t, s, fix)
-	}
-	open, err = s.Reviews(ctx, room.ReviewFilter{OpenOnly: true})
-	if err != nil {
-		t.Fatalf("Reviews open: %v", err)
-	}
-	if len(open) != 0 {
-		t.Errorf("open reviews = %d, want none once every finding is closed", len(open))
-	}
-}
-
-func itoa(n int64) string { return strconv.FormatInt(n, 10) }
-
 func state(roomKey, key, value, author string) *room.State {
 	return &room.State{
 		Room: roomKey, Scope: room.ScopeWorktree, Key: key, Value: value,
@@ -678,8 +547,7 @@ func testStateValidates(t *testing.T, newStore RoomFactory) {
 	}
 }
 
-// A question and its answer, or a review and its findings, must never end up in
-// different rooms.
+// A question and its answer must never end up in different rooms.
 func testPromote(t *testing.T, newStore RoomFactory) {
 	s := newStore(t)
 	ctx := context.Background()
@@ -713,25 +581,6 @@ func testPromote(t *testing.T, newStore RoomFactory) {
 
 	if _, err := s.Promote(ctx, 9999, repoRoom, room.ScopeRepo); !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("promoting an unknown entry: err = %v, want store.ErrNotFound", err)
-	}
-
-	// A review takes its findings with it.
-	v := review(worktreeRoom, agentA, "batch")
-	if err := s.StartReview(ctx, v); err != nil {
-		t.Fatalf("StartReview: %v", err)
-	}
-	mustPost(t, s, finding(worktreeRoom, v.ID, room.SeverityMust, "a.go", 1, "one"))
-	mustPost(t, s, finding(worktreeRoom, v.ID, room.SeverityShould, "b.go", 2, "two"))
-
-	if moved, err := s.PromoteReview(ctx, v.ID, repoRoom, room.ScopeRepo); err != nil || moved != 2 {
-		t.Fatalf("PromoteReview = (%d, %v), want 2 findings moved", moved, err)
-	}
-	reviews, err := s.Reviews(ctx, room.ReviewFilter{Rooms: []string{repoRoom}})
-	if err != nil {
-		t.Fatalf("Reviews: %v", err)
-	}
-	if len(reviews) != 1 || reviews[0].Findings != 2 {
-		t.Errorf("reviews in the repo room = %+v, want one batch with both findings", reviews)
 	}
 
 	// State moves, and refuses to clobber a value already there.
@@ -813,33 +662,6 @@ func testSearch(t *testing.T, newStore RoomFactory) {
 	}
 	if _, err := s.Search(ctx, room.Query{Text: "  "}); err == nil {
 		t.Error("Search accepted an empty term")
-	}
-}
-
-func testClear(t *testing.T, newStore RoomFactory) {
-	s := newStore(t)
-	ctx := context.Background()
-
-	mustPost(t, s, entry(worktreeRoom, room.KindDecision, agentA, "one"))
-	mustPost(t, s, entry(worktreeRoom, room.KindQuestion, agentA, "two"))
-	kept := mustPost(t, s, entry(repoRoom, room.KindFinding, agentB, "elsewhere"))
-
-	n, err := s.Clear(ctx, worktreeRoom)
-	if err != nil {
-		t.Fatalf("Clear: %v", err)
-	}
-	if n != 2 {
-		t.Errorf("Clear removed %d entries, want 2", n)
-	}
-
-	remaining, err := s.Entries(ctx, room.Filter{})
-	if err != nil {
-		t.Fatalf("Entries: %v", err)
-	}
-	assertIDs(t, remaining, []int64{kept.ID})
-
-	if n, err := s.Clear(ctx, worktreeRoom); err != nil || n != 0 {
-		t.Errorf("Clear on an empty room = (%d, %v), want (0, nil)", n, err)
 	}
 }
 

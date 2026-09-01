@@ -29,11 +29,15 @@ type treehouseState struct {
 	} `json:"worktrees"`
 }
 
-// treehouseFor reports the pool slot that owns worktreeRoot, or (nil, nil) for
-// an ordinary checkout. It walks up to the manifest and matches on the recorded
-// path rather than pattern-matching TREEHOUSE_ROOT, so a pool relocated with
-// --root, or an in-project one, is still found.
-func treehouseFor(worktreeRoot string) (*session.Treehouse, error) {
+// treehouse reads the pool manifest treehouse keeps beside its numbered slots.
+type treehouse struct{}
+
+func (treehouse) Name() string { return "treehouse" }
+
+// Lookup walks up to the manifest and matches on the recorded path rather than
+// pattern-matching TREEHOUSE_ROOT, so a pool relocated with --root, or an
+// in-project one, is still found.
+func (t treehouse) Lookup(worktreeRoot string) (*session.Pool, error) {
 	root := normalize(worktreeRoot)
 	if root == "" {
 		return nil, nil
@@ -43,7 +47,7 @@ func treehouseFor(worktreeRoot string) (*session.Treehouse, error) {
 	for i := 0; i < treehouseMaxAscent; i++ {
 		manifest := filepath.Join(dir, treehouseStateFile)
 		if _, err := os.Stat(manifest); err == nil {
-			return matchManifest(manifest, dir, root)
+			return t.match(manifest, dir, root)
 		}
 
 		parent := filepath.Dir(dir)
@@ -55,10 +59,10 @@ func treehouseFor(worktreeRoot string) (*session.Treehouse, error) {
 	return nil, nil
 }
 
-// matchManifest reads a pool manifest and returns the slot whose recorded path
-// is worktreeRoot. Finding the manifest but no matching slot is not an error:
-// the checkout sits under a pool directory without being one of its worktrees.
-func matchManifest(manifest, poolDir, worktreeRoot string) (*session.Treehouse, error) {
+// match returns the slot whose recorded path is worktreeRoot. Finding the
+// manifest but no matching slot is not an error: the checkout sits under a pool
+// directory without being one of its worktrees.
+func (t treehouse) match(manifest, poolDir, worktreeRoot string) (*session.Pool, error) {
 	data, err := os.ReadFile(manifest)
 	if err != nil {
 		return nil, err
@@ -72,8 +76,9 @@ func matchManifest(manifest, poolDir, worktreeRoot string) (*session.Treehouse, 
 		if normalize(wt.Path) != worktreeRoot {
 			continue
 		}
-		return &session.Treehouse{
-			Pool:        filepath.Base(poolDir),
+		return &session.Pool{
+			Manager:     t.Name(),
+			Name:        filepath.Base(poolDir),
 			Slot:        wt.Name,
 			Root:        worktreeRoot,
 			Leased:      wt.Leased,

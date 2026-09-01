@@ -23,8 +23,8 @@ type Filter struct {
 	RepoName string
 	// RepoRoot matches the working tree the session sits in, exactly.
 	RepoRoot string
-	// TreehouseOnly restricts results to sessions inside a pooled worktree.
-	TreehouseOnly bool
+	// PooledOnly restricts results to sessions inside a pooled worktree.
+	PooledOnly bool
 	// Limit caps the number of records returned. Zero means no cap.
 	Limit int
 }

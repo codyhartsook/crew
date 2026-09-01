@@ -1,22 +1,23 @@
-// Package detect resolves a working directory into the git checkout and
-// treehouse pool worktree that own it.
+// Package detect resolves a working directory into the git checkout, and the
+// worktree pool, that own it.
 package detect
 
 import (
 	"context"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/codyhartsook/multiplayer/internal/session"
 )
 
 // Location is everything the registry can learn about where a session runs.
-// Repo is nil outside a git checkout; Treehouse is nil unless that checkout is
-// a worktree drawn from a treehouse pool.
+// Repo is nil outside a git checkout; Pool is nil unless that checkout is a
+// worktree lent out by a pool manager.
 type Location struct {
-	CWD       string
-	Repo      *session.Repo
-	Treehouse *session.Treehouse
+	CWD  string
+	Repo *session.Repo
+	Pool *session.Pool
 }
 
 // Detector resolves a working directory into a Location. The hook depends on
@@ -26,14 +27,24 @@ type Detector interface {
 	Detect(ctx context.Context, cwd string) (*Location, error)
 }
 
-// Local detects against the real filesystem and the git binary on PATH.
-type Local struct{}
+// detectBudget caps detection as a whole rather than each git call, so a wedged
+// git cannot eat the hook's budget one subprocess at a time.
+const detectBudget = 4 * time.Second
 
-func New() *Local { return &Local{} }
+// Local detects against the real filesystem and the git binary on PATH.
+// Providers defaults to every worktree manager this package knows.
+type Local struct {
+	Providers []Provider
+}
+
+func New() *Local { return &Local{Providers: providers} }
 
 // Detect resolves cwd. Not being a git checkout is not an error, and unreadable
-// treehouse state is swallowed: a session is worth recording either way.
+// pool state is swallowed: a session is worth recording either way.
 func (l *Local) Detect(ctx context.Context, cwd string) (*Location, error) {
+	ctx, cancel := context.WithTimeout(ctx, detectBudget)
+	defer cancel()
+
 	loc := &Location{CWD: normalize(cwd)}
 
 	repo, err := gitRepo(ctx, cwd)
@@ -45,14 +56,12 @@ func (l *Local) Detect(ctx context.Context, cwd string) (*Location, error) {
 	}
 	loc.Repo = repo
 
-	if th, err := treehouseFor(repo.Root); err == nil {
-		loc.Treehouse = th
-	}
+	loc.Pool = l.pool(repo.Root)
 	return loc, nil
 }
 
 // normalize makes a path absolute and resolves symlinks so that paths coming
-// from different sources - a hook payload, a treehouse state file, git output -
+// from different sources - a hook payload, a pool manifest, git output -
 // compare equal. On macOS this collapses /var against /private/var.
 func normalize(path string) string {
 	if path == "" {

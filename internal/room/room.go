@@ -55,11 +55,12 @@ func (k Kind) Addressed() bool {
 type Scope string
 
 const (
-	// ScopeWorktree is the working tree a session sits in. A pooled treehouse
-	// slot has its own room, separate from the repository's main checkout.
+	// ScopeWorktree is the working tree a session sits in. A pooled slot has its
+	// own room, separate from the repository's main checkout.
 	ScopeWorktree Scope = "worktree"
 	// ScopeRepo is the repository that owns the working tree. Entries here
-	// outlive any single worktree, which matters when a pooled one is returned.
+	// outlive any single worktree and any single lease of one, which is where
+	// anything durable belongs.
 	ScopeRepo Scope = "repo"
 )
 
@@ -76,13 +77,6 @@ type Entry struct {
 	Kind   Kind   `json:"kind"`
 	Author string `json:"author"`
 	Body   string `json:"body"`
-
-	// ReviewID groups a finding into the review batch it came from; zero for a
-	// standalone entry.
-	ReviewID int64 `json:"review_id,omitempty"`
-	// Anchor and Severity are set on review findings.
-	Anchor   *Anchor  `json:"anchor,omitempty"`
-	Severity Severity `json:"severity,omitempty"`
 
 	// Resolves is the entry this one answers or closes; zero when it opens
 	// rather than closes something.
@@ -109,9 +103,7 @@ type Membership struct {
 
 // Filter narrows a listing. Zero-valued fields do not constrain the result.
 type Filter struct {
-	IDs []int64
-	// ReviewID restricts results to one review's findings.
-	ReviewID int64
+	IDs      []int64
 	Rooms    []string
 	Kinds    []Kind
 	OpenOnly bool
@@ -122,7 +114,7 @@ type Filter struct {
 // repository that owns it. In a primary checkout the two are one path, so a
 // single room comes back and nothing is said twice. Outside a checkout the
 // working directory is its own room.
-func For(repo *session.Repo, th *session.Treehouse, cwd string) []Room {
+func For(repo *session.Repo, pool *session.Pool, cwd string) []Room {
 	if repo == nil {
 		if cwd == "" {
 			return nil
@@ -130,7 +122,7 @@ func For(repo *session.Repo, th *session.Treehouse, cwd string) []Room {
 		return []Room{{Key: cwd, Scope: ScopeWorktree, Name: baseName(cwd)}}
 	}
 
-	rooms := []Room{{Key: repo.Root, Scope: ScopeWorktree, Name: worktreeName(repo, th)}}
+	rooms := []Room{{Key: worktreeKey(repo, pool), Scope: ScopeWorktree, Name: worktreeName(repo, pool)}}
 	if repo.MainRoot != "" && repo.MainRoot != repo.Root {
 		rooms = append(rooms, Room{Key: repo.MainRoot, Scope: ScopeRepo, Name: repo.Name})
 	}
@@ -146,16 +138,27 @@ func Keys(rooms []Room) []string {
 	return keys
 }
 
+// worktreeKey identifies the working-tree room. A pooled slot's path is handed
+// to the next lease, so the lease is part of the room's identity: keyed on the
+// path alone, a returned slot gives the next feature the previous one's
+// decisions and open questions.
+func worktreeKey(repo *session.Repo, pool *session.Pool) string {
+	if pool != nil && pool.LeaseID != "" {
+		return repo.Root + "#" + pool.LeaseID
+	}
+	return repo.Root
+}
+
 // worktreeName labels a working tree distinctly from its repository. A pooled
 // worktree is usually a directory named after the repo inside a numbered slot,
 // so naming it after its own leaf gives "widget/widget"; the slot is what
 // actually tells two of them apart.
-func worktreeName(repo *session.Repo, th *session.Treehouse) string {
+func worktreeName(repo *session.Repo, pool *session.Pool) string {
 	if !repo.IsWorktree {
 		return repo.Name
 	}
-	if th != nil && th.Slot != "" {
-		return repo.Name + "/" + th.Slot
+	if pool != nil && pool.Slot != "" {
+		return repo.Name + "/" + pool.Slot
 	}
 	leaf := baseName(repo.Root)
 	if leaf == repo.Name {

@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/codyhartsook/multiplayer/internal/harness"
 	"github.com/codyhartsook/multiplayer/internal/session"
 	"github.com/codyhartsook/multiplayer/internal/store"
 	"github.com/codyhartsook/multiplayer/internal/store/sqlitestore"
@@ -43,8 +44,10 @@ func agent(harness session.Harness, id string, pid int) *session.Session {
 // clearEnv keeps a developer's own harness environment out of the test.
 func clearEnv(t *testing.T) {
 	t.Helper()
-	for _, c := range sessionEnv {
-		t.Setenv(c.env, "")
+	for _, spec := range harness.Specs() {
+		for _, env := range spec.SessionEnv {
+			t.Setenv(env, "")
+		}
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -43,6 +44,13 @@ func runGit(ctx context.Context, dir string, args ...string) (string, bool, erro
 		return out, true, nil
 	}
 
+	// A killed process reports an ExitError, so only the context distinguishes
+	// "git timed out" from "git answered no" - and the latter would record the
+	// session as if it were outside any checkout.
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return "", false, fmt.Errorf("git %s: %w", args[0], ctxErr)
+	}
+
 	var exitErr *exec.ExitError
 	if errors.As(err, &exitErr) {
 		return out, false, nil
@@ -57,10 +65,11 @@ func runGit(ctx context.Context, dir string, args ...string) (string, bool, erro
 // is not inside a git working tree, which is an ordinary outcome: agents are
 // often started somewhere that is not a repo.
 func gitRepo(ctx context.Context, dir string) (*session.Repo, error) {
-	// --path-format=absolute matters: without it --git-common-dir is reported
+	// --path-format=absolute matters: without it the git dirs are reported
 	// relative to the process cwd, so running from a subdirectory yields
 	// "../.git" instead of a usable path.
-	out, ok, err := runGit(ctx, dir, "rev-parse", "--path-format=absolute", "--show-toplevel", "--git-common-dir")
+	out, ok, err := runGit(ctx, dir, "rev-parse", "--path-format=absolute",
+		"--show-toplevel", "--git-dir", "--git-common-dir")
 	if err != nil {
 		return nil, err
 	}
@@ -68,23 +77,26 @@ func gitRepo(ctx context.Context, dir string) (*session.Repo, error) {
 		return nil, nil
 	}
 	lines := strings.Split(out, "\n")
-	if len(lines) < 2 {
+	if len(lines) < 3 {
 		return nil, nil
 	}
 
 	root := normalize(strings.TrimSpace(lines[0]))
-	commonDir := normalize(strings.TrimSpace(lines[1]))
-	mainRoot := filepath.Dir(commonDir)
+	gitDir := normalize(strings.TrimSpace(lines[1]))
+	commonDir := normalize(strings.TrimSpace(lines[2]))
 
 	repo := &session.Repo{
-		Root:       root,
-		MainRoot:   mainRoot,
-		Name:       filepath.Base(mainRoot),
-		IsWorktree: mainRoot != root,
+		Root: root,
+		// The two dirs differ exactly in a linked worktree, whatever the
+		// layout. Comparing paths instead misreads submodules and
+		// --separate-git-dir checkouts as worktrees.
+		IsWorktree: gitDir != commonDir,
 	}
+	repo.MainRoot = mainRootFrom(root, commonDir, repo.IsWorktree)
+	repo.Name = repoName(repo.MainRoot)
 
-	// A pooled treehouse worktree is normally checked out detached, so an empty
-	// branch with Detached set is the common case rather than an anomaly.
+	// A pooled worktree is often checked out detached, so an empty branch with
+	// Detached set is a common case rather than an anomaly.
 	if branch, ok, err := runGit(ctx, dir, "symbolic-ref", "--quiet", "--short", "HEAD"); err != nil {
 		return nil, err
 	} else if ok {
@@ -94,11 +106,11 @@ func gitRepo(ctx context.Context, dir string) (*session.Repo, error) {
 	}
 
 	// Empty on a repository with no commits yet.
-	if head, _, err := runGit(ctx, dir, "rev-parse", "--verify", "--quiet", "HEAD"); err != nil {
+	head, _, err := runGit(ctx, dir, "rev-parse", "--verify", "--quiet", "HEAD")
+	if err != nil {
 		return nil, err
-	} else {
-		repo.Head = head
 	}
+	repo.Head = head
 
 	if remote, ok, err := runGit(ctx, dir, "remote", "get-url", "origin"); err != nil {
 		return nil, err
@@ -107,4 +119,23 @@ func gitRepo(ctx context.Context, dir string) (*session.Repo, error) {
 	}
 
 	return repo, nil
+}
+
+// mainRootFrom identifies the repository a worktree belongs to. Normally that
+// is the checkout holding .git; a bare host or --separate-git-dir has no
+// primary checkout, so the common dir stands in for it.
+func mainRootFrom(root, commonDir string, isWorktree bool) string {
+	if !isWorktree {
+		return root
+	}
+	if filepath.Base(commonDir) == ".git" {
+		return filepath.Dir(commonDir)
+	}
+	return commonDir
+}
+
+// repoName labels the repository, dropping the .git suffix a bare or detached
+// git dir carries.
+func repoName(mainRoot string) string {
+	return strings.TrimSuffix(filepath.Base(mainRoot), ".git")
 }

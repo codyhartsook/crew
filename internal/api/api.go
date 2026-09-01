@@ -17,8 +17,15 @@ import (
 	"github.com/codyhartsook/multiplayer/internal/store"
 )
 
+// backend is the local database the dashboard serves. A remote registry is a
+// session client, not a server backend: rooms always live beside the worktree.
+type backend interface {
+	store.Store
+	store.RoomStore
+}
+
 type Server struct {
-	store store.Store
+	store backend
 	log   *slog.Logger
 	ui    http.Handler
 }
@@ -32,7 +39,7 @@ func WithUI(h http.Handler) Option {
 }
 
 // New returns a Server backed by st. A nil logger discards request logs.
-func New(st store.Store, log *slog.Logger, opts ...Option) *Server {
+func New(st backend, log *slog.Logger, opts ...Option) *Server {
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
 	}
@@ -117,20 +124,13 @@ func (s *Server) listSessions(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, ListResponse{Sessions: sessions, Count: len(sessions)})
 }
 
-// listEntries serves room entries. A store without room support reports an
-// empty list rather than an error, so the dashboard degrades quietly.
 func (s *Server) listEntries(w http.ResponseWriter, r *http.Request) {
-	rs, ok := s.store.(store.RoomStore)
-	if !ok {
-		writeJSON(w, http.StatusOK, EntriesResponse{Entries: []*room.Entry{}})
-		return
-	}
 	f, err := entryFilterFromQuery(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
-	entries, err := rs.Entries(r.Context(), f)
+	entries, err := s.store.Entries(r.Context(), f)
 	if err != nil {
 		s.fail(w, err)
 		return
@@ -166,11 +166,6 @@ func entryFilterFromQuery(r *http.Request) (room.Filter, error) {
 }
 
 func (s *Server) listState(w http.ResponseWriter, r *http.Request) {
-	rs, ok := s.store.(store.RoomStore)
-	if !ok {
-		writeJSON(w, http.StatusOK, StateResponse{State: []*room.State{}})
-		return
-	}
 	q := r.URL.Query()
 	f := room.StateFilter{Rooms: q["room"], Prefix: q.Get("prefix")}
 	if v := q.Get("limit"); v != "" {
@@ -181,7 +176,7 @@ func (s *Server) listState(w http.ResponseWriter, r *http.Request) {
 		}
 		f.Limit = n
 	}
-	values, err := rs.States(r.Context(), f)
+	values, err := s.store.States(r.Context(), f)
 	if err != nil {
 		s.fail(w, err)
 		return
@@ -279,12 +274,18 @@ func filterFromQuery(r *http.Request) (store.Filter, error) {
 		RepoName: q.Get("repo"),
 		RepoRoot: q.Get("repo_root"),
 	}
-	if v := q.Get("treehouse"); v != "" {
+	// "treehouse" is the old spelling, kept so an older dashboard or client
+	// keeps working against a new server.
+	v := q.Get("pooled")
+	if v == "" {
+		v = q.Get("treehouse")
+	}
+	if v != "" {
 		b, err := strconv.ParseBool(v)
 		if err != nil {
-			return store.Filter{}, errors.New("treehouse must be a boolean")
+			return store.Filter{}, errors.New("pooled must be a boolean")
 		}
-		f.TreehouseOnly = b
+		f.PooledOnly = b
 	}
 	if v := q.Get("limit"); v != "" {
 		n, err := strconv.Atoi(v)

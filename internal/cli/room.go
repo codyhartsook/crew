@@ -27,8 +27,6 @@ type roomContext struct {
 	store store.Store
 	rooms store.RoomStore
 	here  []room.Room
-	// head is the checkout's current commit, used to anchor review findings.
-	head string
 }
 
 // openRoomContext resolves the current location into rooms. Room commands need
@@ -50,25 +48,21 @@ func openRoomContext(ctx context.Context, opts *options, cwd string) (*roomConte
 	loc, _ := detect.New().Detect(ctx, cwd)
 	var (
 		repo *session.Repo
-		th   *session.Treehouse
+		pool *session.Pool
 	)
 	resolved := cwd
 	if loc != nil {
-		repo, th = loc.Repo, loc.Treehouse
+		repo, pool = loc.Repo, loc.Pool
 		if loc.CWD != "" {
 			resolved = loc.CWD
 		}
 	}
-	here := room.For(repo, th, resolved)
+	here := room.For(repo, pool, resolved)
 	if len(here) == 0 {
 		st.Close()
 		return nil, nil, errors.New("no room here")
 	}
-	rc := &roomContext{store: st, rooms: rooms, here: here}
-	if repo != nil {
-		rc.head = repo.Head
-	}
-	return rc, func() { st.Close() }, nil
+	return &roomContext{store: st, rooms: rooms, here: here}, func() { st.Close() }, nil
 }
 
 func newPostCmd(opts *options) *cobra.Command {
@@ -127,9 +121,8 @@ func newResolveCmd(opts *options) *cobra.Command {
 				return err
 			}
 
-			// A resolution inherits the room, kind and review of what it closes,
-			// so the pair reads as one thread and the review report can show
-			// why each finding was fixed or declined.
+			// A resolution inherits the room and kind of what it closes so the
+			// pair reads as one thread.
 			e := &room.Entry{
 				Room:      target.Room,
 				Scope:     target.Scope,
@@ -137,7 +130,6 @@ func newResolveCmd(opts *options) *cobra.Command {
 				Author:    author,
 				Body:      strings.Join(args[1:], " "),
 				Resolves:  target.ID,
-				ReviewID:  target.ReviewID,
 				CreatedAt: time.Now().UTC(),
 			}
 			if err := rc.rooms.Post(cmd.Context(), e); err != nil {
@@ -195,7 +187,11 @@ func post(cmd *cobra.Command, opts *options, kind room.Kind, body string, toRepo
 }
 
 func newRoomCmd(opts *options) *cobra.Command {
-	var asJSON bool
+	var (
+		asJSON bool
+		inbox  bool
+		ack    bool
+	)
 
 	cmd := &cobra.Command{
 		Use:     "room",
@@ -203,11 +199,33 @@ func newRoomCmd(opts *options) *cobra.Command {
 		Short:   "Show the shared context for where you are",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if ack && !inbox {
+				return errors.New("--ack requires --inbox")
+			}
 			rc, closeFn, err := openRoomContext(cmd.Context(), opts, cwdOf(cmd))
 			if err != nil {
 				return err
 			}
 			defer closeFn()
+			if inbox {
+				author, err := authorFor(cmd.Context(), rc, "")
+				if err != nil {
+					return err
+				}
+				entries, err := rc.rooms.Unread(cmd.Context(), author)
+				if err != nil {
+					return err
+				}
+				if len(entries) == 0 {
+					fmt.Fprintln(cmd.OutOrStdout(), "nothing new")
+					return nil
+				}
+				fmt.Fprintln(cmd.OutOrStdout(), room.Delivery(entries))
+				if ack {
+					return rc.rooms.Ack(cmd.Context(), author, entries[len(entries)-1].ID)
+				}
+				return nil
+			}
 
 			entries, err := rc.rooms.Entries(cmd.Context(), room.Filter{
 				Rooms: room.Keys(rc.here),
@@ -229,15 +247,11 @@ func newRoomCmd(opts *options) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			reviews, err := rc.rooms.Reviews(cmd.Context(), room.ReviewFilter{Rooms: room.Keys(rc.here)})
-			if err != nil {
-				return err
-			}
 			values, err := rc.rooms.States(cmd.Context(), room.StateFilter{Rooms: room.Keys(rc.here)})
 			if err != nil {
 				return err
 			}
-			out := room.Briefing(rc.here, entries, reviews, values, others)
+			out := room.Briefing(rc.here, entries, values, others)
 			if out == "" {
 				fmt.Fprintf(cmd.OutOrStdout(), "%s: nothing posted yet\n", rc.here[0].Name)
 				return nil
@@ -248,113 +262,8 @@ func newRoomCmd(opts *options) *cobra.Command {
 	}
 
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of a briefing")
-	return cmd
-}
-
-func newInboxCmd(opts *options) *cobra.Command {
-	var (
-		as  string
-		ack bool
-	)
-
-	cmd := &cobra.Command{
-		Use:   "inbox",
-		Short: "Show entries addressed to you that you have not seen",
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			rc, closeFn, err := openRoomContext(cmd.Context(), opts, cwdOf(cmd))
-			if err != nil {
-				return err
-			}
-			defer closeFn()
-
-			author, err := authorFor(cmd.Context(), rc, as)
-			if err != nil {
-				return err
-			}
-			entries, err := rc.rooms.Unread(cmd.Context(), author)
-			if err != nil {
-				return err
-			}
-			if len(entries) == 0 {
-				fmt.Fprintln(cmd.OutOrStdout(), "nothing new")
-				return nil
-			}
-			fmt.Fprintln(cmd.OutOrStdout(), room.Delivery(entries))
-			if ack {
-				return rc.rooms.Ack(cmd.Context(), author, entries[len(entries)-1].ID)
-			}
-			return nil
-		},
-	}
-
-	cmd.Flags().StringVar(&as, "as", "", "session key, if not inferable")
-	cmd.Flags().BoolVar(&ack, "ack", false, "mark the shown entries as delivered")
-	return cmd
-}
-
-func newJoinCmd(opts *options) *cobra.Command {
-	var as string
-
-	cmd := &cobra.Command{
-		Use:   "join",
-		Short: "Join the rooms for where you are",
-		Long:  `Sessions join automatically at startup unless MULTIPLAYER_AUTO_JOIN is false.`,
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			rc, closeFn, err := openRoomContext(cmd.Context(), opts, cwdOf(cmd))
-			if err != nil {
-				return err
-			}
-			defer closeFn()
-
-			author, err := authorFor(cmd.Context(), rc, as)
-			if err != nil {
-				return err
-			}
-			if err := JoinRooms(cmd.Context(), rc.rooms, author, rc.here); err != nil {
-				return err
-			}
-			for _, r := range rc.here {
-				fmt.Fprintf(cmd.OutOrStdout(), "joined %s (%s)\n", r.Name, r.Scope)
-			}
-			return nil
-		},
-	}
-
-	cmd.Flags().StringVar(&as, "as", "", "session key, if not inferable")
-	return cmd
-}
-
-func newLeaveCmd(opts *options) *cobra.Command {
-	var as string
-
-	cmd := &cobra.Command{
-		Use:   "leave",
-		Short: "Stop listening to the rooms for where you are",
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			rc, closeFn, err := openRoomContext(cmd.Context(), opts, cwdOf(cmd))
-			if err != nil {
-				return err
-			}
-			defer closeFn()
-
-			author, err := authorFor(cmd.Context(), rc, as)
-			if err != nil {
-				return err
-			}
-			for _, r := range rc.here {
-				if err := rc.rooms.Leave(cmd.Context(), author, r.Key); err != nil {
-					return err
-				}
-				fmt.Fprintf(cmd.OutOrStdout(), "left %s\n", r.Name)
-			}
-			return nil
-		},
-	}
-
-	cmd.Flags().StringVar(&as, "as", "", "session key, if not inferable")
+	cmd.Flags().BoolVar(&inbox, "inbox", false, "show unread addressed entries")
+	cmd.Flags().BoolVar(&ack, "ack", false, "mark inbox entries as delivered")
 	return cmd
 }
 
@@ -403,6 +312,22 @@ func entryByID(ctx context.Context, rs store.RoomStore, id int64) (*room.Entry, 
 		return nil, fmt.Errorf("no entry [%d]", id)
 	}
 	return found[0], nil
+}
+
+// roomFor picks the worktree room, or the repository room when asked.
+func roomFor(rc *roomContext, toRepo bool) room.Room {
+	if !toRepo {
+		return rc.here[0]
+	}
+	for _, r := range rc.here {
+		if r.Scope == room.ScopeRepo {
+			return r
+		}
+	}
+	// A primary checkout is one place, so the two rooms are the same.
+	target := rc.here[0]
+	target.Scope = room.ScopeRepo
+	return target
 }
 
 func kindNames() []string {

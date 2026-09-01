@@ -83,7 +83,7 @@ func briefingFor(ctx context.Context, st store.Store, rs store.RoomStore, sess *
 	if sess == nil {
 		return "", nil
 	}
-	here := room.For(sess.Repo, sess.Treehouse, sess.CWD)
+	here := room.For(sess.Repo, sess.Pool, sess.CWD)
 	if len(here) == 0 {
 		return "", nil
 	}
@@ -95,10 +95,6 @@ func briefingFor(ctx context.Context, st store.Store, rs store.RoomStore, sess *
 
 	keys := room.Keys(here)
 	entries, err := rs.Entries(ctx, room.Filter{Rooms: keys, Limit: briefingLimit * len(here) * 3})
-	if err != nil {
-		return "", err
-	}
-	reviews, err := rs.Reviews(ctx, room.ReviewFilter{Rooms: keys})
 	if err != nil {
 		return "", err
 	}
@@ -118,7 +114,7 @@ func briefingFor(ctx context.Context, st store.Store, rs store.RoomStore, sess *
 			return "", err
 		}
 	}
-	return room.Briefing(here, entries, reviews, values, others), nil
+	return room.Briefing(here, entries, values, others), nil
 }
 
 // noticeFor injects a nudge when something is waiting, nothing otherwise. It

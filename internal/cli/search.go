@@ -80,11 +80,7 @@ exist, and somebody may have recorded why the obvious approach does not work.`,
 			if len(results.Entries) > 0 {
 				fmt.Fprintln(out, "entries")
 				for _, e := range results.Entries {
-					ref := e.Anchor.Ref()
-					if ref != "" {
-						ref = " " + ref
-					}
-					fmt.Fprintf(out, "  [%d] %-8s%s %s\n", e.ID, e.Kind, ref, truncate(e.Body, 64))
+					fmt.Fprintf(out, "  [%d] %-8s %s\n", e.ID, e.Kind, truncate(e.Body, 64))
 				}
 			}
 			return nil

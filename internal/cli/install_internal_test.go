@@ -48,7 +48,7 @@ func TestMergeHooksSweepsRetiredEvents(t *testing.T) {
 	}`)
 
 	// UserPromptSubmit is managed but no longer tracked: sweep it.
-	got := mergeHooks(hooks, []eventSpec{{"SessionStart", 10}}, "/new/mp", "codex")
+	got := mergeHooks(hooks, map[string]int{"SessionStart": 10}, "/new/mp", "codex")
 
 	ups := commands(t, got, "UserPromptSubmit")
 	if len(ups) != 1 || ups[0] != "someone-else --watch" {
@@ -69,7 +69,7 @@ func TestMergeHooksDropsEmptiedEvents(t *testing.T) {
 	  {"hooks": [{"type":"command","command":"\"/old/mp\" hook --harness codex --quiet"}]}
 	]}`)
 
-	got := mergeHooks(hooks, []eventSpec{{"SessionStart", 10}}, "/new/mp", "codex")
+	got := mergeHooks(hooks, map[string]int{"SessionStart": 10}, "/new/mp", "codex")
 	if _, present := got["UserPromptSubmit"]; present {
 		t.Error("UserPromptSubmit key remains after its only hook was swept")
 	}
@@ -77,7 +77,7 @@ func TestMergeHooksDropsEmptiedEvents(t *testing.T) {
 
 // Reinstalling replaces this tool's entry rather than stacking another copy.
 func TestMergeHooksIsIdempotent(t *testing.T) {
-	tracked := []eventSpec{{"SessionStart", 10}}
+	tracked := map[string]int{"SessionStart": 10}
 	hooks := mergeHooks(map[string]any{}, tracked, "/new/mp", "codex")
 	hooks = mergeHooks(hooks, tracked, "/new/mp", "codex")
 

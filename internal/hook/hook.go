@@ -16,16 +16,19 @@ import (
 	"time"
 
 	"github.com/codyhartsook/multiplayer/internal/detect"
+	"github.com/codyhartsook/multiplayer/internal/harness"
 	"github.com/codyhartsook/multiplayer/internal/proc"
 	"github.com/codyhartsook/multiplayer/internal/session"
 	"github.com/codyhartsook/multiplayer/internal/store"
 )
 
 // Budgets for a hook run. Only the start path does git work; the others run
-// while the user waits, and Codex caps SessionEnd at three seconds.
+// while the user waits.
 const (
 	StartBudget = 10 * time.Second
-	EndBudget   = 2500 * time.Millisecond
+	// DefaultEndBudget applies to a harness this build does not recognize, so it
+	// stays at the tightest of the known caps rather than overrunning one.
+	DefaultEndBudget = 2500 * time.Millisecond
 
 	// orphanDetectBudget caps location detection on the one end-path that needs
 	// it, leaving room in the budget for the write that follows.
@@ -100,13 +103,17 @@ func (p Payload) Event() Event {
 	}
 }
 
-// Budget is how long the hook may take to handle this payload. Only the start
-// path does git work; the others run in front of the user every turn.
-func (p Payload) Budget() time.Duration {
+// BudgetFor is how long the hook may take to handle this payload. Only the start
+// path does git work; the others run in front of the user every turn, and each
+// harness caps the session-end hook differently.
+func BudgetFor(h session.Harness, p Payload) time.Duration {
 	if p.Event() == EventStart {
 		return StartBudget
 	}
-	return EndBudget
+	if spec, ok := harness.For(h); ok {
+		return spec.EndBudget
+	}
+	return DefaultEndBudget
 }
 
 // cause is why the session started or ended, whichever the harness supplied.
@@ -212,7 +219,7 @@ func applyLocation(sess *session.Session, loc *detect.Location) {
 	}
 	sess.CWD = loc.CWD
 	sess.Repo = loc.Repo
-	sess.Treehouse = loc.Treehouse
+	sess.Pool = loc.Pool
 }
 
 // detect resolves the session's location, preferring the cwd the harness
@@ -237,16 +244,22 @@ func (r *Recorder) detect(ctx context.Context, payloadCWD string) (*detect.Locat
 // harnessPID identifies the harness process this hook belongs to. The parent is
 // normally it, but a harness that spawns hooks through a shell would record a
 // pid that exits at once - indistinguishable from a dead session when reaping.
-func harnessPID(harness session.Harness) int {
+func harnessPID(h session.Harness) int {
 	parent := os.Getppid()
 	table, err := proc.Snapshot()
 	if err != nil {
 		return parent
 	}
-	if table.Running(parent, string(harness)) {
+	// The process is recognized by its binary name, which the registry key is
+	// not required to match.
+	binary := string(h)
+	if spec, ok := harness.For(h); ok {
+		binary = spec.Binary
+	}
+	if table.Running(parent, binary) {
 		return parent
 	}
-	if match := table.NearestMatch(os.Getpid(), string(harness)); match != 0 {
+	if match := table.NearestMatch(os.Getpid(), binary); match != 0 {
 		return match
 	}
 	return parent
@@ -285,21 +298,4 @@ func username() string {
 		return u.Username
 	}
 	return os.Getenv("USER")
-}
-
-// DetectHarness infers the calling harness from the environment. The hook
-// configuration names the harness explicitly, so this only covers a hook
-// invoked without that flag.
-func DetectHarness() session.Harness {
-	for _, env := range []string{"CLAUDECODE", "CLAUDE_PROJECT_DIR", "CLAUDE_CODE_SESSION_ID"} {
-		if os.Getenv(env) != "" {
-			return session.HarnessClaude
-		}
-	}
-	for _, env := range []string{"CODEX_HOME", "CODEX_SANDBOX", "CODEX_THREAD_ID"} {
-		if os.Getenv(env) != "" {
-			return session.HarnessCodex
-		}
-	}
-	return session.HarnessUnknown
 }

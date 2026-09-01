@@ -9,14 +9,10 @@ import (
 
 // Briefing renders what a session should know on arriving in its rooms.
 // Returns "" when there is nothing worth injecting.
-func Briefing(rooms []Room, entries []*Entry, reviews []*Review, values []*State, others []string) string {
+func Briefing(rooms []Room, entries []*Entry, values []*State, others []string) string {
 	byRoomState := map[string][]*State{}
 	for _, v := range values {
 		byRoomState[v.Room] = append(byRoomState[v.Room], v)
-	}
-	byReview := map[int64]*Review{}
-	for _, v := range reviews {
-		byReview[v.ID] = v
 	}
 	byRoom := group(entries)
 	var b strings.Builder
@@ -34,7 +30,7 @@ func Briefing(rooms []Room, entries []*Entry, reviews []*Review, values []*State
 		writeProcedures(&b, state)
 		writeSection(&b, "Decisions", live, KindDecision)
 		writeSection(&b, "Findings", live, KindFinding)
-		writeOpen(&b, live, byReview)
+		writeOpen(&b, live)
 		writeAnswered(&b, live)
 	}
 
@@ -52,16 +48,11 @@ func Notice(entries []*Entry) string {
 		return ""
 	}
 	counts := map[Kind]int{}
-	batches := map[int64]int{}
-	answers, findings := 0, 0
+	answers := 0
 	for _, e := range entries {
 		switch {
 		case e.Resolves != 0:
 			answers++
-		// A review counts as one thing however many findings it carries.
-		case e.ReviewID != 0:
-			batches[e.ReviewID]++
-			findings++
 		default:
 			counts[e.Kind]++
 		}
@@ -72,14 +63,10 @@ func Notice(entries []*Entry) string {
 			parts = append(parts, fmt.Sprintf("%d %s", n, plural(string(k), string(k)+"s", n)))
 		}
 	}
-	if n := len(batches); n > 0 {
-		parts = append(parts, fmt.Sprintf("%d %s (%d %s)",
-			n, plural("review", "reviews", n), findings, plural("finding", "findings", findings)))
-	}
 	if answers > 0 {
 		parts = append(parts, fmt.Sprintf("%d %s", answers, plural("answer", "answers", answers)))
 	}
-	return fmt.Sprintf("multiplayer: %s unread in this room — run `multiplayer inbox --ack` to read %s.",
+	return fmt.Sprintf("multiplayer: %s unread in this room — run `multiplayer room --inbox --ack` to read %s.",
 		strings.Join(parts, ", "), plural("it", "them", len(entries)))
 }
 
@@ -94,11 +81,6 @@ func Delivery(entries []*Entry) string {
 		switch {
 		case e.Resolves != 0:
 			fmt.Fprintf(&b, "- [%d] answer to [%d] from %s: %s\n", e.ID, e.Resolves, Author(e.Author), oneLine(e.Body))
-		case e.ReviewID != 0:
-			// Delivery is where detail belongs, but a finding has to say which
-			// review it came from and where in the code it points.
-			fmt.Fprintf(&b, "- [%d] review r%d %s %s: %s\n",
-				e.ID, e.ReviewID, dashOr(string(e.Severity)), e.Anchor.Ref(), oneLine(e.Body))
 		default:
 			fmt.Fprintf(&b, "- [%d] %s from %s: %s\n", e.ID, e.Kind, Author(e.Author), oneLine(e.Body))
 		}
@@ -106,65 +88,7 @@ func Delivery(entries []*Entry) string {
 	return b.String() + "\n" + hint
 }
 
-// Report renders a review as markdown. entries must hold the batch's findings
-// and any entries resolving them.
-func Report(v *Review, entries []*Entry) string {
-	resolvers := map[int64]*Entry{}
-	var findings []*Entry
-	for _, e := range entries {
-		if e.Resolves != 0 {
-			resolvers[e.Resolves] = e
-			continue
-		}
-		findings = append(findings, e)
-	}
-
-	var b strings.Builder
-	fmt.Fprintf(&b, "# Review %s — %s\n\n", v.Label(), oneLine(v.Summary))
-	if v.Target != "" {
-		fmt.Fprintf(&b, "Target: %s\n", v.Target)
-	}
-	fmt.Fprintf(&b, "Reviewer: %s, %s\n", Author(v.Author), Ago(v.CreatedAt))
-	open := 0
-	for _, f := range findings {
-		if resolvers[f.ID] == nil {
-			open++
-		}
-	}
-	fmt.Fprintf(&b, "%d of %d findings open\n", open, len(findings))
-
-	for _, sev := range Severities {
-		writeFindings(&b, string(sev), findings, resolvers, func(e *Entry) bool { return e.Severity == sev })
-	}
-	// Anything posted without a severity still has to appear.
-	writeFindings(&b, "unrated", findings, resolvers, func(e *Entry) bool { return !e.Severity.Valid() })
-	return b.String()
-}
-
-func writeFindings(b *strings.Builder, title string, findings []*Entry, resolvers map[int64]*Entry, match func(*Entry) bool) {
-	var group []*Entry
-	for _, f := range findings {
-		if match(f) {
-			group = append(group, f)
-		}
-	}
-	if len(group) == 0 {
-		return
-	}
-	fmt.Fprintf(b, "\n## %s\n\n", title)
-	for _, f := range group {
-		ref := f.Anchor.Ref()
-		if ref != "" {
-			ref = " `" + ref + "`"
-		}
-		fmt.Fprintf(b, "- [%d]%s %s\n", f.ID, ref, oneLine(f.Body))
-		if r := resolvers[f.ID]; r != nil {
-			fmt.Fprintf(b, "  - closed: %s — %s\n", oneLine(r.Body), Author(r.Author))
-		}
-	}
-}
-
-const hint = "Read new entries with `multiplayer inbox`, post with " +
+const hint = "Read new entries with `multiplayer room --inbox`, post with " +
 	"`multiplayer post <decision|finding|question|handoff|review> \"...\"`, " +
 	"answer with `multiplayer resolve <id> \"...\"`."
 
@@ -239,45 +163,22 @@ func writeSection(b *strings.Builder, title string, entries []*Entry, kind Kind)
 	b.WriteString("\n")
 }
 
-// writeOpen lists what is still waiting. Review findings collapse to one line
-// per batch: a review with thirty findings must not become thirty lines of
-// briefing, and the report is one command away.
-func writeOpen(b *strings.Builder, entries []*Entry, byReview map[int64]*Review) {
+// writeOpen lists what is still waiting.
+func writeOpen(b *strings.Builder, entries []*Entry) {
 	var open []*Entry
-	batches := map[int64]int{}
-	var order []int64
 	for _, e := range entries {
 		if !e.Open() {
 			continue
 		}
-		if e.ReviewID != 0 {
-			if _, seen := batches[e.ReviewID]; !seen {
-				order = append(order, e.ReviewID)
-			}
-			batches[e.ReviewID]++
-			continue
-		}
 		open = append(open, e)
 	}
-	if len(open) == 0 && len(batches) == 0 {
+	if len(open) == 0 {
 		return
 	}
 
 	b.WriteString("### Open\n")
 	for _, e := range open {
 		fmt.Fprintf(b, "- [%d] %s: %s — %s, %s\n", e.ID, e.Kind, oneLine(e.Body), Author(e.Author), Ago(e.CreatedAt))
-	}
-	for _, id := range order {
-		v := byReview[id]
-		label, summary, author := "r"+itoa64(id), "", ""
-		if v != nil {
-			label, summary, author = v.Label(), v.Summary, Author(v.Author)
-		}
-		fmt.Fprintf(b, "- [%s] review: %s — %d open", label, oneLine(summary), batches[id])
-		if author != "" {
-			fmt.Fprintf(b, ", %s", author)
-		}
-		fmt.Fprintf(b, " — `multiplayer review show %s`\n", label)
 	}
 	b.WriteString("\n")
 }
@@ -296,11 +197,6 @@ func writeAnswered(b *strings.Builder, entries []*Entry) {
 
 	var threads []*Entry
 	for _, e := range entries {
-		// A closed review finding needs no briefing line: its reasoning is in
-		// the report, and thirty of them would bury everything else.
-		if e.ReviewID != 0 {
-			continue
-		}
 		if e.Kind.Addressed() && e.Resolves == 0 && e.ResolvedBy != 0 {
 			threads = append(threads, e)
 		}
@@ -358,13 +254,6 @@ func Ago(t time.Time) string {
 	default:
 		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
 	}
-}
-
-func dashOr(s string) string {
-	if s == "" {
-		return "-"
-	}
-	return s
 }
 
 func oneLine(s string) string {

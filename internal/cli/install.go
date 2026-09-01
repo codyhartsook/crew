@@ -13,6 +13,9 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+
+	"github.com/codyhartsook/multiplayer/internal/harness"
+	"github.com/codyhartsook/multiplayer/internal/session"
 )
 
 // marker identifies hook entries this tool owns. It matches the flag
@@ -20,24 +23,9 @@ import (
 // reinstalled from elsewhere.
 const marker = "hook --harness "
 
-// trackedEvents are the lifecycle events the registry needs, with each one's
-// timeout. Codex clamps SessionEnd to three seconds and warns above it; the end
-// path does no git work, so three is ample.
-var trackedEvents = []eventSpec{
-	{"SessionStart", 10},
-	{"UserPromptSubmit", 5},
-	{"SessionEnd", 3},
-}
-
-// eventSpec is one hook event and the timeout it is installed with.
-type eventSpec struct {
-	name    string
-	timeout int
-}
-
-// managedEvents is every event this tool has ever installed. Events no longer
-// in trackedEvents are swept on install, so dropping one removes it rather than
-// leaving an orphan hook firing with no way to uninstall it.
+// managedEvents is every event this tool has ever installed. An event a harness
+// no longer prices in its Timeouts is swept on install, so dropping one removes
+// it rather than leaving an orphan hook firing with no way to uninstall it.
 var managedEvents = []string{"SessionStart", "UserPromptSubmit", "SessionEnd"}
 
 // installedMarker records the hash of the skill this tool last wrote, so a
@@ -58,29 +46,6 @@ var skillDoc []byte
 
 // skillName is the directory the skill is installed under in both harnesses.
 const skillName = "multiplayer-rooms"
-
-// target is one harness's hook configuration file.
-type target struct {
-	name string
-	// skills is the harness's global skills directory, relative to home.
-	skills string
-	// sandbox is the config file whose sandbox needs write access to the
-	// store, relative to home. Empty for harnesses that do not sandbox.
-	sandbox string
-	// path is the config file, relative to the user's home directory.
-	path string
-	// root is the JSON key holding the hook map. Claude Code keeps hooks inside
-	// its wider settings file; Codex uses a dedicated file whose top level is
-	// the same object.
-	root string
-	// harness is the value passed to "multiplayer hook --harness".
-	harness string
-}
-
-var targets = []target{
-	{name: "claude", path: ".claude/settings.json", root: "hooks", harness: "claude", skills: ".claude/skills"},
-	{name: "codex", path: ".codex/hooks.json", root: "hooks", harness: "codex", skills: ".codex/skills", sandbox: ".codex/config.toml"},
-}
 
 func newInstallCmd(opts *options) *cobra.Command {
 	var (
@@ -118,61 +83,62 @@ Reinstalling is safe: our entries are replaced, others untouched, files backed u
 				return fmt.Errorf("resolve home directory: %w", err)
 			}
 
-			selected := targets
+			selected := harness.Specs()
 			if claudeOnly != codexOnly {
-				name := "claude"
+				only := session.HarnessClaude
 				if codexOnly {
-					name = "codex"
+					only = session.HarnessCodex
 				}
-				selected = filterTargets(name)
+				selected = filterSpecs(only)
 			}
 
 			out := cmd.OutOrStdout()
 			for _, t := range selected {
-				path := filepath.Join(home, t.path)
+				name := string(t.Harness)
+				path := filepath.Join(home, t.ConfigPath)
 				changed, err := installInto(path, t, exe, dryRun)
 				if err != nil {
-					return fmt.Errorf("%s: %w", t.name, err)
+					return fmt.Errorf("%s: %w", name, err)
 				}
-				if t.sandbox != "" && !noSandbox {
+				if t.SandboxTOML != "" && !noSandbox {
 					storeDir, err := opts.storeDir()
 					if err != nil {
 						return err
 					}
-					sandboxPath := filepath.Join(home, t.sandbox)
+					sandboxPath := filepath.Join(home, t.SandboxTOML)
 					granted, err := ensureWritableRoot(sandboxPath, storeDir, dryRun)
 					if err != nil {
-						return fmt.Errorf("%s sandbox: %w", t.name, err)
+						return fmt.Errorf("%s sandbox: %w", name, err)
 					}
 					if granted {
 						verb := "sandbox write access granted for"
 						if dryRun {
 							verb = "would grant sandbox write access for"
 						}
-						fmt.Fprintf(out, "%s: %s %s in %s\n", t.name, verb, storeDir, sandboxPath)
+						fmt.Fprintf(out, "%s: %s %s in %s\n", name, verb, storeDir, sandboxPath)
 					}
 				}
-				skillPath := filepath.Join(home, t.skills, skillName, "SKILL.md")
+				skillPath := filepath.Join(home, t.SkillsDir, skillName, "SKILL.md")
 				_, previous := readMarker(skillPath)
 				outcome, err := installSkill(skillPath, dryRun)
 				if err != nil {
-					return fmt.Errorf("%s skill: %w", t.name, err)
+					return fmt.Errorf("%s skill: %w", name, err)
 				}
 				switch {
 				case outcome == skillPreserved:
-					fmt.Fprintf(out, "%s: skill has local edits, left alone; new version at %s.new\n", t.name, skillPath)
+					fmt.Fprintf(out, "%s: skill has local edits, left alone; new version at %s.new\n", name, skillPath)
 				case outcome == skillWritten && dryRun:
-					fmt.Fprintf(out, "%s: would write skill to %s\n", t.name, skillPath)
+					fmt.Fprintf(out, "%s: would write skill to %s\n", name, skillPath)
 				case outcome == skillWritten:
-					fmt.Fprintf(out, "%s: skill installed in %s%s\n", t.name, skillPath, replacing(previous))
+					fmt.Fprintf(out, "%s: skill installed in %s%s\n", name, skillPath, replacing(previous))
 				}
 				switch {
 				case !changed:
-					fmt.Fprintf(out, "%s: hooks already current in %s\n", t.name, path)
+					fmt.Fprintf(out, "%s: hooks already current in %s\n", name, path)
 				case dryRun:
-					fmt.Fprintf(out, "%s: would update %s\n", t.name, path)
+					fmt.Fprintf(out, "%s: would update %s\n", name, path)
 				default:
-					fmt.Fprintf(out, "%s: hooks installed in %s\n", t.name, path)
+					fmt.Fprintf(out, "%s: hooks installed in %s\n", name, path)
 				}
 			}
 			if !dryRun {
@@ -194,11 +160,7 @@ Reinstalling is safe: our entries are replaced, others untouched, files backed u
 // mergeHooks applies this tool's entries to a hook map. Every managed event is
 // visited, not just the tracked ones, so an event this tool has stopped
 // installing is removed rather than orphaned. Other hooks are left alone.
-func mergeHooks(hooks map[string]any, tracked []eventSpec, exe, harness string) map[string]any {
-	timeouts := map[string]int{}
-	for _, event := range tracked {
-		timeouts[event.name] = event.timeout
-	}
+func mergeHooks(hooks map[string]any, timeouts map[string]int, exe, harness string) map[string]any {
 	for _, name := range managedEvents {
 		remaining := withoutOurs(hooks[name])
 		if timeout, ok := timeouts[name]; ok {
@@ -313,10 +275,10 @@ func transient(path string) bool {
 	return strings.Contains(path, "/go-build") || strings.HasPrefix(path, os.TempDir())
 }
 
-func filterTargets(name string) []target {
-	for _, t := range targets {
-		if t.name == name {
-			return []target{t}
+func filterSpecs(only session.Harness) []harness.Spec {
+	for _, t := range harness.Specs() {
+		if t.Harness == only {
+			return []harness.Spec{t}
 		}
 	}
 	return nil
@@ -324,13 +286,13 @@ func filterTargets(name string) []target {
 
 // installInto merges the registry's hook entries into path, reporting whether
 // the file needed changing.
-func installInto(path string, t target, exe string, dryRun bool) (bool, error) {
+func installInto(path string, t harness.Spec, exe string, dryRun bool) (bool, error) {
 	original, config, err := readConfig(path)
 	if err != nil {
 		return false, err
 	}
 
-	config[t.root] = mergeHooks(mapAt(config, t.root), trackedEvents, exe, t.harness)
+	config[t.ConfigRoot] = mergeHooks(mapAt(config, t.ConfigRoot), t.Timeouts, exe, string(t.Harness))
 
 	updated, err := encodeConfig(config)
 	if err != nil {

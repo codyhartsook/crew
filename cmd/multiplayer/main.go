@@ -1,5 +1,5 @@
 // Command multiplayer records and reports which coding-agent sessions are
-// running in which git repositories and treehouse worktrees.
+// running in which git repositories and worktrees.
 package main
 
 import (

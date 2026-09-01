@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/codyhartsook/multiplayer/internal/detect"
+	"github.com/codyhartsook/multiplayer/internal/harness"
 	"github.com/codyhartsook/multiplayer/internal/hook"
 	"github.com/codyhartsook/multiplayer/internal/session"
 	"github.com/codyhartsook/multiplayer/internal/store"
@@ -79,7 +80,7 @@ func TestPayloadEvent(t *testing.T) {
 	}
 }
 
-// fixedDetector stands in for the git and treehouse probes so recorder tests
+// fixedDetector stands in for the git and pool probes so recorder tests
 // do not need a real checkout on disk. It counts calls, which is how the tests
 // assert that the end path avoids git work it does not need.
 type fixedDetector struct {
@@ -100,8 +101,8 @@ func poolLocation() *detect.Location {
 			Name: "widget", Root: "/pool/widget-abc/3/widget",
 			MainRoot: "/src/widget", Detached: true, IsWorktree: true,
 		},
-		Treehouse: &session.Treehouse{
-			Pool: "widget-abc", Slot: "3", Root: "/pool/widget-abc/3/widget",
+		Pool: &session.Pool{
+			Manager: "treehouse", Name: "widget-abc", Slot: "3", Root: "/pool/widget-abc/3/widget",
 			Leased: true, LeaseHolder: "agent:x",
 		},
 	}
@@ -147,8 +148,8 @@ func TestRecordSessionStart(t *testing.T) {
 	if stored.Repo == nil || stored.Repo.Name != "widget" {
 		t.Errorf("Repo = %+v, want the detected checkout", stored.Repo)
 	}
-	if stored.Treehouse == nil || stored.Treehouse.Slot != "3" {
-		t.Errorf("Treehouse = %+v, want the detected pool slot", stored.Treehouse)
+	if stored.Pool == nil || stored.Pool.Slot != "3" {
+		t.Errorf("Pool = %+v, want the detected pool slot", stored.Pool)
 	}
 	if !stored.StartedAt.Equal(at) {
 		t.Errorf("StartedAt = %v, want %v", stored.StartedAt, at)
@@ -269,24 +270,35 @@ func TestRecordSurvivesDetectionFailure(t *testing.T) {
 	}
 }
 
-// A harness gives a session-end hook far less time than a session-start hook,
-// so the budget has to differ with the event.
-func TestPayloadBudget(t *testing.T) {
-	start := hook.Payload{HookEventName: "SessionStart"}.Budget()
-	end := hook.Payload{HookEventName: "SessionEnd"}.Budget()
+// A session-end hook gets far less time than a session-start one, and each
+// harness caps it its own way.
+func TestBudgetFor(t *testing.T) {
+	for _, spec := range harness.Specs() {
+		start := hook.BudgetFor(spec.Harness, hook.Payload{HookEventName: "SessionStart"})
+		end := hook.BudgetFor(spec.Harness, hook.Payload{HookEventName: "SessionEnd"})
 
-	if start != hook.StartBudget {
-		t.Errorf("start budget = %v, want %v", start, hook.StartBudget)
+		if start != hook.StartBudget {
+			t.Errorf("%s: start budget = %v, want %v", spec.Harness, start, hook.StartBudget)
+		}
+		if end != spec.EndBudget {
+			t.Errorf("%s: end budget = %v, want its spec's %v", spec.Harness, end, spec.EndBudget)
+		}
+		if end >= start {
+			t.Errorf("%s: end budget %v should be tighter than start %v", spec.Harness, end, start)
+		}
 	}
-	if end != hook.EndBudget {
-		t.Errorf("end budget = %v, want %v", end, hook.EndBudget)
+}
+
+// An unrecognized harness must not be given more than the tightest known cap.
+func TestBudgetForUnknownHarness(t *testing.T) {
+	end := hook.BudgetFor(session.HarnessUnknown, hook.Payload{HookEventName: "SessionEnd"})
+	if end != hook.DefaultEndBudget {
+		t.Errorf("end budget = %v, want %v", end, hook.DefaultEndBudget)
 	}
-	if end >= start {
-		t.Errorf("end budget %v should be tighter than start budget %v", end, start)
-	}
-	// Codex clamps a session-end hook to three seconds and warns above it.
-	if end >= 3*time.Second {
-		t.Errorf("end budget = %v, want comfortably under the 3s harness cap", end)
+	for _, spec := range harness.Specs() {
+		if end > spec.EndBudget {
+			t.Errorf("default budget %v exceeds %s's cap %v", end, spec.Harness, spec.EndBudget)
+		}
 	}
 }
 
@@ -326,8 +338,8 @@ func TestRecordSessionEndSkipsDetection(t *testing.T) {
 	if stored.Status != session.StatusEnded {
 		t.Errorf("Status = %q, want %q", stored.Status, session.StatusEnded)
 	}
-	if stored.Treehouse == nil || stored.Treehouse.Slot != "3" {
-		t.Errorf("Treehouse = %+v, want the location kept from the start event", stored.Treehouse)
+	if stored.Pool == nil || stored.Pool.Slot != "3" {
+		t.Errorf("Pool = %+v, want the location kept from the start event", stored.Pool)
 	}
 }
 

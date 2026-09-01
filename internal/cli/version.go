@@ -1,12 +1,7 @@
 package cli
 
 import (
-	"fmt"
 	"runtime/debug"
-
-	"github.com/spf13/cobra"
-
-	"github.com/codyhartsook/multiplayer/internal/store/sqlitestore"
 )
 
 // version is set with -ldflags "-X ...cli.version=v1.2.3"; otherwise it comes
@@ -31,21 +26,4 @@ func Version() string {
 		}
 	}
 	return "dev"
-}
-
-func newVersionCmd(opts *options) *cobra.Command {
-	return &cobra.Command{
-		Use:   "version",
-		Short: "Print the version, schema version and store path",
-		Args:  cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			db, err := opts.dbPath()
-			if err != nil {
-				return err
-			}
-			fmt.Fprintf(cmd.OutOrStdout(), "multiplayer %s\nschema     %d\nstore      %s\n",
-				Version(), sqlitestore.SchemaVersion, db)
-			return nil
-		},
-	}
 }

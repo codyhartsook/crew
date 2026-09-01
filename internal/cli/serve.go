@@ -15,6 +15,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/codyhartsook/multiplayer/internal/api"
+	"github.com/codyhartsook/multiplayer/internal/store/sqlitestore"
 	"github.com/codyhartsook/multiplayer/internal/ui"
 )
 
@@ -32,8 +33,9 @@ func newServeCmd(opts *options) *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "serve",
-		Short: "Serve the registry API and dashboard over HTTP",
+		Use:    "serve",
+		Short:  "Serve the registry API and dashboard over HTTP",
+		Hidden: true,
 		Long: `Reads and writes the same local database the CLI uses. Setting
 MULTIPLAYER_SERVER points hooks at it, so they write through the API instead of
 opening the database directly.`,
@@ -59,7 +61,11 @@ func serveRegistry(cmd *cobra.Command, opts *options, addr string, verbose bool,
 	if opts.server != "" {
 		return errors.New("this command reads a local database; unset --server")
 	}
-	st, err := opts.openStore()
+	path, err := opts.dbPath()
+	if err != nil {
+		return err
+	}
+	st, err := sqlitestore.Open(path)
 	if err != nil {
 		return err
 	}
@@ -81,8 +87,7 @@ func serveRegistry(cmd *cobra.Command, opts *options, addr string, verbose bool,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
-	db, _ := opts.dbPath()
-	log.Info("registry listening", "addr", ln.Addr().String(), "db", db)
+	log.Info("registry listening", "addr", ln.Addr().String(), "db", path)
 	if onReady != nil {
 		onReady("http://" + ln.Addr().String())
 	}
