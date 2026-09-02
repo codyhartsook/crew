@@ -36,6 +36,11 @@ type Spec struct {
 	// Timeouts is the timeout each lifecycle hook is installed with, keyed by
 	// wire event name. An event missing here is not installed.
 	Timeouts map[string]int
+	// Wake delivers a message into a live session, and is nil for a harness
+	// with no inbound channel. Delivery says when a woken session acts on it,
+	// and is empty when Wake is nil.
+	Wake     Waker
+	Delivery Delivery
 }
 
 var specs = []Spec{
@@ -51,6 +56,10 @@ var specs = []Spec{
 		// squeezed the way Codex's is.
 		EndBudget: 4 * time.Second,
 		Timeouts:  map[string]int{"SessionStart": 10, "UserPromptSubmit": 5, "SessionEnd": 5},
+		// No waker. Claude Code listens on a per-session unix socket, but it is
+		// gated by a token held only in that process's environment and speaks an
+		// undocumented protocol, so a broker cannot reach it. Claude sessions
+		// wake each other through the harness's own cross-session messaging.
 	},
 	{
 		Harness:     session.HarnessCodex,
@@ -64,6 +73,8 @@ var specs = []Spec{
 		// Codex clamps SessionEnd to three seconds and warns above it.
 		EndBudget: 2500 * time.Millisecond,
 		Timeouts:  map[string]int{"SessionStart": 10, "UserPromptSubmit": 5, "SessionEnd": 3},
+		Wake:      wakeCodex,
+		Delivery:  DeliverOnIdle,
 	},
 }
 
