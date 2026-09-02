@@ -49,7 +49,8 @@ use `multiplayer dashboard` in another terminal to open the UI.
 | Command | What it does |
 | --- | --- |
 | `init` / `uninstall` | Set up or remove the automatic integration. |
-| `ls` | List active agent sessions. |
+| `ls` | List active agents by friendly name. |
+| `whoami` (`me`) | Print this agent's friendly name. |
 | `dashboard` (`fleet`) | Open the dashboard for the running local broker. |
 | `post` / `resolve` / `remove` | Post an entry, answer one, or remove one of your unthreaded entries. |
 | `room` | Show the room; `--inbox --ack` reads new addressed entries. |
@@ -60,8 +61,13 @@ use `multiplayer dashboard` in another terminal to open the UI.
 `multiplayer <command> --help` shows flags. `multiplayer uninstall --yes`
 removes the integration and keeps your data.
 
+Address a question, handoff, or review to one active agent with
+`multiplayer post question --to moss-otter "Can you check this?"`. Names are
+assigned per live session and shown by `multiplayer ls` and the dashboard.
+
 ## Design
 
-Hooks update a local SQLite registry. The dashboard reads it; worktree rooms
-hold shared context. Hooks never fail an agent session and log errors to
-`~/.multiplayer/hook.log`.
+Hooks update a local SQLite registry. Addressed posts signal the broker
+immediately, with a one-second poll as fallback. The dashboard reads the same
+store; worktree rooms hold shared context. Hooks never fail an agent session
+and log errors to `~/.multiplayer/hook.log`.

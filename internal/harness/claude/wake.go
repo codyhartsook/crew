@@ -19,8 +19,8 @@ const controlSocketDir = "/tmp/cc-socks"
 // relayModel keeps the spawned relay cheap; it makes one mechanical call.
 const relayModel = "haiku"
 
-// Wake reaches a Claude session, preferring its channel and falling back to a
-// print-mode relay. A missing control socket means the session is gone.
+// Wake reaches a Claude session through its control socket. A missing control
+// socket means the session is gone.
 func Wake(ctx context.Context, s *session.Session, text string) error {
 	if s.PID == 0 {
 		return fmt.Errorf("wake claude %s: no pid recorded", s.ID)
@@ -28,11 +28,6 @@ func Wake(ctx context.Context, s *session.Session, text string) error {
 	sock := filepath.Join(controlSocketDir, fmt.Sprintf("%d.sock", s.PID))
 	if _, err := os.Stat(sock); err != nil {
 		return fmt.Errorf("wake claude %s: %w: no socket at %s", s.ID, waker.ErrSessionGone, sock)
-	}
-	// A channel exists only for a session that opted in, and costs no process
-	// and no model turn, so try it before spawning anything.
-	if err := Push(s.PID, text); err == nil {
-		return nil
 	}
 	return relayThroughPrint(ctx, s, sock, text)
 }

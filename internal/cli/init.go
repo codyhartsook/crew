@@ -16,7 +16,6 @@ import (
 
 	"github.com/codyhartsook/multiplayer/internal/backup"
 	"github.com/codyhartsook/multiplayer/internal/harness"
-	"github.com/codyhartsook/multiplayer/internal/harness/claude"
 	"github.com/codyhartsook/multiplayer/internal/harness/codex"
 	"github.com/codyhartsook/multiplayer/internal/session"
 )
@@ -106,11 +105,18 @@ the broker wakes live sessions when they have addressed entries.`,
 			fmt.Fprintln(out, view.heading("Setup"))
 			for _, t := range selected {
 				name := string(t.Harness)
-				var granted, registered bool
+				var granted bool
 				path := filepath.Join(home, t.ConfigPath)
 				changed, err := initInto(path, t, exe, dryRun)
 				if err != nil {
 					return fmt.Errorf("%s: %w", name, err)
+				}
+				if t.Harness == session.HarnessClaude {
+					removed, err := unregisterLegacyChannel(filepath.Join(home, ".claude.json"), dryRun)
+					if err != nil {
+						return fmt.Errorf("%s channel cleanup: %w", name, err)
+					}
+					changed = changed || removed
 				}
 				if t.SandboxTOML != "" && !noSandbox {
 					storeDir, err := opts.storeDir()
@@ -123,13 +129,6 @@ the broker wakes live sessions when they have addressed entries.`,
 						return fmt.Errorf("%s sandbox: %w", name, err)
 					}
 				}
-				if t.MCPPath != "" {
-					mcpPath := filepath.Join(home, t.MCPPath)
-					registered, err = registerMCP(mcpPath, claude.Name, claude.Entry(exe), claude.IsOurs, dryRun)
-					if err != nil {
-						return fmt.Errorf("%s channel: %w", name, err)
-					}
-				}
 				skillPath := filepath.Join(home, t.SkillsDir, skillName, "SKILL.md")
 				outcome, err := initSkill(skillPath, dryRun)
 				if err != nil {
@@ -139,7 +138,7 @@ the broker wakes live sessions when they have addressed entries.`,
 					fmt.Fprintf(out, "  %s %s room skill has local edits; new version at %s.new\n", view.warning("!"), name, skillPath)
 				}
 				state := "ready"
-				if changed || outcome == skillWritten || granted || registered {
+				if changed || outcome == skillWritten || granted {
 					state = "configured"
 					if dryRun {
 						state = "would be configured"
@@ -151,12 +150,12 @@ the broker wakes live sessions when they have addressed entries.`,
 				baseURL := "http://" + addr
 				if registryIsUp(cmd.Context(), baseURL) {
 					fmt.Fprintf(out, "  %s broker already running at %s\n", view.success("✓"), baseURL)
-					printInitNextSteps(out, view, selected)
+					printInitNextSteps(out, view)
 					return nil
 				}
 				return serveRegistry(cmd, opts, addr, verbose, func(url string) {
 					fmt.Fprintf(out, "  %s broker running at %s (notifications enabled)\n", view.success("✓"), url)
-					printInitNextSteps(out, view, selected)
+					printInitNextSteps(out, view)
 				})
 			}
 			return nil
@@ -173,18 +172,10 @@ the broker wakes live sessions when they have addressed entries.`,
 	return cmd
 }
 
-func printInitNextSteps(out io.Writer, view initView, selected []harness.Spec) {
+func printInitNextSteps(out io.Writer, view initView) {
 	fmt.Fprintln(out, "\n"+view.heading("Next"))
-	step := 1
-	for _, t := range selected {
-		if t.Harness == session.HarnessClaude && t.MCPPath != "" {
-			fmt.Fprintf(out, "  %d. Start Claude with: %s\n", step, claude.LaunchCommand())
-			step++
-		}
-	}
-	fmt.Fprintf(out, "  %d. Start new agent sessions so they pick up the hooks.\n", step)
-	step++
-	fmt.Fprintf(out, "  %d. Open the dashboard: multiplayer dashboard\n", step)
+	fmt.Fprintln(out, "  1. Start new agent sessions so they pick up the hooks.")
+	fmt.Fprintln(out, "  2. Open the dashboard: multiplayer dashboard")
 	fmt.Fprintln(out, "\n"+view.muted("Codex asks to trust a newly added hook the first time it runs."))
 }
 

@@ -7,11 +7,15 @@ import (
 
 func TestPublicCommands(t *testing.T) {
 	root := New()
-	for _, name := range []string{"init", "uninstall", "ls", "dashboard", "room", "post", "resolve", "remove", "state", "search", "promote"} {
+	for _, name := range []string{"init", "uninstall", "ls", "whoami", "dashboard", "room", "post", "resolve", "remove", "state", "search", "promote"} {
 		cmd, _, err := root.Find([]string{name})
 		if err != nil || cmd.Name() != name || cmd.Hidden {
 			t.Errorf("public command %q = (%v, %v)", name, cmd, err)
 		}
+	}
+	me, _, err := root.Find([]string{"me"})
+	if err != nil || me.Name() != "whoami" {
+		t.Errorf("me alias = (%v, %v), want whoami", me, err)
 	}
 	for _, name := range []string{"get", "inbox", "install", "join", "leave", "rm", "review", "version"} {
 		if cmd, _, err := root.Find([]string{name}); err == nil && cmd.Name() == name {

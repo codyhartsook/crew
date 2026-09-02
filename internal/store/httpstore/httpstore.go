@@ -53,7 +53,7 @@ func New(baseURL string, opts ...Option) *Store {
 func (s *Store) Close() error { return nil }
 
 func (s *Store) Upsert(ctx context.Context, sess *session.Session) error {
-	_, err := s.do(ctx, http.MethodPost, "/v1/sessions", sess, nil)
+	_, err := s.do(ctx, http.MethodPost, "/v1/sessions", sess, sess)
 	return err
 }
 

@@ -93,8 +93,13 @@ func serveRegistry(cmd *cobra.Command, opts *options, addr string, verbose bool,
 		onReady("http://" + ln.Addr().String())
 	}
 
-	ctx := cmd.Context()
-	go wake.NewBroker(st, log, wake.DefaultInterval).Run(ctx)
+	ctx, cancel := context.WithCancel(cmd.Context())
+	defer cancel()
+	broker := wake.NewBroker(st, log, wake.DefaultInterval)
+	if err := wake.ListenSignals(ctx, wake.SocketPath(path), broker.Trigger); err != nil {
+		log.Warn("wake signals unavailable; using polling", "err", err)
+	}
+	go broker.Run(ctx)
 	return run(ctx, srv, ln, log)
 }
 

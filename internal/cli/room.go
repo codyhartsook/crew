@@ -16,6 +16,7 @@ import (
 	"github.com/codyhartsook/multiplayer/internal/room"
 	"github.com/codyhartsook/multiplayer/internal/session"
 	"github.com/codyhartsook/multiplayer/internal/store"
+	"github.com/codyhartsook/multiplayer/internal/wake"
 )
 
 // briefingLimit caps how much reference material a briefing carries.
@@ -70,6 +71,7 @@ func newPostCmd(opts *options) *cobra.Command {
 		toRepo   bool
 		resolves int64
 		as       string
+		to       string
 	)
 
 	cmd := &cobra.Command{
@@ -84,13 +86,14 @@ here and stay open until resolved.`,
 			if !kind.Valid() {
 				return fmt.Errorf("unknown kind %q: want one of %s", args[0], strings.Join(kindNames(), ", "))
 			}
-			return post(cmd, opts, kind, strings.Join(args[1:], " "), toRepo, resolves, as)
+			return post(cmd, opts, kind, strings.Join(args[1:], " "), toRepo, resolves, as, to)
 		},
 	}
 
 	cmd.Flags().BoolVar(&toRepo, "repo", false, "post to the repository room")
 	cmd.Flags().Int64Var(&resolves, "resolves", 0, "entry id this one answers or closes")
 	cmd.Flags().StringVar(&as, "as", "", "session key, if not inferable")
+	cmd.Flags().StringVar(&to, "to", "", "send an addressed entry to this agent alias")
 	return cmd
 }
 
@@ -135,6 +138,7 @@ func newResolveCmd(opts *options) *cobra.Command {
 			if err := rc.rooms.Post(cmd.Context(), e); err != nil {
 				return err
 			}
+			signalBroker(opts)
 			fmt.Fprintf(cmd.OutOrStdout(), "resolved [%d] with [%d]\n", target.ID, e.ID)
 			return nil
 		},
@@ -188,7 +192,7 @@ func newRemoveCmd(opts *options) *cobra.Command {
 	return cmd
 }
 
-func post(cmd *cobra.Command, opts *options, kind room.Kind, body string, toRepo bool, resolves int64, as string) error {
+func post(cmd *cobra.Command, opts *options, kind room.Kind, body string, toRepo bool, resolves int64, as, to string) error {
 	rc, closeFn, err := openRoomContext(cmd.Context(), opts, cwdOf(cmd))
 	if err != nil {
 		return err
@@ -213,12 +217,26 @@ func post(cmd *cobra.Command, opts *options, kind room.Kind, body string, toRepo
 	if err != nil {
 		return err
 	}
+	recipient := ""
+	if to != "" {
+		if !kind.Addressed() {
+			return errors.New("--to is only valid for questions, handoffs, and reviews")
+		}
+		recipient, err = resolveAgent(cmd.Context(), rc.store, []string{target.Key}, to)
+		if err != nil {
+			return err
+		}
+		if recipient == author {
+			return errors.New("cannot target yourself")
+		}
+	}
 
 	e := &room.Entry{
 		Room:      target.Key,
 		Scope:     target.Scope,
 		Kind:      kind,
 		Author:    author,
+		To:        recipient,
 		Body:      body,
 		Resolves:  resolves,
 		CreatedAt: time.Now().UTC(),
@@ -226,8 +244,41 @@ func post(cmd *cobra.Command, opts *options, kind room.Kind, body string, toRepo
 	if err := rc.rooms.Post(cmd.Context(), e); err != nil {
 		return err
 	}
-	fmt.Fprintf(cmd.OutOrStdout(), "[%d] %s posted to %s\n", e.ID, kind, target.Name)
+	if e.Kind.Addressed() {
+		signalBroker(opts)
+	}
+	if to != "" {
+		fmt.Fprintf(cmd.OutOrStdout(), "[%d] %s for %s posted to %s\n", e.ID, kind, to, target.Name)
+	} else {
+		fmt.Fprintf(cmd.OutOrStdout(), "[%d] %s posted to %s\n", e.ID, kind, target.Name)
+	}
 	return nil
+}
+
+func signalBroker(opts *options) {
+	if path, err := opts.dbPath(); err == nil {
+		_ = wake.Signal(wake.SocketPath(path))
+	}
+}
+
+func resolveAgent(ctx context.Context, st store.Store, roomKeys []string, name string) (string, error) {
+	active, err := st.List(ctx, store.Filter{Status: session.StatusActive})
+	if err != nil {
+		return "", err
+	}
+	var matches []string
+	for _, s := range active {
+		if s.Alias == name && sessionInRooms(s, roomKeys) {
+			matches = append(matches, s.Key())
+		}
+	}
+	if len(matches) == 1 {
+		return matches[0], nil
+	}
+	if len(matches) == 0 {
+		return "", fmt.Errorf("no active agent named %q in this room", name)
+	}
+	return "", fmt.Errorf("agent name %q is ambiguous", name)
 }
 
 func newRoomCmd(opts *options) *cobra.Command {
@@ -264,7 +315,11 @@ func newRoomCmd(opts *options) *cobra.Command {
 					fmt.Fprintln(cmd.OutOrStdout(), "nothing new")
 					return nil
 				}
-				fmt.Fprintln(cmd.OutOrStdout(), room.Delivery(entries))
+				authors, err := roomAuthors(cmd.Context(), rc.store)
+				if err != nil {
+					return err
+				}
+				fmt.Fprintln(cmd.OutOrStdout(), room.Delivery(entries, authors))
 				if ack {
 					return rc.rooms.Ack(cmd.Context(), author, entries[len(entries)-1].ID)
 				}
@@ -295,7 +350,11 @@ func newRoomCmd(opts *options) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			out := room.Briefing(rc.here, entries, values, others)
+			authors, err := roomAuthors(cmd.Context(), rc.store)
+			if err != nil {
+				return err
+			}
+			out := room.Briefing(rc.here, entries, values, others, authors)
 			if out == "" {
 				fmt.Fprintf(cmd.OutOrStdout(), "%s: nothing posted yet\n", rc.here[0].Name)
 				return nil
@@ -332,12 +391,42 @@ func otherAgents(ctx context.Context, rc *roomContext, self string) ([]string, e
 	keys := room.Keys(rc.here)
 	var out []string
 	for _, s := range active {
-		if s.Key() == self || s.Repo == nil || !contains(keys, s.Repo.Root) {
+		if s.Key() == self || !sessionInRooms(s, keys) {
 			continue
 		}
-		out = append(out, fmt.Sprintf("%s (%s)", room.Author(s.Key()), room.Ago(s.LastSeen)))
+		out = append(out, fmt.Sprintf("%s (%s)", displayAgent(s), room.Ago(s.LastSeen)))
 	}
 	return out, nil
+}
+
+func sessionInRooms(s *session.Session, keys []string) bool {
+	for _, key := range room.Keys(room.For(s.Repo, s.Pool, s.CWD)) {
+		if contains(keys, key) {
+			return true
+		}
+	}
+	return false
+}
+
+func roomAuthors(ctx context.Context, st store.Store) (room.Authors, error) {
+	sessions, err := st.List(ctx, store.Filter{})
+	if err != nil {
+		return nil, err
+	}
+	authors := room.Authors{}
+	for _, s := range sessions {
+		if s.Alias != "" {
+			authors[s.Key()] = s.Alias
+		}
+	}
+	return authors, nil
+}
+
+func displayAgent(s *session.Session) string {
+	if s.Alias != "" {
+		return s.Alias
+	}
+	return room.Author(s.Key())
 }
 
 func authorFor(ctx context.Context, rc *roomContext, as string) (string, error) {

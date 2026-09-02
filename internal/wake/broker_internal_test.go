@@ -73,6 +73,29 @@ func TestSweepWakesOncePerNewEntry(t *testing.T) {
 	}
 }
 
+func TestTriggerSweepsImmediately(t *testing.T) {
+	f := &fakeReader{
+		sessions: []*session.Session{sess(session.HarnessCodex, "t1")},
+		unread:   map[string][]*room.Entry{"codex:t1": entries(7)},
+	}
+	b := NewBroker(f, slog.New(slog.NewTextHandler(io.Discard, nil)), time.Hour)
+	woke := make(chan struct{}, 1)
+	b.wake = func(context.Context, *session.Session, string) error {
+		woke <- struct{}{}
+		return nil
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go b.Run(ctx)
+
+	b.Trigger()
+	select {
+	case <-woke:
+	case <-time.After(250 * time.Millisecond):
+		t.Fatal("trigger did not wake the session immediately")
+	}
+}
+
 func TestSweepSkipsHarnessWithoutWaker(t *testing.T) {
 	f := &fakeReader{
 		sessions: []*session.Session{sess(session.HarnessUnknown, "u1")},

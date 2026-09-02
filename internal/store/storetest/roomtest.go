@@ -27,6 +27,7 @@ func RunRooms(t *testing.T, newStore RoomFactory) {
 		"UnreadRespectsRooms":     testUnreadRespectsRooms,
 		"UnreadExcludesAuthor":    testUnreadExcludesAuthor,
 		"UnreadOnlyAddressed":     testUnreadOnlyAddressed,
+		"UnreadHonorsTarget":      testUnreadHonorsTarget,
 		"UnreadStopsAtResolved":   testUnreadStopsAtResolved,
 		"UnreadDeliversAnswers":   testUnreadDeliversAnswers,
 		"AckMovesForwardOnly":     testAckMovesForwardOnly,
@@ -102,15 +103,34 @@ func testPostValidates(t *testing.T, newStore RoomFactory) {
 	ctx := context.Background()
 
 	cases := map[string]*room.Entry{
-		"unknown kind": {Room: worktreeRoom, Kind: "gossip", Author: agentA, Body: "x"},
-		"empty body":   {Room: worktreeRoom, Kind: room.KindFinding, Author: agentA, Body: "   "},
-		"no room":      {Kind: room.KindFinding, Author: agentA, Body: "x"},
-		"no author":    {Room: worktreeRoom, Kind: room.KindFinding, Body: "x"},
+		"unknown kind":  {Room: worktreeRoom, Kind: "gossip", Author: agentA, Body: "x"},
+		"empty body":    {Room: worktreeRoom, Kind: room.KindFinding, Author: agentA, Body: "   "},
+		"no room":       {Kind: room.KindFinding, Author: agentA, Body: "x"},
+		"no author":     {Room: worktreeRoom, Kind: room.KindFinding, Body: "x"},
+		"targeted fact": {Room: worktreeRoom, Kind: room.KindFinding, Author: agentA, To: agentB, Body: "x"},
+		"targets self":  {Room: worktreeRoom, Kind: room.KindQuestion, Author: agentA, To: agentA, Body: "x"},
 	}
 	for name, e := range cases {
 		if err := s.Post(ctx, e); err == nil {
 			t.Errorf("Post accepted %s", name)
 		}
+	}
+}
+
+func testUnreadHonorsTarget(t *testing.T, newStore RoomFactory) {
+	s := newStore(t)
+	mustJoin(t, s, agentB, worktreeRoom)
+	mustJoin(t, s, "claude:c", worktreeRoom)
+	targeted := entry(worktreeRoom, room.KindQuestion, agentA, "for B")
+	targeted.To = agentB
+	mustPost(t, s, targeted)
+
+	for key, want := range map[string][]int64{agentB: {targeted.ID}, "claude:c": nil} {
+		got, err := s.Unread(context.Background(), key)
+		if err != nil {
+			t.Fatalf("Unread(%s): %v", key, err)
+		}
+		assertIDs(t, got, want)
 	}
 }
 

@@ -12,9 +12,9 @@ import (
 	"github.com/codyhartsook/multiplayer/internal/store"
 )
 
-// DefaultInterval is how often the broker sweeps. Codex drains its own queue on
-// a roughly ten second poll, so sweeping faster only adds queries.
-const DefaultInterval = 5 * time.Second
+// DefaultInterval is how often the broker sweeps. Local SQLite reads are cheap,
+// and a short interval keeps Claude channel delivery responsive.
+const DefaultInterval = time.Second
 
 // Reader is the store surface the broker needs.
 type Reader interface {
@@ -35,6 +35,7 @@ type Broker struct {
 	store    Reader
 	log      *slog.Logger
 	interval time.Duration
+	trigger  chan struct{}
 
 	// woken is the highest entry id each session has been woken for. It is
 	// touched only by Run's goroutine, so it needs no lock. Losing it on
@@ -53,8 +54,18 @@ func NewBroker(st Reader, log *slog.Logger, interval time.Duration) *Broker {
 		store:    st,
 		log:      log,
 		interval: interval,
+		trigger:  make(chan struct{}, 1),
 		woken:    map[string]int64{},
 		wake:     harness.WakeSession,
+	}
+}
+
+// Trigger requests an immediate sweep. Signals coalesce because one sweep sees
+// every committed entry.
+func (b *Broker) Trigger() {
+	select {
+	case b.trigger <- struct{}{}:
+	default:
 	}
 }
 
@@ -67,6 +78,8 @@ func (b *Broker) Run(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
+		case <-b.trigger:
+			b.sweep(ctx)
 		case <-t.C:
 			b.sweep(ctx)
 		}

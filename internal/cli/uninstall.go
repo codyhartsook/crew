@@ -9,8 +9,8 @@ import (
 
 	"github.com/codyhartsook/multiplayer/internal/backup"
 	"github.com/codyhartsook/multiplayer/internal/harness"
-	"github.com/codyhartsook/multiplayer/internal/harness/claude"
 	"github.com/codyhartsook/multiplayer/internal/harness/codex"
+	"github.com/codyhartsook/multiplayer/internal/session"
 )
 
 func newUninstallCmd(opts *options) *cobra.Command {
@@ -76,6 +76,11 @@ nothing is removed; what would go is listed instead.`,
 func uninstallFrom(cmd *cobra.Command, home string, t harness.Spec, dryRun bool) error {
 	out := cmd.OutOrStdout()
 	name := string(t.Harness)
+	if t.Harness == session.HarnessClaude {
+		if _, err := unregisterLegacyChannel(filepath.Join(home, ".claude.json"), dryRun); err != nil {
+			return err
+		}
+	}
 
 	path := filepath.Join(home, t.ConfigPath)
 	original, config, err := readConfig(path)
@@ -122,21 +127,6 @@ func uninstallFrom(cmd *cobra.Command, home string, t harness.Spec, dryRun bool)
 				}
 				fmt.Fprintf(out, "%s: hooks removed from %s\n", name, path)
 			}
-		}
-	}
-
-	if t.MCPPath != "" {
-		mcpPath := filepath.Join(home, t.MCPPath)
-		removed, err := unregisterMCP(mcpPath, claude.Name, claude.IsOurs, dryRun)
-		if err != nil {
-			return err
-		}
-		if removed {
-			verb := "channel unregistered from"
-			if dryRun {
-				verb = "would unregister channel from"
-			}
-			fmt.Fprintf(out, "%s: %s %s\n", name, verb, mcpPath)
 		}
 	}
 

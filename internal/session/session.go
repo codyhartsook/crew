@@ -2,7 +2,10 @@
 // hooks: one coding-agent process and wherever it is working.
 package session
 
-import "time"
+import (
+	"math/rand/v2"
+	"time"
+)
 
 // Harness identifies the coding agent CLI that opened a session.
 type Harness string
@@ -39,7 +42,10 @@ const (
 type Session struct {
 	ID      string  `json:"id"`
 	Harness Harness `json:"harness"`
-	Status  Status  `json:"status"`
+	// Alias is a short-lived, human-friendly name assigned by the registry.
+	// Identity and authorization always use Key.
+	Alias  string `json:"alias,omitempty"`
+	Status Status `json:"status"`
 
 	PID  int    `json:"pid,omitempty"`
 	Host string `json:"host,omitempty"`
@@ -65,6 +71,31 @@ func (s *Session) Key() string { return string(s.Harness) + ":" + s.ID }
 
 // Active reports whether the session is still believed to be running.
 func (s *Session) Active() bool { return s.Status == StatusActive }
+
+var aliasColours = [...]string{
+	"amber", "blue", "coral", "dawn", "fern", "gold", "indigo", "jade",
+	"lilac", "moss", "pearl", "rose", "rust", "sage", "sky", "violet",
+}
+
+var aliasAnimals = [...]string{
+	"badger", "beaver", "bison", "crane", "dolphin", "falcon", "gecko", "heron",
+	"lynx", "otter", "panda", "raven", "seal", "tiger", "wren", "yak",
+}
+
+// RandomAlias picks an unused, human-friendly session alias. There are enough
+// combinations for normal local collaboration; callers reject a full pool.
+func RandomAlias(used map[string]bool) (string, bool) {
+	count := len(aliasColours) * len(aliasAnimals)
+	start := rand.IntN(count)
+	for i := 0; i < count; i++ {
+		n := (start + i) % count
+		name := aliasColours[n/len(aliasAnimals)] + "-" + aliasAnimals[n%len(aliasAnimals)]
+		if !used[name] {
+			return name, true
+		}
+	}
+	return "", false
+}
 
 // Repo is the git checkout a session is working in.
 //

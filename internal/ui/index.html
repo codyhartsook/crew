@@ -148,6 +148,7 @@
   @media (prefers-reduced-motion: reduce) { .row .beacon { animation: none; } }
 
   .harness { font-size: 12.5px; font-weight: 550; letter-spacing: -0.006em; min-width: 52px; }
+  .agent { font-size: 12.5px; font-weight: 650; letter-spacing: -0.006em; }
   .harness.claude { color: var(--orange); }
   .harness.codex { color: var(--teal); }
   .harness.unknown { color: var(--gray); }
@@ -270,10 +271,9 @@ for (const button of document.querySelectorAll(".segmented button")) {
 // ---- data ----
 
 async function refresh() {
-  const query = view.showEnded ? "" : "?status=active";
   try {
     const [sessions, entries, state] = await Promise.all([
-      getJSON("/v1/sessions" + query),
+      getJSON("/v1/sessions"),
       getJSON("/v1/entries"),
       getJSON("/v1/state"),
     ]);
@@ -329,7 +329,9 @@ function worktreeTag(session) {
   return { text: suffix, kind: "pool" };
 }
 
-function render(sessions, entries, state) {
+function render(allSessions, entries, state) {
+  const authors = new Map(allSessions.map((s) => [s.harness + ":" + s.id, s.alias]));
+  const sessions = view.showEnded ? allSessions : allSessions.filter((s) => s.status === "active");
   // Two agents live in one working tree is the situation this tool exists to
   // catch, so it is counted regardless of how the view is grouped.
   const perWorktree = new Map();
@@ -414,12 +416,12 @@ function render(sessions, entries, state) {
 
   els.groups.replaceChildren(
     ...(ordered.length
-      ? ordered.map((group) => renderGroup(group, perWorktree))
+      ? ordered.map((group) => renderGroup(group, perWorktree, authors))
       : [emptyState()])
   );
 }
 
-function renderGroup(group, perWorktree) {
+function renderGroup(group, perWorktree, authors) {
   const section = document.createElement("section");
   section.className = "group";
 
@@ -467,7 +469,7 @@ function renderGroup(group, perWorktree) {
     const ordered = [...group.entries].sort(
       (a, b) => (isOpen(b) ? 1 : 0) - (isOpen(a) ? 1 : 0) || b.id - a.id
     );
-    for (const e of ordered.slice(0, 8)) box.append(renderEntry(e));
+    for (const e of ordered.slice(0, 8)) box.append(renderEntry(e, authors));
     card.append(box);
   }
 
@@ -484,7 +486,7 @@ function isOpen(entry) {
   return ADDRESSED.has(entry.kind) && !entry.resolves && !entry.resolved_by;
 }
 
-function renderEntry(entry) {
+function renderEntry(entry, authors) {
   // Only a closed question, handoff or review is spent. Decisions and findings
   // are reference material and stay at full weight.
   const spent = ADDRESSED.has(entry.kind) && !isOpen(entry);
@@ -492,11 +494,14 @@ function renderEntry(entry) {
   el.append(span("eid", "#" + entry.id));
   el.append(span("kind " + entry.kind, entry.kind));
   el.append(span("ebody", entry.body));
-  el.append(span("emeta", shortAuthor(entry.author) + " · " + age(entry.created_at)));
+  let byline = shortAuthor(entry.author, authors);
+  if (entry.to) byline += " → " + shortAuthor(entry.to, authors);
+  el.append(span("emeta", byline + " · " + age(entry.created_at)));
   return el;
 }
 
-function shortAuthor(key) {
+function shortAuthor(key, authors) {
+  if (authors.get(key)) return authors.get(key);
   const [harness, id] = key.split(":");
   return id ? harness + " " + id.slice(0, 6) : key;
 }
@@ -508,6 +513,7 @@ function rank(session) {
 function renderRow(session, perWorktree) {
   const row = div("row" + (session.status === "active" ? "" : " ended"));
   row.append(span("beacon", ""));
+  row.append(span("agent", session.alias || session.harness + " " + shortID(session.id)));
   row.append(span("harness " + harnessClass(session.harness), session.harness));
 
   const repo = session.repo;

@@ -24,6 +24,7 @@ func Run(t *testing.T, newStore Factory) {
 	t.Helper()
 	tests := map[string]func(*testing.T, Factory){
 		"RoundTrip":            testRoundTrip,
+		"Aliases":              testAliases,
 		"UpsertPreservesStart": testUpsertPreservesStart,
 		"GetUnknown":           testGetUnknown,
 		"End":                  testEnd,
@@ -87,6 +88,41 @@ func testRoundTrip(t *testing.T, newStore Factory) {
 		t.Fatalf("Get: %v", err)
 	}
 	assertSameSession(t, want, got)
+}
+
+func testAliases(t *testing.T, newStore Factory) {
+	ctx := context.Background()
+	s := newStore(t)
+	first, second := base(), base()
+	second.ID = "sess-2"
+	if err := s.Upsert(ctx, first); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Upsert(ctx, second); err != nil {
+		t.Fatal(err)
+	}
+	if first.Alias == "" || second.Alias == "" || first.Alias == second.Alias {
+		t.Fatalf("aliases = %q, %q; want distinct names", first.Alias, second.Alias)
+	}
+
+	want := first.Alias
+	first.LastSeen = first.LastSeen.Add(time.Minute)
+	if err := s.Upsert(ctx, first); err != nil {
+		t.Fatal(err)
+	}
+	if first.Alias != want {
+		t.Errorf("alias changed from %q to %q on upsert", want, first.Alias)
+	}
+	if err := s.End(ctx, first.Key(), time.Now().UTC(), "exit"); err != nil {
+		t.Fatal(err)
+	}
+	ended, err := s.Get(ctx, first.Key())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ended.Alias != want {
+		t.Errorf("ended alias = %q, want historical name %q", ended.Alias, want)
+	}
 }
 
 func testUpsertPreservesStart(t *testing.T, newStore Factory) {
@@ -383,6 +419,13 @@ func testConcurrentUpsert(t *testing.T, newStore Factory) {
 	if len(got) != n {
 		t.Fatalf("List returned %d sessions, want %d", len(got), n)
 	}
+	aliases := map[string]bool{}
+	for _, sess := range got {
+		if sess.Alias == "" || aliases[sess.Alias] {
+			t.Fatalf("active alias %q is empty or duplicated", sess.Alias)
+		}
+		aliases[sess.Alias] = true
+	}
 }
 
 func assertKeys(t *testing.T, got []*session.Session, want []string) {
@@ -405,6 +448,9 @@ func assertSameSession(t *testing.T, want, got *session.Session) {
 	t.Helper()
 	if got.ID != want.ID || got.Harness != want.Harness || got.Status != want.Status {
 		t.Errorf("identity = (%s, %s, %s), want (%s, %s, %s)", got.ID, got.Harness, got.Status, want.ID, want.Harness, want.Status)
+	}
+	if got.Alias != want.Alias {
+		t.Errorf("Alias = %q, want %q", got.Alias, want.Alias)
 	}
 	if got.PID != want.PID || got.Host != want.Host || got.User != want.User || got.CWD != want.CWD {
 		t.Errorf("process fields = (%d, %s, %s, %s), want (%d, %s, %s, %s)",

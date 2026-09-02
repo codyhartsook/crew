@@ -125,11 +125,13 @@ func TestBriefing(t *testing.T) {
 		{ID: 1, Room: "/src/widget", Kind: room.KindDecision, Author: "codex:abcdef123", Body: "chose sqlite", CreatedAt: now},
 		{ID: 2, Room: "/src/widget", Kind: room.KindQuestion, Author: "codex:abcdef123", Body: "who owns retries?", ResolvedBy: 3, CreatedAt: now},
 		{ID: 3, Room: "/src/widget", Kind: room.KindQuestion, Author: "claude:zzz", Body: "the gateway does", Resolves: 2, CreatedAt: now},
-		{ID: 4, Room: "/src/widget", Kind: room.KindReview, Author: "claude:zzz", Body: "this leaks", CreatedAt: now},
+		{ID: 4, Room: "/src/widget", Kind: room.KindReview, Author: "claude:zzz", To: "codex:abcdef123", Body: "this leaks", CreatedAt: now},
 	}
 
-	out := room.Briefing(here, entries, nil, []string{"claude zzz (just now)"})
-	for _, want := range []string{"chose sqlite", "Open", "this leaks", "Answered", "the gateway does", "claude zzz"} {
+	out := room.Briefing(here, entries, nil, []string{"moss-otter (just now)"}, room.Authors{
+		"claude:zzz": "moss-otter", "codex:abcdef123": "blue-wren",
+	})
+	for _, want := range []string{"chose sqlite", "Open", "review to blue-wren", "this leaks", "Answered", "the gateway does", "moss-otter"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("briefing is missing %q:\n%s", want, out)
 		}
@@ -147,10 +149,10 @@ func TestBriefing(t *testing.T) {
 
 func TestBriefingEmpty(t *testing.T) {
 	here := []room.Room{{Key: "/src/widget", Scope: room.ScopeWorktree, Name: "widget"}}
-	if out := room.Briefing(here, nil, nil, nil); out != "" {
+	if out := room.Briefing(here, nil, nil, nil, nil); out != "" {
 		t.Errorf("briefing on an empty room = %q, want empty", out)
 	}
-	if out := room.Delivery(nil); out != "" {
+	if out := room.Delivery(nil, nil); out != "" {
 		t.Errorf("delivery with nothing new = %q, want empty", out)
 	}
 }
@@ -176,7 +178,7 @@ func TestBriefingIncludesState(t *testing.T) {
 		{Room: "/src/widget", Key: "build/status", Value: "green", Author: "codex:a", Revision: 3, UpdatedAt: now},
 	}
 
-	out := room.Briefing(here, nil, values, nil)
+	out := room.Briefing(here, nil, values, nil, nil)
 	if !strings.Contains(out, "### State") || !strings.Contains(out, "build/status: green") {
 		t.Errorf("briefing is missing state:\n%s", out)
 	}
@@ -199,7 +201,7 @@ func TestBriefingNamesLongStateWithoutReproducingIt(t *testing.T) {
 		{Room: "/src/widget", Key: "build/status", Value: "green", Author: "codex:a", Revision: 1, UpdatedAt: time.Now()},
 	}
 
-	out := room.Briefing(here, nil, values, nil)
+	out := room.Briefing(here, nil, values, nil, nil)
 	if strings.Contains(out, "helm upgrade") {
 		t.Errorf("the runbook body leaked into the briefing:\n%s", out)
 	}

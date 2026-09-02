@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	_ "modernc.org/sqlite"
 
@@ -84,6 +85,9 @@ VALUES ('/src/widget', 'worktree', 'decision', 'codex:a', 'chose sqlite', '2026-
 	}
 	if len(existing) != 1 || existing[0].Body != "chose sqlite" {
 		t.Fatalf("entries = %+v, want the row written by the older version", existing)
+	}
+	if existing[0].To != "" {
+		t.Fatalf("migrated recipient = %q, want broadcast", existing[0].To)
 	}
 
 }
@@ -220,6 +224,9 @@ func TestMigrateCarriesTreehouseColumnsForward(t *testing.T) {
 	if got.Pool == nil {
 		t.Fatal("Pool = nil, want the migrated slot")
 	}
+	if got.Alias == "" {
+		t.Fatal("active migrated session has no alias")
+	}
 	want := session.Pool{
 		Manager: "treehouse", Name: "widget-abc", Slot: "3",
 		Root: "/pool/widget-abc/3/widget", Leased: true,
@@ -236,5 +243,40 @@ func TestMigrateCarriesTreehouseColumnsForward(t *testing.T) {
 	}
 	if len(pooled) != 1 {
 		t.Errorf("pooled sessions = %d, want 1", len(pooled))
+	}
+}
+
+func TestEndedAliasCanBeReclaimed(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "reclaim.db")
+	s, err := sqlitestore.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := "2026-09-02T12:00:00Z"
+	first := &session.Session{
+		ID: "first", Harness: session.HarnessCodex, Status: session.StatusActive,
+		StartedAt: time.Date(2026, 9, 2, 12, 0, 0, 0, time.UTC),
+		LastSeen:  time.Date(2026, 9, 2, 12, 0, 0, 0, time.UTC),
+	}
+	if err := s.Upsert(context.Background(), first); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.End(context.Background(), first.Key(), first.LastSeen, "exit"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	db, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	_, err = db.Exec(`INSERT INTO sessions
+        (key, id, harness, alias, status, started_at, last_seen)
+        VALUES ('claude:second', 'second', 'claude', ?, 'active', ?, ?)`, first.Alias, now, now)
+	if err != nil {
+		t.Fatalf("reuse ended alias %q: %v", first.Alias, err)
 	}
 }
