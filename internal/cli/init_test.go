@@ -1,6 +1,7 @@
 package cli_test
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -11,19 +12,23 @@ import (
 	"github.com/codyhartsook/multiplayer/internal/harness"
 )
 
-// runInstall executes the install command against a throwaway home directory
+// runInit executes init against a throwaway home directory and a canceled,
+// ephemeral broker, so command-level setup remains testable without a daemon,
 // and returns its output.
-func runInstall(t *testing.T, home string, args ...string) string {
+func runInit(t *testing.T, home string, args ...string) string {
 	t.Helper()
 	t.Setenv("HOME", home)
 
 	var out strings.Builder
 	root := cli.New()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	root.SetContext(ctx)
 	root.SetOut(&out)
 	root.SetErr(&out)
-	root.SetArgs(append([]string{"install", "--binary", "/opt/bin/multiplayer"}, args...))
+	root.SetArgs(append([]string{"init", "--binary", "/opt/bin/multiplayer", "--addr", "127.0.0.1:0"}, args...))
 	if err := root.Execute(); err != nil {
-		t.Fatalf("install %v: %v\n%s", args, err, out.String())
+		t.Fatalf("init %v: %v\n%s", args, err, out.String())
 	}
 	return out.String()
 }
@@ -93,9 +98,9 @@ func timeoutsFor(t *testing.T, hooks map[string]any, event string) []float64 {
 
 // Each harness's hooks are installed with that harness's own timeouts. Sharing
 // one number across harnesses is how Claude Code ended up on Codex's cap.
-func TestInstallUsesPerHarnessTimeouts(t *testing.T) {
+func TestInitUsesPerHarnessTimeouts(t *testing.T) {
 	home := t.TempDir()
-	runInstall(t, home)
+	runInit(t, home)
 
 	for _, spec := range harness.Specs() {
 		hooks := readHooks(t, filepath.Join(home, spec.ConfigPath))
@@ -118,9 +123,15 @@ func TestInstallUsesPerHarnessTimeouts(t *testing.T) {
 	}
 }
 
-func TestInstallCreatesConfigs(t *testing.T) {
+func TestInitCreatesConfigs(t *testing.T) {
 	home := t.TempDir()
-	runInstall(t, home)
+	out := runInit(t, home)
+	if !strings.Contains(out, "broker running") || !strings.Contains(out, "multiplayer dashboard") {
+		t.Errorf("init checklist = %q", out)
+	}
+	if strings.Contains(out, "registry listening") || strings.Contains(out, "wake broker running") {
+		t.Errorf("init output includes normal broker logs: %q", out)
+	}
 
 	cases := []struct {
 		path    string
@@ -149,7 +160,7 @@ func TestInstallCreatesConfigs(t *testing.T) {
 
 // The Claude settings file holds far more than hooks, and other tools install
 // hooks of their own. Neither may be disturbed.
-func TestInstallPreservesExistingSettings(t *testing.T) {
+func TestInitPreservesExistingSettings(t *testing.T) {
 	home := t.TempDir()
 	settings := filepath.Join(home, ".claude", "settings.json")
 	if err := os.MkdirAll(filepath.Dir(settings), 0o755); err != nil {
@@ -171,7 +182,7 @@ func TestInstallPreservesExistingSettings(t *testing.T) {
 		t.Fatalf("write settings: %v", err)
 	}
 
-	runInstall(t, home, "--claude")
+	runInit(t, home, "--claude")
 
 	raw, err := os.ReadFile(settings)
 	if err != nil {
@@ -204,13 +215,13 @@ func TestInstallPreservesExistingSettings(t *testing.T) {
 }
 
 // Reinstalling must replace this tool's entries rather than stack up duplicates.
-func TestInstallIsIdempotent(t *testing.T) {
+func TestInitIsIdempotent(t *testing.T) {
 	home := t.TempDir()
-	runInstall(t, home, "--codex")
-	out := runInstall(t, home, "--codex")
+	runInit(t, home, "--codex")
+	out := runInit(t, home, "--codex")
 
-	if !strings.Contains(out, "already current") {
-		t.Errorf("second install output = %q, want it to report no change", out)
+	if !strings.Contains(out, "✓ codex integration ready") {
+		t.Errorf("second init output = %q, want it to report no change", out)
 	}
 	hooks := readHooks(t, filepath.Join(home, ".codex", "hooks.json"))
 	for _, event := range []string{"SessionStart", "SessionEnd"} {
@@ -220,11 +231,11 @@ func TestInstallIsIdempotent(t *testing.T) {
 	}
 }
 
-func TestInstallDryRunWritesNothing(t *testing.T) {
+func TestInitDryRunWritesNothing(t *testing.T) {
 	home := t.TempDir()
-	out := runInstall(t, home, "--dry-run")
+	out := runInit(t, home, "--dry-run")
 
-	if !strings.Contains(out, "would update") {
+	if !strings.Contains(out, "would be configured") {
 		t.Errorf("output = %q, want it to describe the pending change", out)
 	}
 	for _, path := range []string{
@@ -239,15 +250,15 @@ func TestInstallDryRunWritesNothing(t *testing.T) {
 
 // --dry-run must report what would actually change, not claim a change on a
 // config that is already current.
-func TestInstallDryRunReportsNoChange(t *testing.T) {
+func TestInitDryRunReportsNoChange(t *testing.T) {
 	home := t.TempDir()
-	runInstall(t, home)
+	runInit(t, home)
 
-	out := runInstall(t, home, "--dry-run")
-	if strings.Contains(out, "would update") || strings.Contains(out, "would write skill") {
+	out := runInit(t, home, "--dry-run")
+	if strings.Contains(out, "would be configured") {
 		t.Errorf("--dry-run on a current config claims a change:\n%s", out)
 	}
-	if !strings.Contains(out, "already current") {
+	if !strings.Contains(out, "✓ claude integration ready") {
 		t.Errorf("--dry-run should report the config is current:\n%s", out)
 	}
 }

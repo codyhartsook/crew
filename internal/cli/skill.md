@@ -12,11 +12,15 @@ committed to the repository.
 You are already in the room for your worktree, and in the wider one for the
 repository that owns it.
 
+Run `multiplayer whoami` to get your own friendly name. Run `multiplayer ls`
+to see the other active agents and their names.
+
 ## Posting
 
     multiplayer post <kind> "<body>"
     multiplayer post decision "sqlite over postgres; the Store interface keeps it swappable"
     multiplayer post --repo decision "..."     # repository-wide, outlives this worktree
+    multiplayer post question --to moss-otter "can you check the retry path?"
 
 | Kind | For | Reaches others |
 | --- | --- | --- |
@@ -25,6 +29,19 @@ repository that owns it.
 | `question` | Something you need answered | Their inbox, until resolved |
 | `handoff` | Work passed on, with its state | Their inbox, until resolved |
 | `review` | A critique of work here | Their inbox, until resolved |
+
+Use `--to <agent-name>` when only one active agent should receive a question,
+handoff, or review. `multiplayer ls` and room briefings show the available names.
+If the request names a recipient, **always use `--to`**; never put the alias in
+the body as a substitute for routing.
+An accepted alias is the routing authority; do not second-guess it by comparing
+harness IDs or use another messaging system for the same post.
+
+After posting, report only what succeeded:
+`Posted <kind> [<entry-id>] to <agent-name>.`
+Do not explain hooks, inbox delivery, polling, or offer to keep checking unless
+delivery failed or the user asks. Targeted agents answer with `resolve`; their
+answer is delivered back to the author automatically.
 
 **Post when it would change what another agent does**: you chose between real
 alternatives and the reasoning is not in the code; you found behaviour the code

@@ -9,7 +9,7 @@ import (
 
 // Briefing renders what a session should know on arriving in its rooms.
 // Returns "" when there is nothing worth injecting.
-func Briefing(rooms []Room, entries []*Entry, values []*State, others []string) string {
+func Briefing(rooms []Room, entries []*Entry, values []*State, others []string, authors Authors) string {
 	byRoomState := map[string][]*State{}
 	for _, v := range values {
 		byRoomState[v.Room] = append(byRoomState[v.Room], v)
@@ -26,12 +26,12 @@ func Briefing(rooms []Room, entries []*Entry, values []*State, others []string) 
 		if len(others) > 0 && r.Scope == ScopeWorktree {
 			fmt.Fprintf(&b, "Also here: %s\n\n", strings.Join(others, ", "))
 		}
-		writeState(&b, state)
+		writeState(&b, state, authors)
 		writeProcedures(&b, state)
-		writeSection(&b, "Decisions", live, KindDecision)
-		writeSection(&b, "Findings", live, KindFinding)
-		writeOpen(&b, live)
-		writeAnswered(&b, live)
+		writeSection(&b, "Decisions", live, KindDecision, authors)
+		writeSection(&b, "Findings", live, KindFinding, authors)
+		writeOpen(&b, live, authors)
+		writeAnswered(&b, live, authors)
 	}
 
 	out := strings.TrimSpace(b.String())
@@ -71,7 +71,7 @@ func Notice(entries []*Entry) string {
 }
 
 // Delivery renders addressed entries a session has not yet been shown.
-func Delivery(entries []*Entry) string {
+func Delivery(entries []*Entry, authors Authors) string {
 	if len(entries) == 0 {
 		return ""
 	}
@@ -80,9 +80,9 @@ func Delivery(entries []*Entry) string {
 	for _, e := range entries {
 		switch {
 		case e.Resolves != 0:
-			fmt.Fprintf(&b, "- [%d] answer to [%d] from %s: %s\n", e.ID, e.Resolves, Author(e.Author), oneLine(e.Body))
+			fmt.Fprintf(&b, "- [%d] answer to [%d] from %s: %s\n", e.ID, e.Resolves, authors.Name(e.Author), oneLine(e.Body))
 		default:
-			fmt.Fprintf(&b, "- [%d] %s from %s: %s\n", e.ID, e.Kind, Author(e.Author), oneLine(e.Body))
+			fmt.Fprintf(&b, "- [%d] %s from %s: %s\n", e.ID, e.Kind, authors.Name(e.Author), oneLine(e.Body))
 		}
 	}
 	return b.String() + "\n" + hint
@@ -95,7 +95,7 @@ const hint = "Read new entries with `multiplayer room --inbox`, post with " +
 // stateLimit caps how many values a briefing carries.
 const stateLimit = 12
 
-func writeState(b *strings.Builder, values []*State) {
+func writeState(b *strings.Builder, values []*State, authors Authors) {
 	var facts []*State
 	for _, v := range values {
 		if !v.IsProcedure() {
@@ -121,7 +121,7 @@ func writeState(b *strings.Builder, values []*State) {
 				v.Key, v.Summary(), v.Lines(), v.Key)
 			continue
 		}
-		fmt.Fprintf(b, "- %s: %s — %s, %s\n", v.Key, oneLine(v.Value), Author(v.Author), Ago(v.UpdatedAt))
+		fmt.Fprintf(b, "- %s: %s — %s, %s\n", v.Key, oneLine(v.Value), authors.Name(v.Author), Ago(v.UpdatedAt))
 	}
 	b.WriteString("\n")
 }
@@ -146,7 +146,7 @@ func writeProcedures(b *strings.Builder, values []*State) {
 	b.WriteString("\n")
 }
 
-func writeSection(b *strings.Builder, title string, entries []*Entry, kind Kind) {
+func writeSection(b *strings.Builder, title string, entries []*Entry, kind Kind, authors Authors) {
 	var matching []*Entry
 	for _, e := range entries {
 		if e.Kind == kind {
@@ -158,13 +158,13 @@ func writeSection(b *strings.Builder, title string, entries []*Entry, kind Kind)
 	}
 	fmt.Fprintf(b, "### %s\n", title)
 	for _, e := range matching {
-		fmt.Fprintf(b, "- [%d] %s — %s, %s\n", e.ID, oneLine(e.Body), Author(e.Author), Ago(e.CreatedAt))
+		fmt.Fprintf(b, "- [%d] %s — %s, %s\n", e.ID, oneLine(e.Body), authors.Name(e.Author), Ago(e.CreatedAt))
 	}
 	b.WriteString("\n")
 }
 
 // writeOpen lists what is still waiting.
-func writeOpen(b *strings.Builder, entries []*Entry) {
+func writeOpen(b *strings.Builder, entries []*Entry, authors Authors) {
 	var open []*Entry
 	for _, e := range entries {
 		if !e.Open() {
@@ -178,7 +178,11 @@ func writeOpen(b *strings.Builder, entries []*Entry) {
 
 	b.WriteString("### Open\n")
 	for _, e := range open {
-		fmt.Fprintf(b, "- [%d] %s: %s — %s, %s\n", e.ID, e.Kind, oneLine(e.Body), Author(e.Author), Ago(e.CreatedAt))
+		to := ""
+		if e.To != "" {
+			to = " to " + authors.Name(e.To)
+		}
+		fmt.Fprintf(b, "- [%d] %s%s: %s — %s, %s\n", e.ID, e.Kind, to, oneLine(e.Body), authors.Name(e.Author), Ago(e.CreatedAt))
 	}
 	b.WriteString("\n")
 }
@@ -189,7 +193,7 @@ const answeredLimit = 5
 // writeAnswered shows resolved threads as question and answer. A closed
 // question is no longer waiting on anyone, but its answer is exactly the
 // context an arriving agent needs.
-func writeAnswered(b *strings.Builder, entries []*Entry) {
+func writeAnswered(b *strings.Builder, entries []*Entry, authors Authors) {
 	byID := map[int64]*Entry{}
 	for _, e := range entries {
 		byID[e.ID] = e
@@ -210,9 +214,13 @@ func writeAnswered(b *strings.Builder, entries []*Entry) {
 
 	b.WriteString("### Answered\n")
 	for _, e := range threads {
-		fmt.Fprintf(b, "- [%d] %s: %s\n", e.ID, e.Kind, oneLine(e.Body))
+		to := ""
+		if e.To != "" {
+			to = " to " + authors.Name(e.To)
+		}
+		fmt.Fprintf(b, "- [%d] %s%s: %s\n", e.ID, e.Kind, to, oneLine(e.Body))
 		if answer, ok := byID[e.ResolvedBy]; ok {
-			fmt.Fprintf(b, "  → %s — %s\n", oneLine(answer.Body), Author(answer.Author))
+			fmt.Fprintf(b, "  → %s — %s\n", oneLine(answer.Body), authors.Name(answer.Author))
 		}
 	}
 	b.WriteString("\n")
@@ -227,6 +235,17 @@ func group(entries []*Entry) map[string][]*Entry {
 		sort.Slice(list, func(i, j int) bool { return list[i].ID < list[j].ID })
 	}
 	return byRoom
+}
+
+// Authors maps immutable session keys to friendly aliases.
+type Authors map[string]string
+
+// Name renders a friendly alias, falling back to the session key for old data.
+func (a Authors) Name(sessionKey string) string {
+	if alias := a[sessionKey]; alias != "" {
+		return alias
+	}
+	return Author(sessionKey)
 }
 
 // Author renders a session key as "harness 8-char-id".

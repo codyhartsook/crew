@@ -7,14 +7,16 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/spf13/cobra"
 
+	"github.com/codyhartsook/multiplayer/internal/backup"
 	"github.com/codyhartsook/multiplayer/internal/harness"
+	"github.com/codyhartsook/multiplayer/internal/harness/codex"
 	"github.com/codyhartsook/multiplayer/internal/session"
 )
 
@@ -24,13 +26,13 @@ import (
 const marker = "hook --harness "
 
 // managedEvents is every event this tool has ever installed. An event a harness
-// no longer prices in its Timeouts is swept on install, so dropping one removes
+// no longer prices in its Timeouts is swept on init, so dropping one removes
 // it rather than leaving an orphan hook firing with no way to uninstall it.
 var managedEvents = []string{"SessionStart", "UserPromptSubmit", "SessionEnd"}
 
-// installedMarker records the hash of the skill this tool last wrote, so a
-// reinstall can tell its own previous output from something you edited.
-const installedMarker = ".installed"
+// initMarker records the hash of the skill this tool last wrote, so a
+// re-init can tell its own previous output from something you edited.
+const initMarker = ".installed"
 
 // skillOutcome is what happened to a skill file.
 type skillOutcome int
@@ -47,25 +49,31 @@ var skillDoc []byte
 // skillName is the directory the skill is installed under in both harnesses.
 const skillName = "multiplayer-rooms"
 
-func newInstallCmd(opts *options) *cobra.Command {
+func newInitCmd(opts *options) *cobra.Command {
 	var (
 		claudeOnly bool
 		codexOnly  bool
 		binary     string
 		dryRun     bool
 		noSandbox  bool
+		addr       string
+		verbose    bool
 	)
 
 	cmd := &cobra.Command{
-		Use:   "install",
-		Short: "Register the session hooks with Claude Code and Codex",
+		Use:   "init",
+		Short: "Set up agent integration and run the notification broker",
 		Long: `Adds the session hooks pointing at this binary, writes the room skill,
 and grants Codex's sandbox write access to the store directory, without which
 every room write from a Codex agent fails as a readonly database.
 
-Reinstalling is safe: our entries are replaced, others untouched, files backed up.`,
+It is safe to run again: our entries are reconciled, others are untouched, and
+the broker wakes live sessions when they have addressed entries.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if opts.server != "" {
+				return fmt.Errorf("init starts a local broker; unset --server")
+			}
 			exe := binary
 			if exe == "" {
 				resolved, err := os.Executable()
@@ -73,7 +81,7 @@ Reinstalling is safe: our entries are replaced, others untouched, files backed u
 					return fmt.Errorf("resolve this binary's path: %w", err)
 				}
 				if transient(resolved) {
-					return fmt.Errorf("this binary is temporary (%s) and the hooks would point at a path that stops existing.\nBuild it first:\n  go build -o ~/.local/bin/multiplayer ./cmd/multiplayer && ~/.local/bin/multiplayer install\nor pass --binary <path>", resolved)
+					return fmt.Errorf("this binary is temporary (%s) and the hooks would point at a path that stops existing.\nInstall it first:\n  make install\nThen run:\n  multiplayer init\nor pass --binary <path>", resolved)
 				}
 				exe = resolved
 			}
@@ -93,12 +101,22 @@ Reinstalling is safe: our entries are replaced, others untouched, files backed u
 			}
 
 			out := cmd.OutOrStdout()
+			view := newInitView(out)
+			fmt.Fprintln(out, view.heading("Setup"))
 			for _, t := range selected {
 				name := string(t.Harness)
+				var granted bool
 				path := filepath.Join(home, t.ConfigPath)
-				changed, err := installInto(path, t, exe, dryRun)
+				changed, err := initInto(path, t, exe, dryRun)
 				if err != nil {
 					return fmt.Errorf("%s: %w", name, err)
+				}
+				if t.Harness == session.HarnessClaude {
+					removed, err := unregisterLegacyChannel(filepath.Join(home, ".claude.json"), dryRun)
+					if err != nil {
+						return fmt.Errorf("%s channel cleanup: %w", name, err)
+					}
+					changed = changed || removed
 				}
 				if t.SandboxTOML != "" && !noSandbox {
 					storeDir, err := opts.storeDir()
@@ -106,55 +124,85 @@ Reinstalling is safe: our entries are replaced, others untouched, files backed u
 						return err
 					}
 					sandboxPath := filepath.Join(home, t.SandboxTOML)
-					granted, err := ensureWritableRoot(sandboxPath, storeDir, dryRun)
+					granted, err = codex.EnsureWritableRoot(sandboxPath, storeDir, dryRun)
 					if err != nil {
 						return fmt.Errorf("%s sandbox: %w", name, err)
 					}
-					if granted {
-						verb := "sandbox write access granted for"
-						if dryRun {
-							verb = "would grant sandbox write access for"
-						}
-						fmt.Fprintf(out, "%s: %s %s in %s\n", name, verb, storeDir, sandboxPath)
-					}
 				}
 				skillPath := filepath.Join(home, t.SkillsDir, skillName, "SKILL.md")
-				_, previous := readMarker(skillPath)
-				outcome, err := installSkill(skillPath, dryRun)
+				outcome, err := initSkill(skillPath, dryRun)
 				if err != nil {
 					return fmt.Errorf("%s skill: %w", name, err)
 				}
-				switch {
-				case outcome == skillPreserved:
-					fmt.Fprintf(out, "%s: skill has local edits, left alone; new version at %s.new\n", name, skillPath)
-				case outcome == skillWritten && dryRun:
-					fmt.Fprintf(out, "%s: would write skill to %s\n", name, skillPath)
-				case outcome == skillWritten:
-					fmt.Fprintf(out, "%s: skill installed in %s%s\n", name, skillPath, replacing(previous))
+				if outcome == skillPreserved {
+					fmt.Fprintf(out, "  %s %s room skill has local edits; new version at %s.new\n", view.warning("!"), name, skillPath)
 				}
-				switch {
-				case !changed:
-					fmt.Fprintf(out, "%s: hooks already current in %s\n", name, path)
-				case dryRun:
-					fmt.Fprintf(out, "%s: would update %s\n", name, path)
-				default:
-					fmt.Fprintf(out, "%s: hooks installed in %s\n", name, path)
+				state := "ready"
+				if changed || outcome == skillWritten || granted {
+					state = "configured"
+					if dryRun {
+						state = "would be configured"
+					}
 				}
+				fmt.Fprintf(out, "  %s %s integration %s\n", view.success("✓"), name, state)
 			}
 			if !dryRun {
-				fmt.Fprintln(out, "\nStart a new session in either harness, then run: multiplayer ls")
-				fmt.Fprintln(out, "Codex asks to trust a newly added hook the first time it runs.")
+				baseURL := "http://" + addr
+				if registryIsUp(cmd.Context(), baseURL) {
+					fmt.Fprintf(out, "  %s broker already running at %s\n", view.success("✓"), baseURL)
+					printInitNextSteps(out, view)
+					return nil
+				}
+				return serveRegistry(cmd, opts, addr, verbose, func(url string) {
+					fmt.Fprintf(out, "  %s broker running at %s (notifications enabled)\n", view.success("✓"), url)
+					printInitNextSteps(out, view)
+				})
 			}
 			return nil
 		},
 	}
 
-	cmd.Flags().BoolVar(&claudeOnly, "claude", false, "install only the Claude Code hooks")
-	cmd.Flags().BoolVar(&codexOnly, "codex", false, "install only the Codex hooks")
+	cmd.Flags().BoolVar(&claudeOnly, "claude", false, "initialize only Claude Code")
+	cmd.Flags().BoolVar(&codexOnly, "codex", false, "initialize only Codex")
 	cmd.Flags().StringVar(&binary, "binary", "", "binary path to record (default: this binary)")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "report changes without writing")
 	cmd.Flags().BoolVar(&noSandbox, "no-sandbox-config", false, "skip the Codex sandbox grant")
+	cmd.Flags().StringVar(&addr, "addr", defaultAddr, "address for the local broker")
+	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "log every broker request")
 	return cmd
+}
+
+func printInitNextSteps(out io.Writer, view initView) {
+	fmt.Fprintln(out, "\n"+view.heading("Next"))
+	fmt.Fprintln(out, "  1. Start new agent sessions so they pick up the hooks.")
+	fmt.Fprintln(out, "  2. Open the dashboard: multiplayer dashboard")
+	fmt.Fprintln(out, "\n"+view.muted("Codex asks to trust a newly added hook the first time it runs."))
+}
+
+type initView struct{ color bool }
+
+func newInitView(out io.Writer) initView {
+	if os.Getenv("NO_COLOR") != "" || os.Getenv("TERM") == "dumb" {
+		return initView{}
+	}
+	file, ok := out.(*os.File)
+	if !ok {
+		return initView{}
+	}
+	info, err := file.Stat()
+	return initView{color: err == nil && info.Mode()&os.ModeCharDevice != 0}
+}
+
+func (v initView) heading(text string) string { return v.style("1;36", text) }
+func (v initView) success(text string) string { return v.style("32", text) }
+func (v initView) warning(text string) string { return v.style("33", text) }
+func (v initView) muted(text string) string   { return v.style("2", text) }
+
+func (v initView) style(code, text string) string {
+	if !v.color {
+		return text
+	}
+	return "\x1b[" + code + "m" + text + "\x1b[0m"
 }
 
 // mergeHooks applies this tool's entries to a hook map. Every managed event is
@@ -176,12 +224,12 @@ func mergeHooks(hooks map[string]any, timeouts map[string]int, exe, harness stri
 	return hooks
 }
 
-// installSkill writes the room skill, and never over something you changed.
+// initSkill writes the room skill, and never over something you changed.
 //
 // Overwriting a hand-edited skill is the obvious way to get this wrong: the
 // skill is meant to be tuned once you see what agents actually write. A hash of
 // the last version this tool wrote distinguishes its own output from yours.
-func installSkill(path string, dryRun bool) (skillOutcome, error) {
+func initSkill(path string, dryRun bool) (skillOutcome, error) {
 	existing, err := os.ReadFile(path)
 	switch {
 	case os.IsNotExist(err):
@@ -194,7 +242,7 @@ func installSkill(path string, dryRun bool) (skillOutcome, error) {
 	}
 
 	if bytes.Equal(existing, skillDoc) {
-		// Content is ours even if no marker was recorded - an install from
+		// Content is ours even if no marker was recorded - an init from
 		// before the marker existed. Record it, or the next change would be
 		// mistaken for a local edit.
 		if !dryRun && !ours(path, existing) {
@@ -224,7 +272,7 @@ func ours(path string, content []byte) bool {
 
 // readMarker returns the hash and the version that wrote it.
 func readMarker(path string) (hash, version string) {
-	data, err := os.ReadFile(filepath.Join(filepath.Dir(path), installedMarker))
+	data, err := os.ReadFile(filepath.Join(filepath.Dir(path), initMarker))
 	if err != nil {
 		return "", ""
 	}
@@ -249,9 +297,9 @@ func writeSkill(path string) error {
 }
 
 // writeMarker records the hash and the version that wrote it, so a later
-// install can say what it is replacing without guessing.
+// init can say what it is replacing without guessing.
 func writeMarker(path string, content []byte) error {
-	marker := filepath.Join(filepath.Dir(path), installedMarker)
+	marker := filepath.Join(filepath.Dir(path), initMarker)
 	return os.WriteFile(marker, []byte(digest(content)+"\n"+Version()+"\n"), 0o644)
 }
 
@@ -260,16 +308,8 @@ func digest(b []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// replacing names the version being replaced, when it was not this one.
-func replacing(previous string) string {
-	if previous == "" || previous == "unknown" || previous == Version() {
-		return ""
-	}
-	return " (was " + previous + ")"
-}
-
 // transient reports whether a binary path will not exist later. Running
-// "go run ./cmd/multiplayer install" would otherwise record a build-cache path
+// "go run ./cmd/multiplayer init" would otherwise record a build-cache path
 // that is deleted on exit, leaving hooks that fail silently forever.
 func transient(path string) bool {
 	return strings.Contains(path, "/go-build") || strings.HasPrefix(path, os.TempDir())
@@ -284,9 +324,9 @@ func filterSpecs(only session.Harness) []harness.Spec {
 	return nil
 }
 
-// installInto merges the registry's hook entries into path, reporting whether
+// initInto merges the registry's hook entries into path, reporting whether
 // the file needed changing.
-func installInto(path string, t harness.Spec, exe string, dryRun bool) (bool, error) {
+func initInto(path string, t harness.Spec, exe string, dryRun bool) (bool, error) {
 	original, config, err := readConfig(path)
 	if err != nil {
 		return false, err
@@ -305,7 +345,7 @@ func installInto(path string, t harness.Spec, exe string, dryRun bool) (bool, er
 	if dryRun {
 		return true, nil
 	}
-	if err := backup(path, original); err != nil {
+	if err := backup.Save(path, original); err != nil {
 		return false, err
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -342,18 +382,6 @@ func readConfig(path string) ([]byte, map[string]any, error) {
 		}
 	}
 	return raw, config, nil
-}
-
-// backup copies the previous contents aside before the file is rewritten.
-func backup(path string, original []byte) error {
-	if len(original) == 0 {
-		return nil
-	}
-	dst := fmt.Sprintf("%s.bak-%s", path, time.Now().UTC().Format("20060102T150405Z"))
-	if err := os.WriteFile(dst, original, 0o644); err != nil {
-		return fmt.Errorf("back up %s: %w", path, err)
-	}
-	return nil
 }
 
 // hookEntry is the matcher group this tool installs. The matcher is omitted so

@@ -76,6 +76,7 @@ type Entry struct {
 	Scope  Scope  `json:"scope"`
 	Kind   Kind   `json:"kind"`
 	Author string `json:"author"`
+	To     string `json:"to,omitempty"`
 	Body   string `json:"body"`
 
 	// Resolves is the entry this one answers or closes; zero when it opens

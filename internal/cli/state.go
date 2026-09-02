@@ -130,12 +130,16 @@ func newStateListCmd(opts *options) *cobra.Command {
 				fmt.Fprintln(cmd.OutOrStdout(), "no values")
 				return nil
 			}
+			authors, err := roomAuthors(cmd.Context(), rc.store)
+			if err != nil {
+				return err
+			}
 
 			tw := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
 			fmt.Fprintln(tw, "KEY\tVALUE\tREV\tBY\tUPDATED")
 			for _, st := range values {
 				fmt.Fprintf(tw, "%s\t%s\t%d\t%s\t%s\n",
-					st.Key, truncate(st.Value, 52), st.Revision, room.Author(st.Author), room.Ago(st.UpdatedAt))
+					st.Key, truncate(st.Value, 52), st.Revision, authors.Name(st.Author), room.Ago(st.UpdatedAt))
 			}
 			return tw.Flush()
 		},

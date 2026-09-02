@@ -45,6 +45,15 @@ func Snapshot() (Table, error) {
 	return table, nil
 }
 
+// Args returns one process's full command line. Snapshot reads only names.
+func Args(pid int) (string, error) {
+	out, err := exec.Command("ps", "-p", strconv.Itoa(pid), "-o", "command=").Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
 // Running reports whether pid is live and its command still looks like want.
 // Checking the command guards against a recycled pid being mistaken for the
 // original process; an empty want checks existence only.

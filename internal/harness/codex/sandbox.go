@@ -1,18 +1,20 @@
-package cli
+package codex
 
 import (
 	"fmt"
 	"os"
 	"strings"
+
+	"github.com/codyhartsook/multiplayer/internal/backup"
 )
 
 const sandboxSection = "[sandbox_workspace_write]"
 
-// ensureWritableRoot grants Codex's sandbox write access to dir. Codex runs
+// EnsureWritableRoot grants Codex's sandbox write access to dir. Codex runs
 // agent commands under seatbelt with only the workspace writable, so without
 // this every room write fails as a readonly database. Hooks are unsandboxed,
 // which is why the breakage looks selective.
-func ensureWritableRoot(path, dir string, dryRun bool) (bool, error) {
+func EnsureWritableRoot(path, dir string, dryRun bool) (bool, error) {
 	original, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -28,7 +30,7 @@ func ensureWritableRoot(path, dir string, dryRun bool) (bool, error) {
 	if !changed || dryRun {
 		return changed, nil
 	}
-	if err := backup(path, original); err != nil {
+	if err := backup.Save(path, original); err != nil {
 		return false, err
 	}
 	// Preserve the file's own permissions; it can hold credentials.
@@ -95,9 +97,9 @@ func addWritableRoot(content, dir string) (string, bool) {
 	return strings.Join(inserted, "\n"), true
 }
 
-// removeWritableRoot takes dir back out of Codex's sandbox roots, leaving the
+// RemoveWritableRoot takes dir back out of Codex's sandbox roots, leaving the
 // rest of the line, and the file, as they were.
-func removeWritableRoot(path, dir string, dryRun bool) (bool, error) {
+func RemoveWritableRoot(path, dir string, dryRun bool) (bool, error) {
 	original, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -123,7 +125,7 @@ func removeWritableRoot(path, dir string, dryRun bool) (bool, error) {
 	// The only entry in the list.
 	updated = strings.Replace(updated, "["+quoted+"]", "[]", 1)
 
-	if err := backup(path, original); err != nil {
+	if err := backup.Save(path, original); err != nil {
 		return false, err
 	}
 	mode := os.FileMode(0o600)

@@ -114,7 +114,11 @@ func briefingFor(ctx context.Context, st store.Store, rs store.RoomStore, sess *
 			return "", err
 		}
 	}
-	return room.Briefing(here, entries, values, others), nil
+	authors, err := roomAuthors(ctx, st)
+	if err != nil {
+		return "", err
+	}
+	return room.Briefing(here, entries, values, others, authors), nil
 }
 
 // noticeFor injects a nudge when something is waiting, nothing otherwise. It

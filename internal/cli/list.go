@@ -84,9 +84,10 @@ func writeTable(w io.Writer, sessions []*session.Session) error {
 	}
 
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "HARNESS\tSESSION\tREPO\tBRANCH\tWORKTREE\tSTATUS\tLAST SEEN")
+	fmt.Fprintln(tw, "AGENT\tHARNESS\tSESSION\tREPO\tBRANCH\tWORKTREE\tSTATUS\tLAST SEEN")
 	for _, s := range sessions {
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+			displayAgent(s),
 			dash(string(s.Harness)),
 			shortID(s.ID),
 			repoName(s),

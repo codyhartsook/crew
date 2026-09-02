@@ -90,6 +90,7 @@ call records the git checkout, and the pool slot if there is one.`,
 	root.AddCommand(
 		newHookCmd(opts),
 		newListCmd(opts),
+		newWhoAmICmd(opts),
 		newServeCmd(opts),
 		newFleetCmd(opts),
 		newPostCmd(opts),
@@ -101,7 +102,7 @@ call records the git checkout, and the pool slot if there is one.`,
 		newStateCmd(opts),
 		newClearCmd(opts),
 		newPruneCmd(opts),
-		newInstallCmd(opts),
+		newInitCmd(opts),
 		newUninstallCmd(opts),
 	)
 	return root

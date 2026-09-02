@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS entries (
     scope      TEXT    NOT NULL,
     kind       TEXT    NOT NULL,
     author     TEXT    NOT NULL,
+    recipient  TEXT    NOT NULL DEFAULT '',
     body       TEXT    NOT NULL,
     resolves   INTEGER NOT NULL DEFAULT 0,
     created_at TEXT    NOT NULL
@@ -64,7 +65,7 @@ var _ store.RoomStore = (*Store)(nil)
 // entryColumns is the projection every entry read shares. resolved_by is
 // derived rather than stored, so resolution stays an append and never a write
 // back over somebody else's row.
-const entryColumns = `e.id, e.room, e.scope, e.kind, e.author, e.body, e.resolves,
+const entryColumns = `e.id, e.room, e.scope, e.kind, e.author, e.recipient, e.body, e.resolves,
     COALESCE(r.id, 0) AS resolved_by, e.created_at`
 
 const entryFrom = ` FROM entries e LEFT JOIN entries r ON r.resolves = e.id`
@@ -141,14 +142,20 @@ func (s *Store) Post(ctx context.Context, e *room.Entry) error {
 	if strings.TrimSpace(e.Body) == "" {
 		return errors.New("post: body is empty")
 	}
+	if e.To != "" && !e.Kind.Addressed() {
+		return errors.New("post: only questions, handoffs, and reviews can target an agent")
+	}
+	if e.To != "" && e.To == e.Author {
+		return errors.New("post: author cannot target itself")
+	}
 
 	const q = `
-INSERT INTO entries (room, scope, kind, author, body, resolves,
+INSERT INTO entries (room, scope, kind, author, recipient, body, resolves,
                      created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?)`
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
 
 	res, err := s.db.ExecContext(ctx, q,
-		e.Room, string(e.Scope), string(e.Kind), e.Author, e.Body, e.Resolves, formatTime(e.CreatedAt))
+		e.Room, string(e.Scope), string(e.Kind), e.Author, e.To, e.Body, e.Resolves, formatTime(e.CreatedAt))
 	if err != nil {
 		return fmt.Errorf("post entry: %w", err)
 	}
@@ -241,10 +248,11 @@ func (s *Store) Unread(ctx context.Context, sessionKey string) ([]*room.Entry, e
 SELECT ` + entryColumns + entryFrom + `
 WHERE e.room IN (SELECT room FROM memberships WHERE session_key = ?)
   AND e.author != ?
+  AND (e.recipient = '' OR e.recipient = ?)
   AND e.id > COALESCE((SELECT last_seen FROM cursors WHERE session_key = ?), 0)
   AND ((` + openPredicate + `) OR (` + answersToMe + `))
 ORDER BY e.id`
-	return s.queryEntries(ctx, q, sessionKey, sessionKey, sessionKey, sessionKey)
+	return s.queryEntries(ctx, q, sessionKey, sessionKey, sessionKey, sessionKey, sessionKey)
 }
 
 func (s *Store) Ack(ctx context.Context, sessionKey string, throughID int64) error {
@@ -283,7 +291,7 @@ func scanEntry(sc scanner) (*room.Entry, error) {
 		kind      string
 		createdAt string
 	)
-	err := sc.Scan(&e.ID, &e.Room, &scope, &kind, &e.Author, &e.Body, &e.Resolves,
+	err := sc.Scan(&e.ID, &e.Room, &scope, &kind, &e.Author, &e.To, &e.Body, &e.Resolves,
 		&e.ResolvedBy, &createdAt)
 	if err != nil {
 		return nil, err

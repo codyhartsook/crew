@@ -222,3 +222,29 @@ func TestResolveAuthorIgnoresAncestorOutsideRoom(t *testing.T) {
 		t.Fatal("resolveAuthor claimed a session that is working in another room")
 	}
 }
+
+func TestResolveAgentByAlias(t *testing.T) {
+	want := agent(session.HarnessClaude, "target", 0)
+	st := seeded(t, want)
+	got, err := resolveAgent(context.Background(), st, []string{testRoom}, want.Alias)
+	if err != nil {
+		t.Fatalf("resolveAgent: %v", err)
+	}
+	if got != want.Key() {
+		t.Errorf("recipient = %q, want %q", got, want.Key())
+	}
+}
+
+func TestOwnAlias(t *testing.T) {
+	clearEnv(t)
+	want := agent(session.HarnessCodex, "mine", 0)
+	st := seeded(t, want)
+	t.Setenv("CODEX_THREAD_ID", want.ID)
+	got, err := ownAlias(context.Background(), st, []string{testRoom})
+	if err != nil {
+		t.Fatalf("ownAlias: %v", err)
+	}
+	if got != want.Alias {
+		t.Errorf("name = %q, want %q", got, want.Alias)
+	}
+}

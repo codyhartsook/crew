@@ -29,13 +29,14 @@ const timeFormat = time.RFC3339Nano
 
 // SchemaVersion is the store layout this binary understands. Raise it whenever
 // a migration changes what older binaries can safely assume.
-const SchemaVersion = 2
+const SchemaVersion = 3
 
 const schema = `
 CREATE TABLE IF NOT EXISTS sessions (
     key              TEXT PRIMARY KEY,
     id               TEXT NOT NULL,
     harness          TEXT NOT NULL,
+    alias            TEXT NOT NULL DEFAULT '',
     status           TEXT NOT NULL,
     pid              INTEGER NOT NULL DEFAULT 0,
     host             TEXT NOT NULL DEFAULT '',
@@ -76,15 +77,16 @@ CREATE INDEX IF NOT EXISTS sessions_last_seen ON sessions(last_seen DESC);
 `
 
 // columns is the projection every read shares, so scanRow stays in step with it.
-const columns = `key, id, harness, status, pid, host, username, cwd,
+const columns = `key, id, harness, alias, status, pid, host, username, cwd,
     has_repo, repo_name, repo_root, repo_main_root, repo_remote, repo_branch, repo_head, repo_detached, repo_is_worktree,
     has_pool, pool_manager, pool_name, pool_slot, pool_root, pool_leased, pool_lease_id, pool_lease_holder,
     started_at, last_seen, ended_at, end_reason, meta`
 
-// sessionMigrations bring a pre-v2 database up to date: the pooled-worktree
-// columns were named after treehouse before any other manager was modelled.
-// Each is ignored when the column already exists.
-var sessionMigrations = []string{
+// migrations bring older databases up to date. Each is ignored when the
+// column already exists.
+var migrations = []string{
+	`ALTER TABLE sessions ADD COLUMN alias             TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE entries ADD COLUMN recipient          TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE sessions ADD COLUMN has_pool          INTEGER NOT NULL DEFAULT 0`,
 	`ALTER TABLE sessions ADD COLUMN pool_manager      TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE sessions ADD COLUMN pool_name         TEXT NOT NULL DEFAULT ''`,
@@ -94,6 +96,9 @@ var sessionMigrations = []string{
 	`ALTER TABLE sessions ADD COLUMN pool_lease_id     TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE sessions ADD COLUMN pool_lease_holder TEXT NOT NULL DEFAULT ''`,
 }
+
+const aliasIndex = `CREATE UNIQUE INDEX IF NOT EXISTS sessions_active_alias
+ON sessions(alias) WHERE status = 'active' AND alias != ''`
 
 // backfillPool carries the treehouse-named columns forward. It runs only where
 // they exist, since a database created at v2 never had them.
@@ -156,7 +161,7 @@ func migrate(db *sql.DB) error {
 	if _, err := db.ExecContext(ctx, schema+roomSchema); err != nil {
 		return fmt.Errorf("apply schema: %w", err)
 	}
-	for _, stmt := range sessionMigrations {
+	for _, stmt := range migrations {
 		if _, err := db.ExecContext(ctx, stmt); err != nil && !isDuplicateColumn(err) {
 			return fmt.Errorf("migrate: %s: %w", stmt, err)
 		}
@@ -165,6 +170,12 @@ func migrate(db *sql.DB) error {
 		if _, err := db.ExecContext(ctx, backfillPool); err != nil {
 			return fmt.Errorf("backfill pool columns: %w", err)
 		}
+	}
+	if _, err := db.ExecContext(ctx, aliasIndex); err != nil {
+		return fmt.Errorf("create alias index: %w", err)
+	}
+	if err := backfillAliases(ctx, db); err != nil {
+		return err
 	}
 	if _, err := db.ExecContext(ctx, roomIndexes); err != nil {
 		return fmt.Errorf("create indexes: %w", err)
@@ -225,7 +236,22 @@ func (s *Store) Upsert(ctx context.Context, sess *session.Session) error {
 	if sess.ID == "" {
 		return errors.New("upsert: session has no id")
 	}
+	for attempts := 0; attempts < 256; attempts++ {
+		alias, err := s.aliasFor(ctx, sess.Key(), sess.Status)
+		if err != nil {
+			return err
+		}
+		sess.Alias = alias
+		if err := s.upsert(ctx, sess); err == nil {
+			return nil
+		} else if !isAliasConflict(err) {
+			return err
+		}
+	}
+	return errors.New("assign session alias: no names available")
+}
 
+func (s *Store) upsert(ctx context.Context, sess *session.Session) error {
 	meta, err := json.Marshal(orEmptyMap(sess.Meta))
 	if err != nil {
 		return fmt.Errorf("encode meta: %w", err)
@@ -241,12 +267,13 @@ func (s *Store) Upsert(ctx context.Context, sess *session.Session) error {
 
 	const q = `
 INSERT INTO sessions (` + columns + `)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?,
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?, ?)
 ON CONFLICT(key) DO UPDATE SET
     status = excluded.status,
+    alias = excluded.alias,
     pid = excluded.pid,
     host = excluded.host,
     username = excluded.username,
@@ -274,7 +301,7 @@ ON CONFLICT(key) DO UPDATE SET
     meta = excluded.meta`
 
 	_, err = s.db.ExecContext(ctx, q,
-		sess.Key(), sess.ID, string(sess.Harness), string(sess.Status), sess.PID, sess.Host, sess.User, sess.CWD,
+		sess.Key(), sess.ID, string(sess.Harness), sess.Alias, string(sess.Status), sess.PID, sess.Host, sess.User, sess.CWD,
 		sess.Repo != nil, repo.Name, repo.Root, repo.MainRoot, repo.Remote, repo.Branch, repo.Head, repo.Detached, repo.IsWorktree,
 		sess.Pool != nil, pool.Manager, pool.Name, pool.Slot, pool.Root, pool.Leased, pool.LeaseID, pool.LeaseHolder,
 		formatTime(sess.StartedAt), formatTime(sess.LastSeen), formatTimePtr(sess.EndedAt), sess.EndReason, string(meta),
@@ -283,6 +310,94 @@ ON CONFLICT(key) DO UPDATE SET
 		return fmt.Errorf("upsert session %s: %w", sess.Key(), err)
 	}
 	return nil
+}
+
+func (s *Store) aliasFor(ctx context.Context, key string, status session.Status) (string, error) {
+	if status != session.StatusActive {
+		return "", nil
+	}
+	var alias string
+	err := s.db.QueryRowContext(ctx, `SELECT alias FROM sessions WHERE key = ? AND status = ?`, key, session.StatusActive).Scan(&alias)
+	switch {
+	case err == nil && alias != "":
+		return alias, nil
+	case err != nil && !errors.Is(err, sql.ErrNoRows):
+		return "", fmt.Errorf("read session alias: %w", err)
+	}
+	used, err := activeAliases(ctx, s.db)
+	if err != nil {
+		return "", err
+	}
+	alias, ok := session.RandomAlias(used)
+	if !ok {
+		return "", errors.New("assign session alias: no names available")
+	}
+	return alias, nil
+}
+
+func activeAliases(ctx context.Context, db interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+}) (map[string]bool, error) {
+	rows, err := db.QueryContext(ctx, `SELECT alias FROM sessions WHERE status = ? AND alias != ''`, session.StatusActive)
+	if err != nil {
+		return nil, fmt.Errorf("list session aliases: %w", err)
+	}
+	defer rows.Close()
+	used := map[string]bool{}
+	for rows.Next() {
+		var alias string
+		if err := rows.Scan(&alias); err != nil {
+			return nil, fmt.Errorf("read session alias: %w", err)
+		}
+		used[alias] = true
+	}
+	return used, rows.Err()
+}
+
+func backfillAliases(ctx context.Context, db *sql.DB) error {
+	rows, err := db.QueryContext(ctx, `SELECT key FROM sessions WHERE status = ? AND alias = '' ORDER BY key`, session.StatusActive)
+	if err != nil {
+		return fmt.Errorf("list sessions missing aliases: %w", err)
+	}
+	defer rows.Close()
+	var keys []string
+	for rows.Next() {
+		var key string
+		if err := rows.Scan(&key); err != nil {
+			return fmt.Errorf("read session missing alias: %w", err)
+		}
+		keys = append(keys, key)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("list sessions missing aliases: %w", err)
+	}
+	for _, key := range keys {
+		for attempts := 0; attempts < 256; attempts++ {
+			used, err := activeAliases(ctx, db)
+			if err != nil {
+				return err
+			}
+			alias, ok := session.RandomAlias(used)
+			if !ok {
+				return errors.New("assign session alias: no names available")
+			}
+			res, err := db.ExecContext(ctx, `UPDATE sessions SET alias = ? WHERE key = ? AND status = ? AND alias = ''`, alias, key, session.StatusActive)
+			if err == nil {
+				if n, _ := res.RowsAffected(); n != 0 {
+					break
+				}
+				break
+			}
+			if !isAliasConflict(err) {
+				return fmt.Errorf("assign alias to %s: %w", key, err)
+			}
+		}
+	}
+	return nil
+}
+
+func isAliasConflict(err error) bool {
+	return strings.Contains(err.Error(), "UNIQUE constraint failed: sessions.alias")
 }
 
 // An already-ended session keeps its end time, so a duplicate SessionEnd is
@@ -425,7 +540,7 @@ func scanSession(sc scanner) (*session.Session, error) {
 	)
 
 	err := sc.Scan(
-		&key, &sess.ID, &harness, &status, &sess.PID, &sess.Host, &sess.User, &sess.CWD,
+		&key, &sess.ID, &harness, &sess.Alias, &status, &sess.PID, &sess.Host, &sess.User, &sess.CWD,
 		&hasRepo, &repo.Name, &repo.Root, &repo.MainRoot, &repo.Remote, &repo.Branch, &repo.Head, &repo.Detached, &repo.IsWorktree,
 		&hasPool, &pool.Manager, &pool.Name, &pool.Slot, &pool.Root, &pool.Leased, &pool.LeaseID, &pool.LeaseHolder,
 		&startedAt, &lastSeen, &endedAt, &sess.EndReason, &metaJSON,

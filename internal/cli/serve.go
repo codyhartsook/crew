@@ -17,6 +17,7 @@ import (
 	"github.com/codyhartsook/multiplayer/internal/api"
 	"github.com/codyhartsook/multiplayer/internal/store/sqlitestore"
 	"github.com/codyhartsook/multiplayer/internal/ui"
+	"github.com/codyhartsook/multiplayer/internal/wake"
 )
 
 // shutdownGrace is how long in-flight requests get to finish on shutdown.
@@ -71,7 +72,7 @@ func serveRegistry(cmd *cobra.Command, opts *options, addr string, verbose bool,
 	}
 	defer st.Close()
 
-	level := slog.LevelInfo
+	level := slog.LevelWarn
 	if verbose {
 		level = slog.LevelDebug
 	}
@@ -91,7 +92,15 @@ func serveRegistry(cmd *cobra.Command, opts *options, addr string, verbose bool,
 	if onReady != nil {
 		onReady("http://" + ln.Addr().String())
 	}
-	return run(cmd.Context(), srv, ln, log)
+
+	ctx, cancel := context.WithCancel(cmd.Context())
+	defer cancel()
+	broker := wake.NewBroker(st, log, wake.DefaultInterval)
+	if err := wake.ListenSignals(ctx, wake.SocketPath(path), broker.Trigger); err != nil {
+		log.Warn("wake signals unavailable; using polling", "err", err)
+	}
+	go broker.Run(ctx)
+	return run(ctx, srv, ln, log)
 }
 
 // run serves until the context is cancelled or a termination signal arrives,
