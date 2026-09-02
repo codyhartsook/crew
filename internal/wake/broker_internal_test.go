@@ -1,0 +1,143 @@
+package wake
+
+import (
+	"context"
+	"io"
+	"log/slog"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/codyhartsook/multiplayer/internal/harness"
+	"github.com/codyhartsook/multiplayer/internal/room"
+	"github.com/codyhartsook/multiplayer/internal/session"
+	"github.com/codyhartsook/multiplayer/internal/store"
+)
+
+type fakeReader struct {
+	sessions []*session.Session
+	unread   map[string][]*room.Entry
+	asked    []string
+	ended    []string
+}
+
+func (f *fakeReader) List(context.Context, store.Filter) ([]*session.Session, error) {
+	return f.sessions, nil
+}
+
+func (f *fakeReader) Unread(_ context.Context, key string) ([]*room.Entry, error) {
+	f.asked = append(f.asked, key)
+	return f.unread[key], nil
+}
+
+func (f *fakeReader) End(_ context.Context, key string, _ time.Time, _ string) error {
+	f.ended = append(f.ended, key)
+	return nil
+}
+
+func entries(ids ...int64) []*room.Entry {
+	out := make([]*room.Entry, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, &room.Entry{ID: id, Kind: room.KindQuestion, Author: "codex:other", Room: "r"})
+	}
+	return out
+}
+
+func testBroker(f *fakeReader, w waker) *Broker {
+	return &Broker{store: f, log: slog.New(slog.NewTextHandler(io.Discard, nil)), woken: map[string]int64{}, wake: w}
+}
+
+func sess(h session.Harness, id string) *session.Session {
+	return &session.Session{ID: id, Harness: h, Status: session.StatusActive}
+}
+
+func TestSweepWakesOncePerNewEntry(t *testing.T) {
+	f := &fakeReader{
+		sessions: []*session.Session{sess(session.HarnessCodex, "t1")},
+		unread:   map[string][]*room.Entry{"codex:t1": entries(7)},
+	}
+	var woke int
+	b := testBroker(f, func(context.Context, *session.Session, string) error { woke++; return nil })
+
+	b.sweep(context.Background())
+	b.sweep(context.Background())
+	if woke != 1 {
+		t.Fatalf("woke %d times for the same entry, want 1", woke)
+	}
+
+	// A newer entry is new information, so it earns one more wake.
+	f.unread["codex:t1"] = entries(7, 9)
+	b.sweep(context.Background())
+	if woke != 2 {
+		t.Fatalf("woke %d times, want 2 after a new entry", woke)
+	}
+}
+
+func TestSweepSkipsHarnessWithoutWaker(t *testing.T) {
+	f := &fakeReader{
+		sessions: []*session.Session{sess(session.HarnessClaude, "c1")},
+		unread:   map[string][]*room.Entry{"claude:c1": entries(1)},
+	}
+	b := testBroker(f, func(context.Context, *session.Session, string) error {
+		t.Fatal("woke a harness with no waker")
+		return nil
+	})
+	b.sweep(context.Background())
+	if len(f.asked) != 0 {
+		t.Errorf("queried unread for %v, want no queries", f.asked)
+	}
+}
+
+func TestSweepIgnoresSessionWithNothingUnread(t *testing.T) {
+	f := &fakeReader{sessions: []*session.Session{sess(session.HarnessCodex, "t1")}}
+	b := testBroker(f, func(context.Context, *session.Session, string) error {
+		t.Fatal("woke a session with nothing unread")
+		return nil
+	})
+	b.sweep(context.Background())
+}
+
+func TestSweepRetiresGoneSessionAndRetriesNothing(t *testing.T) {
+	f := &fakeReader{
+		sessions: []*session.Session{sess(session.HarnessCodex, "t1")},
+		unread:   map[string][]*room.Entry{"codex:t1": entries(3)},
+	}
+	b := testBroker(f, func(context.Context, *session.Session, string) error { return harness.ErrSessionGone })
+	b.sweep(context.Background())
+	if len(f.ended) != 1 || f.ended[0] != "codex:t1" {
+		t.Fatalf("ended %v, want [codex:t1]", f.ended)
+	}
+	// The cursor must not advance on a failed wake, or a recovered session
+	// would never be told.
+	if b.woken["codex:t1"] != 0 {
+		t.Errorf("cursor advanced to %d on a failed wake", b.woken["codex:t1"])
+	}
+}
+
+func TestSweepForgetsEndedSessions(t *testing.T) {
+	f := &fakeReader{
+		sessions: []*session.Session{sess(session.HarnessCodex, "t1")},
+		unread:   map[string][]*room.Entry{"codex:t1": entries(4)},
+	}
+	b := testBroker(f, func(context.Context, *session.Session, string) error { return nil })
+	b.sweep(context.Background())
+	if b.woken["codex:t1"] == 0 {
+		t.Fatal("cursor not recorded")
+	}
+	f.sessions = nil
+	b.sweep(context.Background())
+	if len(b.woken) != 0 {
+		t.Errorf("kept cursors %v for sessions that are gone", b.woken)
+	}
+}
+
+func TestWakeTextNamesTheEntry(t *testing.T) {
+	one := wakeText(entries(12))
+	if !strings.Contains(one, "[12]") || !strings.Contains(one, "question") {
+		t.Errorf("single-entry text lost detail: %q", one)
+	}
+	many := wakeText(entries(12, 13))
+	if !strings.Contains(many, "2 entries") || !strings.Contains(many, "[13]") {
+		t.Errorf("multi-entry text lost detail: %q", many)
+	}
+}

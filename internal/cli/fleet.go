@@ -45,7 +45,8 @@ listening on the address, opens against it rather than starting a second.`,
 				return openBrowser(cmd.Context(), baseURL, noOpen)
 			}
 
-			return serveRegistry(cmd, opts, addr, verbose, func(url string) {
+			// The dashboard only reads; waking is left to serve --wake.
+			return serveRegistry(cmd, opts, addr, verbose, false, func(url string) {
 				fmt.Fprintf(out, "dashboard  %s\n", url)
 				fmt.Fprintln(out, "ctrl-c to stop")
 				if err := openBrowser(cmd.Context(), url, noOpen); err != nil {

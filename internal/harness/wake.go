@@ -34,6 +34,13 @@ const (
 // Waker delivers text to a live session as a new user turn.
 type Waker func(ctx context.Context, s *session.Session, text string) error
 
+// CanWake reports whether a harness has an inbound channel, so a caller can
+// skip a session rather than build a message it cannot deliver.
+func CanWake(h session.Harness) bool {
+	spec, ok := For(h)
+	return ok && spec.Wake != nil
+}
+
 // WakeSession delivers text to s through its harness waker. It returns
 // ErrNoWaker when the harness has none, which callers treat as "the room is
 // still the durable path", not as a failure.
