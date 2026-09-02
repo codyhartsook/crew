@@ -7,7 +7,10 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/codyhartsook/multiplayer/internal/backup"
 	"github.com/codyhartsook/multiplayer/internal/harness"
+	"github.com/codyhartsook/multiplayer/internal/harness/claude"
+	"github.com/codyhartsook/multiplayer/internal/harness/codex"
 )
 
 func newUninstallCmd(opts *options) *cobra.Command {
@@ -18,8 +21,8 @@ func newUninstallCmd(opts *options) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "uninstall",
-		Short: "Remove the hooks, skill and sandbox grant this tool installed",
-		Long: `Removes only what install added: its own hook entries, the room skill, and
+		Short: "Remove the hooks, skill and sandbox grant init added",
+		Long: `Removes only what init added: its own hook entries, the room skill, and
 Codex's sandbox grant. Other hooks and settings are left alone.
 
 The store is your data and is kept unless you pass --purge. Without --yes
@@ -104,7 +107,7 @@ func uninstallFrom(cmd *cobra.Command, home string, t harness.Spec, dryRun bool)
 			case dryRun:
 				fmt.Fprintf(out, "%s: would remove hooks from %s\n", name, path)
 			default:
-				if err := backup(path, original); err != nil {
+				if err := backup.Save(path, original); err != nil {
 					return err
 				}
 				if empty {
@@ -122,6 +125,21 @@ func uninstallFrom(cmd *cobra.Command, home string, t harness.Spec, dryRun bool)
 		}
 	}
 
+	if t.MCPPath != "" {
+		mcpPath := filepath.Join(home, t.MCPPath)
+		removed, err := unregisterMCP(mcpPath, claude.Name, claude.IsOurs, dryRun)
+		if err != nil {
+			return err
+		}
+		if removed {
+			verb := "channel unregistered from"
+			if dryRun {
+				verb = "would unregister channel from"
+			}
+			fmt.Fprintf(out, "%s: %s %s\n", name, verb, mcpPath)
+		}
+	}
+
 	skillDir := filepath.Join(home, t.SkillsDir, skillName)
 	if err := removeSkill(cmd, name, skillDir, dryRun); err != nil {
 		return err
@@ -130,13 +148,13 @@ func uninstallFrom(cmd *cobra.Command, home string, t harness.Spec, dryRun bool)
 	if t.SandboxTOML == "" {
 		return nil
 	}
-	// The store directory is the grant; resolve it the same way install did.
+	// The store directory is the grant; resolve it the same way init did.
 	storeDir, err := (&options{}).storeDir()
 	if err != nil {
 		return err
 	}
 	sandboxPath := filepath.Join(home, t.SandboxTOML)
-	removed, err := removeWritableRoot(sandboxPath, storeDir, dryRun)
+	removed, err := codex.RemoveWritableRoot(sandboxPath, storeDir, dryRun)
 	if err != nil {
 		return err
 	}

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/codyhartsook/multiplayer/internal/harness"
+	"github.com/codyhartsook/multiplayer/internal/harness/waker"
 	"github.com/codyhartsook/multiplayer/internal/room"
 	"github.com/codyhartsook/multiplayer/internal/session"
 	"github.com/codyhartsook/multiplayer/internal/store"
@@ -43,7 +43,7 @@ func entries(ids ...int64) []*room.Entry {
 	return out
 }
 
-func testBroker(f *fakeReader, w waker) *Broker {
+func testBroker(f *fakeReader, w wakeFunc) *Broker {
 	return &Broker{store: f, log: slog.New(slog.NewTextHandler(io.Discard, nil)), woken: map[string]int64{}, wake: w}
 }
 
@@ -75,8 +75,8 @@ func TestSweepWakesOncePerNewEntry(t *testing.T) {
 
 func TestSweepSkipsHarnessWithoutWaker(t *testing.T) {
 	f := &fakeReader{
-		sessions: []*session.Session{sess(session.HarnessClaude, "c1")},
-		unread:   map[string][]*room.Entry{"claude:c1": entries(1)},
+		sessions: []*session.Session{sess(session.HarnessUnknown, "u1")},
+		unread:   map[string][]*room.Entry{"unknown:u1": entries(1)},
 	}
 	b := testBroker(f, func(context.Context, *session.Session, string) error {
 		t.Fatal("woke a harness with no waker")
@@ -102,7 +102,7 @@ func TestSweepRetiresGoneSessionAndRetriesNothing(t *testing.T) {
 		sessions: []*session.Session{sess(session.HarnessCodex, "t1")},
 		unread:   map[string][]*room.Entry{"codex:t1": entries(3)},
 	}
-	b := testBroker(f, func(context.Context, *session.Session, string) error { return harness.ErrSessionGone })
+	b := testBroker(f, func(context.Context, *session.Session, string) error { return waker.ErrSessionGone })
 	b.sweep(context.Background())
 	if len(f.ended) != 1 || f.ended[0] != "codex:t1" {
 		t.Fatalf("ended %v, want [codex:t1]", f.ended)
@@ -133,11 +133,11 @@ func TestSweepForgetsEndedSessions(t *testing.T) {
 
 func TestWakeTextNamesTheEntry(t *testing.T) {
 	one := wakeText(entries(12))
-	if !strings.Contains(one, "[12]") || !strings.Contains(one, "question") {
+	if !strings.Contains(one, "[12]") || !strings.Contains(one, "question") || !strings.Contains(one, "multiplayer room --inbox --ack") {
 		t.Errorf("single-entry text lost detail: %q", one)
 	}
 	many := wakeText(entries(12, 13))
-	if !strings.Contains(many, "2 entries") || !strings.Contains(many, "[13]") {
+	if !strings.Contains(many, "2 entries") || !strings.Contains(many, "[13]") || !strings.Contains(many, "multiplayer room --inbox --ack") {
 		t.Errorf("multi-entry text lost detail: %q", many)
 	}
 }

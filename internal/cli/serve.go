@@ -31,7 +31,6 @@ func newServeCmd(opts *options) *cobra.Command {
 	var (
 		addr    string
 		verbose bool
-		wake    bool
 	)
 
 	cmd := &cobra.Command{
@@ -43,7 +42,7 @@ MULTIPLAYER_SERVER points hooks at it, so they write through the API instead of
 opening the database directly.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return serveRegistry(cmd, opts, addr, verbose, wake, func(baseURL string) {
+			return serveRegistry(cmd, opts, addr, verbose, func(baseURL string) {
 				fmt.Fprintf(cmd.OutOrStdout(), "dashboard  %s\n", baseURL)
 				fmt.Fprintf(cmd.OutOrStdout(), "hooks      export MULTIPLAYER_SERVER=%s\n", baseURL)
 			})
@@ -52,16 +51,13 @@ opening the database directly.`,
 
 	cmd.Flags().StringVar(&addr, "addr", defaultAddr, "address to listen on")
 	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "log every request")
-	cmd.Flags().BoolVar(&wake, "wake", false, "notify sessions that have entries addressed to them")
 	return cmd
 }
 
 // serveRegistry runs the registry until the command's context is cancelled or a
 // termination signal arrives. onReady receives the resolved base URL once the
 // listener is open, which is where callers announce themselves or open a browser.
-//
-// Waking is opt-in because it injects a turn into somebody's live session.
-func serveRegistry(cmd *cobra.Command, opts *options, addr string, verbose, enableWake bool, onReady func(baseURL string)) error {
+func serveRegistry(cmd *cobra.Command, opts *options, addr string, verbose bool, onReady func(baseURL string)) error {
 	// A server that proxied to another server would be a loop.
 	if opts.server != "" {
 		return errors.New("this command reads a local database; unset --server")
@@ -76,7 +72,7 @@ func serveRegistry(cmd *cobra.Command, opts *options, addr string, verbose, enab
 	}
 	defer st.Close()
 
-	level := slog.LevelInfo
+	level := slog.LevelWarn
 	if verbose {
 		level = slog.LevelDebug
 	}
@@ -98,11 +94,7 @@ func serveRegistry(cmd *cobra.Command, opts *options, addr string, verbose, enab
 	}
 
 	ctx := cmd.Context()
-	if enableWake {
-		brokerCtx, stopBroker := context.WithCancel(ctx)
-		defer stopBroker()
-		go wake.NewBroker(st, log, wake.DefaultInterval).Run(brokerCtx)
-	}
+	go wake.NewBroker(st, log, wake.DefaultInterval).Run(ctx)
 	return run(ctx, srv, ln, log)
 }
 

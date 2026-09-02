@@ -33,3 +33,4 @@ go.work.sum
 
 # Locally built binary
 /multiplayer
+/build/

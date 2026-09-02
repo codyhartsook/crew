@@ -1,0 +1,27 @@
+version: 2
+project_name: multiplayer
+
+builds:
+  - main: ./cmd/multiplayer
+    ldflags:
+      - -s -w -X github.com/codyhartsook/multiplayer/internal/cli.version={{ .Version }}
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+    formats:
+      - tar.gz
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc

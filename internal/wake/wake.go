@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/codyhartsook/multiplayer/internal/harness"
+	"github.com/codyhartsook/multiplayer/internal/harness/waker"
 	"github.com/codyhartsook/multiplayer/internal/session"
 	"github.com/codyhartsook/multiplayer/internal/store"
 )
@@ -18,8 +19,8 @@ type Ender interface {
 	End(ctx context.Context, key string, at time.Time, reason string) error
 }
 
-// waker is the harness call, injected so tests do not shell out.
-type waker func(ctx context.Context, s *session.Session, text string) error
+// wakeFunc is the harness call, injected so tests do not shell out.
+type wakeFunc func(ctx context.Context, s *session.Session, text string) error
 
 // Deliver wakes s, retiring it when the harness reports it gone. That retirement
 // is the only liveness signal a daemon-hosted session has, since it shares the
@@ -31,9 +32,9 @@ func Deliver(ctx context.Context, e Ender, s *session.Session, text string) erro
 	return deliver(ctx, e, harness.WakeSession, s, text)
 }
 
-func deliver(ctx context.Context, e Ender, wake waker, s *session.Session, text string) error {
+func deliver(ctx context.Context, e Ender, wake wakeFunc, s *session.Session, text string) error {
 	err := wake(ctx, s, text)
-	if !errors.Is(err, harness.ErrSessionGone) {
+	if !errors.Is(err, waker.ErrSessionGone) {
 		return err
 	}
 	if endErr := e.End(ctx, s.Key(), time.Now().UTC(), "wake found the session gone"); endErr != nil && !errors.Is(endErr, store.ErrNotFound) {

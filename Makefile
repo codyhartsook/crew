@@ -1,4 +1,6 @@
-BIN     ?= $(HOME)/.local/bin/multiplayer
+BIN     ?= build/multiplayer
+PREFIX  ?= $(HOME)/.local
+BINDIR  ?= $(PREFIX)/bin
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -X github.com/codyhartsook/multiplayer/internal/cli.version=$(VERSION)
 
@@ -6,15 +8,17 @@ LDFLAGS := -X github.com/codyhartsook/multiplayer/internal/cli.version=$(VERSION
 
 ## build: compile the binary to $(BIN)
 build:
+	mkdir -p $(dir $(BIN))
 	go build -ldflags "$(LDFLAGS)" -o $(BIN) ./cmd/multiplayer
 
-## install: build, then register hooks and the skill with Claude Code and Codex
+## install: install the CLI to $(BINDIR)
 install: build
-	$(BIN) install
+	install -d $(BINDIR)
+	install -m 0755 $(BIN) $(BINDIR)/multiplayer
 
-## uninstall: remove the hooks, skill and sandbox grant (keeps the store)
+## uninstall: remove the CLI binary from $(BINDIR)
 uninstall:
-	$(BIN) uninstall --yes
+	rm -f $(BINDIR)/multiplayer
 
 test:
 	go test ./...
@@ -26,3 +30,4 @@ vet:
 	go vet ./...
 
 check: fmt vet test
+	sh -n scripts/install.sh

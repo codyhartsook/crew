@@ -8,6 +8,9 @@ import (
 	"slices"
 	"time"
 
+	"github.com/codyhartsook/multiplayer/internal/harness/claude"
+	"github.com/codyhartsook/multiplayer/internal/harness/codex"
+	"github.com/codyhartsook/multiplayer/internal/harness/waker"
 	"github.com/codyhartsook/multiplayer/internal/session"
 )
 
@@ -31,16 +34,17 @@ type Spec struct {
 	// SandboxTOML is the config whose sandbox needs write access to the store.
 	// Empty for a harness that does not sandbox.
 	SandboxTOML string
+	// MCPPath is the config registering our MCP servers, relative to home.
+	// Empty for a harness that cannot host one.
+	MCPPath string
 	// EndBudget caps the session-end hook, which runs in front of the user.
 	EndBudget time.Duration
 	// Timeouts is the timeout each lifecycle hook is installed with, keyed by
 	// wire event name. An event missing here is not installed.
 	Timeouts map[string]int
 	// Wake delivers a message into a live session, and is nil for a harness
-	// with no inbound channel. Delivery says when a woken session acts on it,
-	// and is empty when Wake is nil.
-	Wake     Waker
-	Delivery Delivery
+	// with no inbound channel.
+	Wake waker.Waker
 }
 
 var specs = []Spec{
@@ -52,14 +56,12 @@ var specs = []Spec{
 		ConfigPath: ".claude/settings.json",
 		ConfigRoot: "hooks",
 		SkillsDir:  ".claude/skills",
+		MCPPath:    ".claude.json",
 		// Claude Code's hook timeout has a high ceiling, so the end path is not
 		// squeezed the way Codex's is.
 		EndBudget: 4 * time.Second,
 		Timeouts:  map[string]int{"SessionStart": 10, "UserPromptSubmit": 5, "SessionEnd": 5},
-		// No waker. Claude Code listens on a per-session unix socket, but it is
-		// gated by a token held only in that process's environment and speaks an
-		// undocumented protocol, so a broker cannot reach it. Claude sessions
-		// wake each other through the harness's own cross-session messaging.
+		Wake:      claude.Wake,
 	},
 	{
 		Harness:     session.HarnessCodex,
@@ -73,8 +75,7 @@ var specs = []Spec{
 		// Codex clamps SessionEnd to three seconds and warns above it.
 		EndBudget: 2500 * time.Millisecond,
 		Timeouts:  map[string]int{"SessionStart": 10, "UserPromptSubmit": 5, "SessionEnd": 3},
-		Wake:      wakeCodex,
-		Delivery:  DeliverOnIdle,
+		Wake:      codex.Wake,
 	},
 }
 

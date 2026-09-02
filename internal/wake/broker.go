@@ -42,7 +42,7 @@ type Broker struct {
 	// once more, which is true rather than noisy.
 	woken map[string]int64
 	// wake is the harness call, injected so tests do not shell out.
-	wake waker
+	wake wakeFunc
 }
 
 func NewBroker(st Reader, log *slog.Logger, interval time.Duration) *Broker {
@@ -120,9 +120,9 @@ func (b *Broker) notify(ctx context.Context, s *session.Session) error {
 func wakeText(unread []*room.Entry) string {
 	newest := unread[len(unread)-1]
 	if len(unread) == 1 {
-		return fmt.Sprintf("multiplayer: %s [%d] from %s is addressed to you. Read it with: multiplayer inbox",
+		return fmt.Sprintf("multiplayer: %s [%d] from %s is addressed to you. Read it with: multiplayer room --inbox --ack",
 			newest.Kind, newest.ID, newest.Author)
 	}
-	return fmt.Sprintf("multiplayer: %d entries are addressed to you, newest %s [%d] from %s. Read them with: multiplayer inbox",
+	return fmt.Sprintf("multiplayer: %d entries are addressed to you, newest %s [%d] from %s. Read them with: multiplayer room --inbox --ack",
 		len(unread), newest.Kind, newest.ID, newest.Author)
 }

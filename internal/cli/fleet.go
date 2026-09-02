@@ -16,18 +16,16 @@ const probeTimeout = 750 * time.Millisecond
 
 func newFleetCmd(opts *options) *cobra.Command {
 	var (
-		addr    string
-		noOpen  bool
-		verbose bool
+		addr   string
+		noOpen bool
 	)
 
 	cmd := &cobra.Command{
-		Use:     "fleet",
-		Aliases: []string{"dashboard", "ui"},
-		Short:   "Open the fleet dashboard in a browser",
-		Long: `Starts the registry and opens the dashboard. If one is already
-listening on the address, opens against it rather than starting a second.`,
-		Args: cobra.NoArgs,
+		Use:     "dashboard",
+		Aliases: []string{"fleet", "ui"},
+		Short:   "Open the dashboard in a browser",
+		Long:    "Opens the dashboard served by multiplayer init.",
+		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			out := cmd.OutOrStdout()
 
@@ -37,28 +35,17 @@ listening on the address, opens against it rather than starting a second.`,
 				return openBrowser(cmd.Context(), opts.server, noOpen)
 			}
 
-			// A registry already on this address is the common case when the
-			// command is run a second time.
 			baseURL := "http://" + addr
-			if registryIsUp(cmd.Context(), baseURL) {
-				fmt.Fprintf(out, "dashboard  %s  (already running)\n", baseURL)
-				return openBrowser(cmd.Context(), baseURL, noOpen)
+			if !registryIsUp(cmd.Context(), baseURL) {
+				return fmt.Errorf("dashboard is not running; start it with multiplayer init")
 			}
-
-			// The dashboard only reads; waking is left to serve --wake.
-			return serveRegistry(cmd, opts, addr, verbose, false, func(url string) {
-				fmt.Fprintf(out, "dashboard  %s\n", url)
-				fmt.Fprintln(out, "ctrl-c to stop")
-				if err := openBrowser(cmd.Context(), url, noOpen); err != nil {
-					fmt.Fprintln(cmd.ErrOrStderr(), "could not open a browser:", err)
-				}
-			})
+			fmt.Fprintf(out, "dashboard  %s\n", baseURL)
+			return openBrowser(cmd.Context(), baseURL, noOpen)
 		},
 	}
 
-	cmd.Flags().StringVar(&addr, "addr", defaultAddr, "address to listen on")
+	cmd.Flags().StringVar(&addr, "addr", defaultAddr, "address of the local broker")
 	cmd.Flags().BoolVar(&noOpen, "no-open", false, "do not open a browser")
-	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "log every request")
 	return cmd
 }
 

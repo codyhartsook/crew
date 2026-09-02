@@ -8,7 +8,7 @@ import (
 	"github.com/codyhartsook/multiplayer/internal/session"
 )
 
-// managedEvents are the events install registers. Every harness must price all
+// managedEvents are the events init registers. Every harness must price all
 // of them, or a hook would be silently left uninstalled for that harness.
 var managedEvents = []string{"SessionStart", "UserPromptSubmit", "SessionEnd"}
 

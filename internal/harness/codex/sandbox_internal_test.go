@@ -1,4 +1,4 @@
-package cli
+package codex
 
 import (
 	"os"
@@ -130,7 +130,7 @@ func TestRemoveWritableRoot(t *testing.T) {
 			if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			removed, err := removeWritableRoot(path, dir, false)
+			removed, err := RemoveWritableRoot(path, dir, false)
 			if err != nil || !removed {
 				t.Fatalf("removeWritableRoot = (%v, %v), want removed", removed, err)
 			}
@@ -142,7 +142,7 @@ func TestRemoveWritableRoot(t *testing.T) {
 				t.Error("the comment was lost")
 			}
 			// Removing what is not there changes nothing.
-			if removed, err := removeWritableRoot(path, dir, false); err != nil || removed {
+			if removed, err := RemoveWritableRoot(path, dir, false); err != nil || removed {
 				t.Errorf("second removal = (%v, %v), want no change", removed, err)
 			}
 		})

@@ -104,27 +104,35 @@ func TestTransient(t *testing.T) {
 	}
 }
 
-// The skill is meant to be tuned once you see what agents write, so a reinstall
+func TestInitViewStaysPlainOutsideATerminal(t *testing.T) {
+	var out strings.Builder
+	view := newInitView(&out)
+	if got := view.heading("Setup"); got != "Setup" {
+		t.Errorf("heading = %q, want plain text", got)
+	}
+}
+
+// The skill is meant to be tuned once you see what agents write, so a re-init
 // must not overwrite an edit.
-func TestInstallSkillPreservesLocalEdits(t *testing.T) {
+func TestInitSkillPreservesLocalEdits(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "SKILL.md")
 
-	if got, err := installSkill(path, false); err != nil || got != skillWritten {
-		t.Fatalf("first install = (%v, %v), want written", got, err)
+	if got, err := initSkill(path, false); err != nil || got != skillWritten {
+		t.Fatalf("first init = (%v, %v), want written", got, err)
 	}
-	if got, err := installSkill(path, false); err != nil || got != skillUnchanged {
-		t.Fatalf("reinstall unchanged = (%v, %v), want unchanged", got, err)
+	if got, err := initSkill(path, false); err != nil || got != skillUnchanged {
+		t.Fatalf("re-init unchanged = (%v, %v), want unchanged", got, err)
 	}
 
 	// An older version this tool wrote is safe to replace.
 	if err := os.WriteFile(path, []byte("an older generated skill"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, installedMarker), []byte(digest([]byte("an older generated skill"))), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, initMarker), []byte(digest([]byte("an older generated skill"))), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := installSkill(path, false); err != nil || got != skillWritten {
+	if got, err := initSkill(path, false); err != nil || got != skillWritten {
 		t.Fatalf("replacing our own older output = (%v, %v), want written", got, err)
 	}
 
@@ -133,9 +141,9 @@ func TestInstallSkillPreservesLocalEdits(t *testing.T) {
 	if err := os.WriteFile(path, edited, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	got, err := installSkill(path, false)
+	got, err := initSkill(path, false)
 	if err != nil || got != skillPreserved {
-		t.Fatalf("reinstall over an edit = (%v, %v), want preserved", got, err)
+		t.Fatalf("re-init over an edit = (%v, %v), want preserved", got, err)
 	}
 	after, err := os.ReadFile(path)
 	if err != nil || !strings.Contains(string(after), "MY TUNING") {
@@ -146,29 +154,29 @@ func TestInstallSkillPreservesLocalEdits(t *testing.T) {
 	}
 }
 
-// A skill installed before markers existed is still ours, and must not be
+// A skill initialized before markers existed is still ours, and must not be
 // mistaken for a local edit the first time it needs updating.
-func TestInstallSkillAdoptsAnUnmarkedCopy(t *testing.T) {
+func TestInitSkillAdoptsAnUnmarkedCopy(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "SKILL.md")
 	if err := os.WriteFile(path, skillDoc, 0o644); err != nil {
 		t.Fatal(err)
 	}
 
-	if got, err := installSkill(path, false); err != nil || got != skillUnchanged {
-		t.Fatalf("install over an identical unmarked copy = (%v, %v), want unchanged", got, err)
+	if got, err := initSkill(path, false); err != nil || got != skillUnchanged {
+		t.Fatalf("init over an identical unmarked copy = (%v, %v), want unchanged", got, err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, installedMarker)); err != nil {
+	if _, err := os.Stat(filepath.Join(dir, initMarker)); err != nil {
 		t.Fatal("no marker recorded for a copy we recognised as ours")
 	}
 	// Now a genuine update replaces it rather than preserving it.
 	if err := os.WriteFile(path, []byte("pretend this is an older generated version"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, installedMarker), []byte(digest([]byte("pretend this is an older generated version"))), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, initMarker), []byte(digest([]byte("pretend this is an older generated version"))), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := installSkill(path, false); err != nil || got != skillWritten {
+	if got, err := initSkill(path, false); err != nil || got != skillWritten {
 		t.Fatalf("update = (%v, %v), want written", got, err)
 	}
 }
