@@ -5,6 +5,8 @@ package session
 import (
 	"math/rand/v2"
 	"time"
+
+	"github.com/codyhartsook/multiplayer/internal/usage"
 )
 
 // Harness identifies the coding agent CLI that opened a session.
@@ -64,6 +66,9 @@ type Session struct {
 
 	// Meta carries harness-specific extras (model, permission mode, source, ...).
 	Meta map[string]string `json:"meta,omitempty"`
+
+	// Usage is what this session has spent, nil until a turn reports it.
+	Usage *usage.Snapshot `json:"usage,omitempty"`
 }
 
 // Key is the store-wide unique identity of a session.

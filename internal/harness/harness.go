@@ -10,7 +10,7 @@ import (
 
 	"github.com/codyhartsook/multiplayer/internal/harness/claude"
 	"github.com/codyhartsook/multiplayer/internal/harness/codex"
-	"github.com/codyhartsook/multiplayer/internal/harness/waker"
+	"github.com/codyhartsook/multiplayer/internal/harness/notifier"
 	"github.com/codyhartsook/multiplayer/internal/session"
 )
 
@@ -39,8 +39,8 @@ type Spec struct {
 	// Timeouts is the timeout each lifecycle hook is installed with, keyed by
 	// wire event name. An event missing here is not installed.
 	Timeouts map[string]int
-	// Wake delivers a message into a live session, and is nil when unsupported.
-	Wake waker.Waker
+	// Notify delivers a message into a live session, and is nil when unsupported.
+	Notify notifier.Notifier
 }
 
 var specs = []Spec{
@@ -56,7 +56,7 @@ var specs = []Spec{
 		// squeezed the way Codex's is.
 		EndBudget: 4 * time.Second,
 		Timeouts:  map[string]int{"SessionStart": 10, "UserPromptSubmit": 5, "SessionEnd": 5},
-		Wake:      claude.Wake,
+		Notify:    claude.Notify,
 	},
 	{
 		Harness:     session.HarnessCodex,
@@ -70,7 +70,7 @@ var specs = []Spec{
 		// Codex clamps SessionEnd to three seconds and warns above it.
 		EndBudget: 2500 * time.Millisecond,
 		Timeouts:  map[string]int{"SessionStart": 10, "UserPromptSubmit": 5, "SessionEnd": 3},
-		Wake:      codex.Wake,
+		Notify:    codex.Notify,
 	},
 }
 

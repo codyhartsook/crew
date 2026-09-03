@@ -1,116 +1,71 @@
-// Package cli implements the multiplayer command line.
+// Package cli assembles the crew command line. Each command lives in its
+// own package; this one only wires them to the root and the global flags.
 package cli
 
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/spf13/cobra"
 
-	"github.com/codyhartsook/multiplayer/internal/store"
-	"github.com/codyhartsook/multiplayer/internal/store/httpstore"
-	"github.com/codyhartsook/multiplayer/internal/store/sqlitestore"
+	"github.com/codyhartsook/multiplayer/internal/cli/clearcmd"
+	"github.com/codyhartsook/multiplayer/internal/cli/cmdutil"
+	"github.com/codyhartsook/multiplayer/internal/cli/dashboardcmd"
+	"github.com/codyhartsook/multiplayer/internal/cli/hookcmd"
+	"github.com/codyhartsook/multiplayer/internal/cli/initcmd"
+	"github.com/codyhartsook/multiplayer/internal/cli/lscmd"
+	"github.com/codyhartsook/multiplayer/internal/cli/prunecmd"
+	"github.com/codyhartsook/multiplayer/internal/cli/roomcmd"
+	"github.com/codyhartsook/multiplayer/internal/cli/searchcmd"
+	"github.com/codyhartsook/multiplayer/internal/cli/servecmd"
+	"github.com/codyhartsook/multiplayer/internal/cli/uninstallcmd"
+	"github.com/codyhartsook/multiplayer/internal/version"
 )
-
-// Environment variables that supply defaults for the global flags.
-const (
-	envDB       = "MULTIPLAYER_DB"
-	envServer   = "MULTIPLAYER_SERVER"
-	envDebug    = "MULTIPLAYER_DEBUG"
-	envAutoJoin = "MULTIPLAYER_AUTO_JOIN"
-)
-
-// options holds the global flags that decide which store the command talks to.
-type options struct {
-	db     string
-	server string
-}
-
-// openStore returns the store the flags select: a registry server when one is
-// configured, otherwise the local SQLite database. Both satisfy store.Store, so
-// no command needs to know which it got.
-func (o *options) openStore() (store.Store, error) {
-	if o.server != "" {
-		return httpstore.New(o.server), nil
-	}
-	path, err := o.dbPath()
-	if err != nil {
-		return nil, err
-	}
-	return sqlitestore.Open(path)
-}
-
-// dbPath resolves the database location, defaulting to ~/.multiplayer/sessions.db.
-func (o *options) dbPath() (string, error) {
-	if o.db != "" {
-		return o.db, nil
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("resolve home directory: %w", err)
-	}
-	return filepath.Join(home, ".multiplayer", "sessions.db"), nil
-}
-
-// storeDir is the directory holding the database and hook log, which is what a
-// sandboxed harness needs write access to.
-func (o *options) storeDir() (string, error) {
-	path, err := o.dbPath()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Dir(path), nil
-}
 
 func New() *cobra.Command {
-	opts := &options{
-		db:     os.Getenv(envDB),
-		server: os.Getenv(envServer),
-	}
+	opts := cmdutil.FromEnv()
 
 	root := &cobra.Command{
-		Use:   "multiplayer",
+		Use:   "crew",
 		Short: "Track which coding agents are working in which repos and worktrees",
-		Long: `multiplayer is a registry of running coding-agent sessions.
+		Long: `crew is a registry of running coding-agent sessions.
 
-Claude Code and Codex call "multiplayer hook" from their lifecycle hooks; each
+Claude Code and Codex call "crew hook" from their lifecycle hooks; each
 call records the git checkout, and the pool slot if there is one.`,
-		Version:       Version(),
+		Version:       version.String(),
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
 
-	root.PersistentFlags().StringVar(&opts.db, "db", opts.db,
-		"SQLite database path (default ~/.multiplayer/sessions.db) [$"+envDB+"]")
-	root.PersistentFlags().StringVar(&opts.server, "server", opts.server,
-		"registry server URL, used instead of the local database [$"+envServer+"]")
+	root.PersistentFlags().StringVar(&opts.DB, "db", opts.DB,
+		"SQLite database path (default ~/.multiplayer/sessions.db) [$"+cmdutil.EnvDB+"]")
+	root.PersistentFlags().StringVar(&opts.Server, "server", opts.Server,
+		"registry server URL, used instead of the local database [$"+cmdutil.EnvServer+"]")
+	root.PersistentFlags().BoolVar(&opts.Human, "human", false,
+		"render for a person: more columns, less terse")
 	root.CompletionOptions.HiddenDefaultCmd = true
 
 	root.AddCommand(
-		newHookCmd(opts),
-		newListCmd(opts),
-		newWhoAmICmd(opts),
-		newServeCmd(opts),
-		newFleetCmd(opts),
-		newPostCmd(opts),
-		newResolveCmd(opts),
-		newRemoveCmd(opts),
-		newRoomCmd(opts),
-		newSearchCmd(opts),
-		newPromoteCmd(opts),
-		newStateCmd(opts),
-		newClearCmd(opts),
-		newPruneCmd(opts),
-		newInitCmd(opts),
-		newUninstallCmd(opts),
+		hookcmd.New(opts),
+		lscmd.New(opts),
+		servecmd.New(opts),
+		dashboardcmd.New(opts),
+		roomcmd.NewPost(opts),
+		roomcmd.NewResolve(opts),
+		roomcmd.NewRemove(opts),
+		roomcmd.New(opts),
+		searchcmd.New(opts),
+		clearcmd.New(opts),
+		prunecmd.New(opts),
+		initcmd.New(opts),
+		uninstallcmd.New(opts),
 	)
 	return root
 }
 
 func Execute() int {
 	if err := New().Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, "multiplayer:", err)
+		fmt.Fprintln(os.Stderr, "crew:", err)
 		return 1
 	}
 	return 0
