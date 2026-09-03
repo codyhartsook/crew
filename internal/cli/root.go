@@ -45,6 +45,8 @@ call records the git checkout, and the pool slot if there is one.`,
 		"SQLite database path (default ~/.multiplayer/sessions.db) [$"+cmdutil.EnvDB+"]")
 	root.PersistentFlags().StringVar(&opts.Server, "server", opts.Server,
 		"registry server URL, used instead of the local database [$"+cmdutil.EnvServer+"]")
+	root.PersistentFlags().BoolVar(&opts.Human, "human", false,
+		"render for a person: more columns, less terse")
 	root.CompletionOptions.HiddenDefaultCmd = true
 
 	root.AddCommand(

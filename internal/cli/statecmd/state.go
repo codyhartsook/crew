@@ -3,14 +3,15 @@ package statecmd
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
-	"text/tabwriter"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/codyhartsook/multiplayer/internal/cli/cmdutil"
 	"github.com/codyhartsook/multiplayer/internal/cli/roomctx"
+	"github.com/codyhartsook/multiplayer/internal/cli/view"
 	"github.com/codyhartsook/multiplayer/internal/room"
 )
 
@@ -32,6 +33,25 @@ If how a value changed matters, post a decision alongside it.`,
 		newStateRemoveCmd(opts),
 	)
 	return cmd
+}
+
+// stateColumns is what state ls shows. A revision only matters to a person
+// watching a value change; an agent reads the value itself.
+var stateColumns = []view.Column{
+	{Name: "KEY"},
+	{Name: "VALUE"},
+	{Name: "BY"},
+	{Name: "UPDATED"},
+	{Name: "REV", Human: true},
+}
+
+// valueWidth clips a listed value. A terminal needs it narrow; an agent can
+// take more before reaching for state get.
+func valueWidth(human bool) int {
+	if human {
+		return 52
+	}
+	return 160
 }
 
 func newStateSetCmd(opts *cmdutil.Options) *cobra.Command {
@@ -138,13 +158,17 @@ func newStateListCmd(opts *cmdutil.Options) *cobra.Command {
 				return err
 			}
 
-			tw := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
-			fmt.Fprintln(tw, "KEY\tVALUE\tREV\tBY\tUPDATED")
+			rows := make([][]string, 0, len(values))
 			for _, st := range values {
-				fmt.Fprintf(tw, "%s\t%s\t%d\t%s\t%s\n",
-					st.Key, cmdutil.Truncate(st.Value, 52), st.Revision, authors.Name(st.Author), room.Ago(st.UpdatedAt))
+				rows = append(rows, []string{
+					st.Key,
+					cmdutil.Truncate(st.Value, valueWidth(opts.Human)),
+					authors.Name(st.Author),
+					room.Ago(st.UpdatedAt),
+					strconv.FormatInt(int64(st.Revision), 10),
+				})
 			}
-			return tw.Flush()
+			return view.Table(cmd.OutOrStdout(), opts.Human, stateColumns, rows)
 		},
 	}
 

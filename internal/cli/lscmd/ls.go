@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"io"
 	"strings"
-	"text/tabwriter"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/codyhartsook/multiplayer/internal/cli/cmdutil"
+	"github.com/codyhartsook/multiplayer/internal/cli/view"
 	"github.com/codyhartsook/multiplayer/internal/room"
 	"github.com/codyhartsook/multiplayer/internal/session"
 	"github.com/codyhartsook/multiplayer/internal/store"
@@ -57,7 +57,7 @@ func New(opts *cmdutil.Options) *cobra.Command {
 			if asJSON {
 				return writeJSONList(cmd.OutOrStdout(), sessions)
 			}
-			return writeTable(cmd.OutOrStdout(), sessions)
+			return writeTable(cmd.OutOrStdout(), opts.Human, sessions)
 		},
 	}
 
@@ -80,32 +80,56 @@ func writeJSONList(w io.Writer, sessions []*session.Session) error {
 	return enc.Encode(sessions)
 }
 
-func writeTable(w io.Writer, sessions []*session.Session) error {
+// sessionColumns is what ls shows. An agent addresses agents by alias, so the
+// session id is a person's column, and the default filter is already
+// active-only, so is the status.
+var sessionColumns = []view.Column{
+	{Name: "AGENT"},
+	{Name: "HARNESS"},
+	{Name: "WHERE"},
+	{Name: "FREE"},
+	{Name: "SEEN"},
+	{Name: "SESSION", Human: true},
+	{Name: "WORKTREE", Human: true},
+	{Name: "STATUS", Human: true},
+}
+
+func writeTable(w io.Writer, human bool, sessions []*session.Session) error {
 	if len(sessions) == 0 {
 		_, err := fmt.Fprintln(w, "no sessions")
 		return err
 	}
-
-	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "AGENT\tHARNESS\tSESSION\tREPO\tBRANCH\tWORKTREE\tFREE\tSTATUS\tLAST SEEN")
+	rows := make([][]string, 0, len(sessions))
 	for _, s := range sessions {
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+		rows = append(rows, []string{
 			room.Display(s),
 			dash(string(s.Harness)),
-			shortID(s.ID),
-			repoName(s),
-			branchOf(s),
-			worktreeOf(s),
+			where(s),
 			freeContext(s),
-			dash(string(s.Status)),
 			age(s.LastSeen),
-		)
+			shortID(s.ID),
+			worktreeOf(s),
+			dash(string(s.Status)),
+		})
 	}
-	return tw.Flush()
+	return view.Table(w, human, sessionColumns, rows)
+}
+
+// where names the checkout as repo/branch, which is what an agent needs to
+// know what someone is working on.
+func where(s *session.Session) string {
+	if s.Repo == nil {
+		return "-"
+	}
+	name := dash(s.Repo.Name)
+	if b := branchOf(s); b != "-" {
+		return name + "/" + b
+	}
+	return name
 }
 
 // freeContext is how much of the model's context window is still available,
-// blank when the harness has not reported it.
+// or "-" when the harness has not reported it.
 func freeContext(s *session.Session) string {
 	if s.Usage == nil {
 		return "-"

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 
 	"github.com/spf13/cobra"
 
@@ -48,11 +49,17 @@ func New(opts *cmdutil.Options) *cobra.Command {
 					fmt.Fprintln(cmd.OutOrStdout(), "nothing new")
 					return nil
 				}
-				authors, err := rc.Authors(cmd.Context())
-				if err != nil {
-					return err
+				if asJSON {
+					if err := writeJSON(cmd.OutOrStdout(), entries); err != nil {
+						return err
+					}
+				} else {
+					authors, err := rc.Authors(cmd.Context())
+					if err != nil {
+						return err
+					}
+					fmt.Fprintln(cmd.OutOrStdout(), room.Delivery(entries, authors))
 				}
-				fmt.Fprintln(cmd.OutOrStdout(), room.Delivery(entries, authors))
 				if ack {
 					return rc.Rooms.Ack(cmd.Context(), author, entries[len(entries)-1].ID)
 				}
@@ -67,9 +74,7 @@ func New(opts *cmdutil.Options) *cobra.Command {
 				return err
 			}
 			if asJSON {
-				enc := json.NewEncoder(cmd.OutOrStdout())
-				enc.SetIndent("", "  ")
-				return enc.Encode(entries)
+				return writeJSON(cmd.OutOrStdout(), entries)
 			}
 
 			// Listing the caller as "also here" is noise; failing to identify
@@ -101,4 +106,10 @@ func New(opts *cmdutil.Options) *cobra.Command {
 	cmd.Flags().BoolVar(&inbox, "inbox", false, "show unread addressed entries")
 	cmd.Flags().BoolVar(&ack, "ack", false, "mark inbox entries as delivered")
 	return cmd
+}
+
+func writeJSON(w io.Writer, v any) error {
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	return enc.Encode(v)
 }

@@ -25,6 +25,9 @@ const (
 type Options struct {
 	DB     string
 	Server string
+	// Human renders for a person rather than an agent: more columns, less
+	// terse. Agents are the default audience.
+	Human bool
 }
 
 // FromEnv seeds the global flags from the environment.
