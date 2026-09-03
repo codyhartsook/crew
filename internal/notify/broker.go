@@ -92,13 +92,21 @@ func (b *Broker) sweep(ctx context.Context) {
 		b.log.Error("notify sweep", "err", err)
 		return
 	}
+	// Names for the notice. Active sessions cover the case that matters, an
+	// agent posting to a live agent; anything else falls back to the key.
 	live := map[string]bool{}
+	authors := room.Authors{}
 	for _, s := range sessions {
 		live[s.Key()] = true
+		if s.Alias != "" {
+			authors[s.Key()] = s.Alias
+		}
+	}
+	for _, s := range sessions {
 		if !harness.CanNotify(s.Harness) {
 			continue
 		}
-		if err := b.sweepSession(ctx, s); err != nil {
+		if err := b.sweepSession(ctx, s, authors); err != nil {
 			b.log.Warn("notify", "session", s.Key(), "err", err)
 		}
 	}
@@ -111,7 +119,7 @@ func (b *Broker) sweep(ctx context.Context) {
 	}
 }
 
-func (b *Broker) sweepSession(ctx context.Context, s *session.Session) error {
+func (b *Broker) sweepSession(ctx context.Context, s *session.Session, authors room.Authors) error {
 	unread, err := b.store.Unread(ctx, s.Key())
 	if err != nil || len(unread) == 0 {
 		return err
@@ -120,7 +128,7 @@ func (b *Broker) sweepSession(ctx context.Context, s *session.Session) error {
 	if b.woken[s.Key()] >= newest {
 		return nil
 	}
-	if err := deliver(ctx, b.store, b.notify, s, noticeText(unread)); err != nil {
+	if err := deliver(ctx, b.store, b.notify, s, noticeText(unread, authors)); err != nil {
 		return err
 	}
 	b.woken[s.Key()] = newest
@@ -128,14 +136,17 @@ func (b *Broker) sweepSession(ctx context.Context, s *session.Session) error {
 	return nil
 }
 
-// noticeText names what is waiting without reproducing it, so the agent reads the
-// room and acks rather than acting on a copy that may already be stale.
-func noticeText(unread []*room.Entry) string {
+// noticeText names what is waiting without reproducing it, so the agent reads
+// the room and acks rather than acting on a copy that may already be stale.
+// The sender is named, never keyed: an agent should not have to look up who
+// wrote to it.
+func noticeText(unread []*room.Entry, authors room.Authors) string {
 	newest := unread[len(unread)-1]
+	from := authors.Name(newest.Author)
 	if len(unread) == 1 {
 		return fmt.Sprintf("crew: %s [%d] from %s is addressed to you. Read it with: crew room --inbox --ack",
-			newest.Kind, newest.ID, newest.Author)
+			newest.Kind, newest.ID, from)
 	}
 	return fmt.Sprintf("crew: %d entries are addressed to you, newest %s [%d] from %s. Read them with: crew room --inbox --ack",
-		len(unread), newest.Kind, newest.ID, newest.Author)
+		len(unread), newest.Kind, newest.ID, from)
 }

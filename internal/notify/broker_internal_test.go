@@ -155,12 +155,32 @@ func TestSweepForgetsEndedSessions(t *testing.T) {
 }
 
 func TestWakeTextNamesTheEntry(t *testing.T) {
-	one := noticeText(entries(12))
+	named := room.Authors{"codex:other": "coral-lynx"}
+	one := noticeText(entries(12), named)
 	if !strings.Contains(one, "[12]") || !strings.Contains(one, "question") || !strings.Contains(one, "crew room --inbox --ack") {
 		t.Errorf("single-entry text lost detail: %q", one)
 	}
-	many := noticeText(entries(12, 13))
+	many := noticeText(entries(12, 13), named)
 	if !strings.Contains(many, "2 entries") || !strings.Contains(many, "[13]") || !strings.Contains(many, "crew room --inbox --ack") {
 		t.Errorf("multi-entry text lost detail: %q", many)
+	}
+}
+
+// A woken agent should not have to look up who wrote to it, and an unnamed
+// sender must still degrade to something readable rather than a raw key.
+func TestWakeTextNamesTheSender(t *testing.T) {
+	named := noticeText(entries(12), room.Authors{"codex:other": "coral-lynx"})
+	if !strings.Contains(named, "from coral-lynx") {
+		t.Errorf("notice did not name the sender: %q", named)
+	}
+	if strings.Contains(named, "codex:other") {
+		t.Errorf("notice leaked the session key: %q", named)
+	}
+	unnamed := noticeText(entries(12), room.Authors{})
+	if strings.Contains(unnamed, "codex:other") {
+		t.Errorf("unnamed sender should render as harness and id, got %q", unnamed)
+	}
+	if !strings.Contains(unnamed, "codex other") {
+		t.Errorf("unnamed sender lost its fallback: %q", unnamed)
 	}
 }
