@@ -1,0 +1,273 @@
+{
+  "sessions": [
+    {
+      "id": "99990000-2222-0009",
+      "harness": "claude",
+      "alias": "dawn-lynx",
+      "status": "active",
+      "pid": 61796,
+      "host": "codyhartsook-MacBook-Pro",
+      "user": "solo-system-chartsook",
+      "cwd": "/Users/cody/solo",
+      "repo": {
+        "name": "solo",
+        "root": "/Users/cody/solo",
+        "main_root": "/Users/cody/solo",
+        "branch": "main",
+        "head": "fd560189de9b5ee41cec1ec05ac51b33459e0691",
+        "is_worktree": false
+      },
+      "started_at": "2026-09-03T21:49:30.752635Z",
+      "last_seen": "2026-09-03T21:49:30.752635Z",
+      "meta": {
+        "cause": "startup",
+        "model": "claude-sonnet-5"
+      }
+    },
+    {
+      "id": "22220000-bbbb-0002",
+      "harness": "codex",
+      "alias": "amber-dolphin",
+      "status": "active",
+      "pid": 76892,
+      "host": "codyhartsook-MacBook-Pro",
+      "user": "solo-system-chartsook",
+      "cwd": "/Users/cody/Github/multiplayer-feature",
+      "repo": {
+        "name": "multiplayer",
+        "root": "/Users/cody/Github/multiplayer-feature",
+        "main_root": "/Users/cody/Github/multiplayer",
+        "branch": "feature",
+        "head": "70cf3e3197ae0fc35fabc114ac874e426eeac3e8",
+        "is_worktree": true
+      },
+      "started_at": "2026-09-03T19:28:51.245141Z",
+      "last_seen": "2026-09-03T21:49:30.742641Z",
+      "meta": {
+        "cause": "startup",
+        "model": "gpt-5"
+      },
+      "usage": {
+        "model": "gpt-5",
+        "context_window": 400000,
+        "context_used": 96000,
+        "input_tokens": 610000,
+        "output_tokens": 41000,
+        "updated_at": "2026-09-03T21:49:39.413669Z"
+      }
+    },
+    {
+      "id": "44440000-dddd-0004",
+      "harness": "codex",
+      "alias": "blue-heron",
+      "status": "active",
+      "pid": 76892,
+      "host": "codyhartsook-MacBook-Pro",
+      "user": "solo-system-chartsook",
+      "cwd": "/Users/cody/Desktop/scratch",
+      "repo": {
+        "name": "scratch",
+        "root": "/Users/cody/Desktop/scratch",
+        "main_root": "/Users/cody/Desktop/scratch",
+        "branch": "main",
+        "head": "b8f54c18a778b27cbbb8745e687a5bac82e5aeea",
+        "is_worktree": false
+      },
+      "started_at": "2026-09-03T19:28:51.535236Z",
+      "last_seen": "2026-09-03T21:49:30.742641Z",
+      "meta": {
+        "cause": "startup",
+        "model": "gpt-5"
+      },
+      "usage": {
+        "model": "gpt-5",
+        "context_window": 400000,
+        "context_used": 22000,
+        "input_tokens": 60000,
+        "output_tokens": 4000,
+        "updated_at": "2026-09-03T21:49:39.413704Z"
+      }
+    },
+    {
+      "id": "77770000-9999-0007",
+      "harness": "codex",
+      "alias": "jade-bison",
+      "status": "active",
+      "pid": 77091,
+      "host": "codyhartsook-MacBook-Pro",
+      "user": "solo-system-chartsook",
+      "cwd": "/Users/cody/Github/kagent",
+      "repo": {
+        "name": "kagent",
+        "root": "/Users/cody/Github/kagent",
+        "main_root": "/Users/cody/Github/kagent",
+        "branch": "main",
+        "head": "b8f54c18a778b27cbbb8745e687a5bac82e5aeea",
+        "is_worktree": false
+      },
+      "started_at": "2026-09-03T19:29:55.271107Z",
+      "last_seen": "2026-09-03T21:49:30.742641Z",
+      "meta": {
+        "cause": "startup",
+        "model": "gpt-5"
+      },
+      "usage": {
+        "model": "gpt-5",
+        "context_window": 400000,
+        "context_used": 312000,
+        "input_tokens": 980000,
+        "output_tokens": 77000,
+        "updated_at": "2026-09-03T21:49:39.413726Z"
+      }
+    },
+    {
+      "id": "88880000-1111-0008",
+      "harness": "claude",
+      "alias": "violet-yak",
+      "status": "active",
+      "pid": 61796,
+      "host": "codyhartsook-MacBook-Pro",
+      "user": "solo-system-chartsook",
+      "cwd": "/Users/cody/notes",
+      "started_at": "2026-09-03T21:49:30.683345Z",
+      "last_seen": "2026-09-03T21:49:30.683345Z",
+      "meta": {
+        "cause": "startup",
+        "model": "claude-opus-5"
+      }
+    },
+    {
+      "id": "66660000-ffff-0006",
+      "harness": "claude",
+      "alias": "violet-beaver",
+      "status": "active",
+      "pid": 61796,
+      "host": "codyhartsook-MacBook-Pro",
+      "user": "solo-system-chartsook",
+      "cwd": "/Users/cody/treehouse/pool/slot-1",
+      "repo": {
+        "name": "multiplayer",
+        "root": "/Users/cody/treehouse/pool/slot-1",
+        "main_root": "/Users/cody/Github/multiplayer",
+        "branch": "pooled",
+        "head": "70cf3e3197ae0fc35fabc114ac874e426eeac3e8",
+        "is_worktree": true
+      },
+      "pool": {
+        "manager": "treehouse",
+        "name": "pool",
+        "slot": "slot-1",
+        "root": "/Users/cody/treehouse/pool/slot-1",
+        "leased": true,
+        "lease_id": "70b6d0fd",
+        "lease_holder": "cody"
+      },
+      "started_at": "2026-09-03T19:28:51.772402Z",
+      "last_seen": "2026-09-03T19:28:51.772402Z",
+      "meta": {
+        "cause": "startup",
+        "model": "claude-opus-5"
+      }
+    },
+    {
+      "id": "55550000-eeee-0005",
+      "harness": "claude",
+      "alias": "coral-yak",
+      "status": "active",
+      "pid": 61796,
+      "host": "codyhartsook-MacBook-Pro",
+      "user": "solo-system-chartsook",
+      "cwd": "/Users/cody/src/experiments/deep/thing",
+      "repo": {
+        "name": "thing",
+        "root": "/Users/cody/src/experiments/deep/thing",
+        "main_root": "/Users/cody/src/experiments/deep/thing",
+        "branch": "main",
+        "head": "b8f54c18a778b27cbbb8745e687a5bac82e5aeea",
+        "is_worktree": false
+      },
+      "started_at": "2026-09-03T19:28:51.658104Z",
+      "last_seen": "2026-09-03T19:28:51.658104Z",
+      "meta": {
+        "cause": "startup",
+        "model": "claude-haiku-4-5"
+      },
+      "usage": {
+        "model": "claude-haiku-4-5",
+        "context_window": 200000,
+        "context_used": 178000,
+        "input_tokens": 520000,
+        "cached_input_tokens": 300000,
+        "output_tokens": 61000,
+        "updated_at": "2026-09-03T21:49:39.413749Z"
+      }
+    },
+    {
+      "id": "33330000-cccc-0003",
+      "harness": "claude",
+      "alias": "blue-badger",
+      "status": "active",
+      "pid": 61796,
+      "host": "codyhartsook-MacBook-Pro",
+      "user": "solo-system-chartsook",
+      "cwd": "/Users/cody/Github/kagent",
+      "repo": {
+        "name": "kagent",
+        "root": "/Users/cody/Github/kagent",
+        "main_root": "/Users/cody/Github/kagent",
+        "branch": "main",
+        "head": "b8f54c18a778b27cbbb8745e687a5bac82e5aeea",
+        "is_worktree": false
+      },
+      "started_at": "2026-09-03T19:28:51.361367Z",
+      "last_seen": "2026-09-03T19:28:51.361367Z",
+      "meta": {
+        "cause": "startup",
+        "model": "claude-sonnet-5"
+      },
+      "usage": {
+        "model": "claude-sonnet-5",
+        "context_window": 1000000,
+        "context_used": 233000,
+        "input_tokens": 1450000,
+        "cached_input_tokens": 1020000,
+        "output_tokens": 52000,
+        "updated_at": "2026-09-03T21:49:39.413765Z"
+      }
+    },
+    {
+      "id": "11110000-aaaa-0001",
+      "harness": "claude",
+      "alias": "sky-badger",
+      "status": "active",
+      "pid": 61796,
+      "host": "codyhartsook-MacBook-Pro",
+      "user": "solo-system-chartsook",
+      "cwd": "/Users/cody/Github/multiplayer",
+      "repo": {
+        "name": "multiplayer",
+        "root": "/Users/cody/Github/multiplayer",
+        "main_root": "/Users/cody/Github/multiplayer",
+        "branch": "main",
+        "head": "70cf3e3197ae0fc35fabc114ac874e426eeac3e8",
+        "is_worktree": false
+      },
+      "started_at": "2026-09-03T19:28:51.129834Z",
+      "last_seen": "2026-09-03T19:28:51.129834Z",
+      "meta": {
+        "cause": "startup",
+        "model": "claude-opus-5"
+      },
+      "usage": {
+        "model": "claude-opus-5",
+        "context_window": 1000000,
+        "context_used": 812000,
+        "input_tokens": 4100000,
+        "cached_input_tokens": 3300000,
+        "output_tokens": 96000,
+        "updated_at": "2026-09-03T21:49:39.413781Z"
+      }
+    }
+  ],
+  "count": 9
+}
