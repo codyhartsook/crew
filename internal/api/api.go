@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"os"
 	"strconv"
 	"time"
 
@@ -29,6 +30,7 @@ type Server struct {
 	store backend
 	log   *slog.Logger
 	ui    http.Handler
+	table http.Handler
 }
 
 type Option func(*Server)
@@ -37,6 +39,11 @@ type Option func(*Server)
 // API-only, which is what the tests and any headless use want.
 func WithUI(h http.Handler) Option {
 	return func(s *Server) { s.ui = h }
+}
+
+// WithTableUI mounts the row-per-session view at /table, beside the dashboard.
+func WithTableUI(h http.Handler) Option {
+	return func(s *Server) { s.table = h }
 }
 
 // New returns a Server backed by st. A nil logger discards request logs.
@@ -62,6 +69,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/sessions/{key}/touch", s.touchSession)
 	mux.HandleFunc("POST /v1/sessions/{key}/usage", s.setSessionUsage)
 	mux.HandleFunc("GET /v1/entries", s.listEntries)
+	mux.HandleFunc("GET /v1/meta", s.meta)
+	if s.table != nil {
+		mux.Handle("GET /table", s.table)
+	}
 	if s.ui != nil {
 		// "/{$}" matches the root path exactly, so the interface cannot shadow
 		// an API route or swallow unknown paths.
@@ -96,9 +107,25 @@ type EntriesResponse struct {
 	Count   int           `json:"count"`
 }
 
+// MetaResponse describes the machine whose sessions this registry holds. The
+// store records absolute paths; a client needs Home to show them the way the
+// engineer reads them.
+type MetaResponse struct {
+	Home string `json:"home"`
+	Host string `json:"host,omitempty"`
+}
+
 // ErrorResponse is the body of every non-2xx reply.
 type ErrorResponse struct {
 	Error string `json:"error"`
+}
+
+// meta reports the registry's own machine. A failure to resolve either field is
+// not worth an error: the client falls back to showing absolute paths.
+func (s *Server) meta(w http.ResponseWriter, _ *http.Request) {
+	home, _ := os.UserHomeDir()
+	host, _ := os.Hostname()
+	writeJSON(w, http.StatusOK, MetaResponse{Home: home, Host: host})
 }
 
 func (s *Server) health(w http.ResponseWriter, _ *http.Request) {

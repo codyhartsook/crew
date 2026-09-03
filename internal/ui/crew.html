@@ -1,0 +1,1140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>crew</title>
+<style>
+  :root {
+    --window: #f2f2f7; --card: #fff; --fill: rgba(116,116,128,0.08);
+    --label: rgba(0,0,0,0.88); --label-2: rgba(60,60,67,0.6); --label-3: rgba(60,60,67,0.35);
+    --separator: rgba(60,60,67,0.14);
+    --orange:#ff9500; --teal:#0fa3b1; --gray:#8e8e93; --violet:#8b5cf6;
+    --al:0.60; --ac:0.14;   /* agent colour: fixed L and C, hue is identity */
+    --mono: ui-monospace,"SF Mono",SFMono-Regular,Menlo,monospace;
+    --sans: -apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --window:#1c1c1e; --card:#2c2c2e; --fill:rgba(118,118,128,0.18);
+      --label:rgba(255,255,255,0.92); --label-2:rgba(235,235,245,0.58); --label-3:rgba(235,235,245,0.32);
+      --separator:rgba(84,84,88,0.6);
+      --al:0.68; --ac:0.14;
+      --orange:#ff9f0a; --teal:#40c8e0; --gray:#98989d; --violet:#c4b5fd;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin:0; padding:24px; background:var(--window); color:var(--label);
+    font:13px/1.45 var(--sans); -webkit-font-smoothing:antialiased;
+  }
+  header { max-width:1560px; margin:0 auto 12px; }
+  h1 { margin:0; font-size:20px; font-weight:700; letter-spacing:-0.022em; }
+  .sub { margin-top:2px; font-size:12.5px; color:var(--label-2); }
+  .cols { display:flex; gap:26px; max-width:1560px; margin:0 auto; align-items:flex-start; }
+  .stage { flex:1 1 auto; min-width:0; position:relative; }
+  .rooms { flex:0 0 320px; }
+  @media (max-width:1100px) {
+    .cols { flex-direction:column; }
+    .rooms { flex:none; width:100%; }
+  }
+
+  .room { background:var(--card); border-radius:10px; margin-bottom:7px; overflow:hidden;
+          box-shadow:0 0 0 0.5px rgba(0,0,0,0.08); }
+  .room > summary {
+    cursor:pointer; padding:9px 12px; display:flex; align-items:baseline; gap:7px;
+    list-style:none; font-size:12px;
+  }
+  .room > summary::-webkit-details-marker { display:none; }
+  .room .caret { color:var(--label-3); font-size:10px; display:inline-block;
+                 transition:transform 0.15s ease; }
+  .room[open] .caret { transform:rotate(90deg); }
+  .room .rname { font-weight:600; font-family:var(--mono); font-size:11px;
+                 white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .room .rscope { font-size:9.5px; color:var(--label-3); text-transform:uppercase;
+                  letter-spacing:0.04em; }
+  .room .rcount { margin-left:auto; font-size:10.5px; color:var(--label-3);
+                  white-space:nowrap; font-variant-numeric:tabular-nums; }
+  .room .rcount b { color:var(--label-2); font-weight:600; }
+  .room .rwho { padding:0 12px 8px 27px; font-size:10.5px; color:var(--label-3);
+                font-family:var(--mono); }
+  .who-name { font-weight:600; }
+
+  .post { padding:7px 12px 7px 27px; font-size:11.5px; box-shadow:inset 0 0.5px 0 var(--separator); }
+  .post .pmode { font-size:9.5px; font-weight:600; text-transform:uppercase; letter-spacing:0.03em;
+                 color:var(--label-3); margin-right:6px; }
+  .post.open .pmode { color:var(--label); }
+  .post .pbody { color:var(--label-2); }
+  .post.open .pbody { color:var(--label); }
+  .post .pmeta { margin-top:2px; font-size:10px; color:var(--label-3); font-family:var(--mono); }
+  .post .answer { margin-top:4px; padding-left:9px; border-left:2px solid var(--separator);
+                  color:var(--label-2); }
+  .roomsempty { font-size:12px; color:var(--label-3); padding:4px 2px; }
+  svg { display:block; width:100%; height:auto; max-height:calc(100vh - 150px); }
+
+  .ring { fill:none; stroke:var(--separator); stroke-dasharray:2 4; }
+
+  /* Rings read inward-out: folders are structure, repos are places, agents are people. */
+  .zone.folder {
+    fill:color-mix(in srgb, var(--label) 3%, transparent);
+    stroke:var(--separator); stroke-width:1;
+  }
+  .zone.place {
+    fill:color-mix(in srgb, var(--label) 11%, var(--card));
+    stroke:color-mix(in srgb, var(--label) 30%, transparent); stroke-width:1.25;
+  }
+  .zone.folder:hover, .zone.place:hover { stroke:var(--label-2); stroke-width:2; }
+
+  /* Agent segments carry the agent's own hue; the harness is only the icon. */
+  .track { stroke:none; fill-opacity:0.17; }
+  .used { fill-opacity:0.85; stroke:none; }
+  .aseg .edge { fill:none; stroke:color-mix(in srgb, var(--label) 30%, transparent); stroke-width:1; }
+  .aseg.nodata .edge { stroke-dasharray:3 3; }
+  .alabel { font-size:11px; font-weight:600; fill:var(--label); pointer-events:none;
+            font-family:var(--mono); }
+  /* Sits on the fill, so it carries a halo the outside labels do not need. */
+  .clabel { font-size:10px; font-weight:600; fill:#fff; pointer-events:none;
+            font-family:var(--mono); paint-order:stroke; letter-spacing:0.02em;
+            stroke:rgba(0,0,0,0.5); stroke-width:2.4px; stroke-linejoin:round; }
+  .clabel.unknown { fill:var(--label-3); stroke-width:0; font-weight:500; font-style:italic; }
+
+  .hub { fill:var(--card); stroke:var(--separator); }
+  .hubtext { font-size:14px; font-weight:650; fill:var(--label); text-anchor:middle; }
+  .hubsub { font-size:9.5px; fill:var(--label-3); text-anchor:middle; font-family:var(--mono); }
+
+
+  .icon { fill:none; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; pointer-events:none; }
+  .icon.place { stroke:var(--label-2); }
+  .icon.folder { stroke:var(--label-3); }
+  .icon.agent { stroke:var(--label-2); }
+  .icon.agent.claude { stroke:var(--orange); }
+  .icon.agent.codex { stroke:var(--teal); }
+
+  .ztitle { font-size:11.5px; font-weight:650; fill:var(--label); letter-spacing:-0.006em; pointer-events:none; }
+  .btitle { font-size:10.5px; fill:var(--label-2); font-family:var(--mono); pointer-events:none; letter-spacing:0.04em; }
+
+
+  .zone.owner { stroke:var(--violet); stroke-width:2.5; }
+
+  /* hover detail */
+  .panel {
+    position:absolute; top:0; left:0; z-index:3; width:min(370px, 100%);
+    background:var(--card); border-radius:10px; padding:10px 12px;
+    box-shadow:0 0 0 0.5px rgba(0,0,0,0.12), 0 6px 20px rgba(0,0,0,0.28);
+  }
+  .panel[hidden] { display:none; }
+  .crumbs { display:flex; align-items:center; gap:5px; font-family:var(--mono); font-size:11px; }
+  .crumb { padding:2px 8px; border-radius:5px; background:var(--fill); color:var(--label-2);
+           white-space:nowrap; }
+  .crumb.last { background:color-mix(in srgb, var(--label) 12%, transparent); color:var(--label); font-weight:600; }
+  .crumb.copy {
+    margin-left:auto; border:0; font:inherit; font-family:var(--mono); font-size:10.5px;
+    color:var(--label-3); cursor:pointer;
+  }
+  .crumb.copy:hover { color:var(--label); background:var(--fill); }
+  .crumb.sep { background:none; padding:0; color:var(--label-3); }
+  .hint { font-size:12px; color:var(--label-3); }
+
+  .roster { margin-top:8px; display:grid; gap:9px; }
+  .arow { display:grid; grid-template-columns:1fr auto; gap:3px 8px; font-size:11.5px; }
+  .arow .bar { grid-column:1 / -1; }
+  .arow .who { font-weight:600; font-family:var(--mono); font-size:11px; }
+  .arow .who i { font-style:normal; margin-right:5px; }
+  .arow .who.claude i { color:var(--orange); }
+  .arow .who.codex i { color:var(--teal); }
+  .arow .model { color:var(--label-3); font-family:var(--mono); font-size:10px; grid-column:1; }
+  .bar { height:7px; border-radius:4px; background:var(--fill); overflow:hidden; }
+  .bar span { display:block; height:100%; border-radius:4px; }
+  .bar.claude span { background:var(--orange); }
+  .bar.codex span { background:var(--teal); }
+  .arow .num { color:var(--label-2); font-variant-numeric:tabular-nums; text-align:right; font-size:11px; }
+  .arow .unknown { color:var(--label-3); font-style:italic; }
+
+  .openrow { margin-top:8px; font-size:11.5px; color:var(--label-2); }
+  .openrow b { color:var(--label); font-weight:600; }
+
+  .zone, .aseg { transition:opacity 0.12s ease; }
+  .zone.place, .aseg { cursor:pointer; }
+  .aseg.picked .edge { stroke:var(--label); stroke-width:2.5; }
+  .dim { opacity:0.18; }
+  .zone.trail { stroke:var(--label); stroke-width:2.25; }
+
+  .legend { display:flex; gap:14px; flex-wrap:wrap; align-items:center;
+            margin-top:9px; font-size:11.5px; color:var(--label-2); }
+  .litem { display:inline-flex; align-items:center; gap:5px; }
+  .litem b { font-weight:500; color:var(--label-2); }
+  .swatch { display:inline-block; width:9px; height:9px; border-radius:50%; }
+  .licon { width:15px; height:15px; fill:none; stroke:var(--label-2);
+           stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; }
+  .licon.claude { stroke:var(--orange); }
+  .licon.codex { stroke:var(--teal); }
+  .lnote { color:var(--label-3); }
+</style>
+</head>
+<body>
+<header>
+  <h1>crew</h1>
+  <div class="sub" id="sub">Loading…</div>
+  <div class="legend" id="legend"></div>
+</header>
+<div class="cols">
+  <div class="stage"><div class="panel" id="panel" hidden></div><svg id="svg" viewBox="-500 -500 1000 1000"></svg></div>
+  <aside class="rooms" id="rooms"></aside>
+</div>
+
+<script>
+"use strict";
+
+const SVG_NS = "http://www.w3.org/2000/svg";
+const params = new URLSearchParams(location.search);
+// Same-origin when the registry serves this page; ?api= points it elsewhere.
+const API = params.get("api") ?? "";
+
+// Ring width is a constant now: the layout is fixed, not tunable.
+const RING = 86;
+
+let DATA = { sessions: [], entries: [] };
+let VIEW = null;
+let SIG = "";
+let META = null;
+const OPEN_ROOMS = new Set();   // rooms the reader has expanded
+let FOCUS = null;
+let ANIM = 0;
+let SKIP_CLICK = false;
+let PICK = null;  // { node, sessionKey } while something is selected
+
+// ---- data ----
+
+// Repainting on a timer would destroy any hover the cursor is sitting on, so a
+// poll that finds nothing changed leaves the DOM alone.
+function signature(sessions, entries) {
+  return JSON.stringify([
+    sessions.map((s) => [s.harness + ":" + s.id, s.status, s.alias, s.usage && s.usage.context_used]),
+    entries.map((e) => [e.id, e.resolves, e.resolved_by]),
+  ]);
+}
+
+async function load() {
+  // An older registry may not serve /v1/meta; home then falls back to a guess.
+  if (META === null) META = await json(API + "/v1/meta").catch(() => ({}));
+  const [s, e] = await Promise.all([
+    json(API + "/v1/sessions"),
+    json(API + "/v1/entries"),
+  ]);
+  const sessions = s.sessions || [], entries = e.entries || [];
+  const sig = signature(sessions, entries);
+  if (sig === SIG) return false;
+  SIG = sig;
+  DATA = { sessions, entries };
+  draw();
+  return true;
+}
+
+async function json(url) {
+  const r = await fetch(url, { cache: "no-store" });
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  return r.json();
+}
+
+// A pooled slot's room key is "<root>#<lease>". Position is by path, so the
+// lease is stripped for matching.
+function roomPath(key) {
+  const hash = key.indexOf("#");
+  return hash === -1 ? key : key.slice(0, hash);
+}
+
+function zonePath(s) {
+  return s.repo ? s.repo.root : s.cwd;
+}
+
+// The registry reports its own home directory. Guessing from paths is only a
+// fallback for static fixtures, and it is a guess: it says so in the header.
+function detectHome(paths) {
+  if (params.get("home")) return { home: params.get("home"), exact: true };
+  if (META && META.home) return { home: META.home, exact: true };
+  for (const p of paths) {
+    const m = /^(\/(?:Users|home)\/[^/]+)(?:\/|$)/.exec(p);
+    if (m) return { home: m[1], exact: false };
+  }
+  return { home: "/", exact: false };
+}
+
+// ---- layout ----
+
+// Exactly two structural levels: the folder chain, compressed into one
+// segment, then the place. Ring means role, not distance from home.
+function buildTree(paths, home) {
+  const root = { name: "~", path: home, depth: 0, children: new Map() };
+  for (const p of paths) {
+    const rel = p.startsWith(home + "/") ? p.slice(home.length + 1) : p.replace(/^\//, "");
+    const segs = rel.split("/").filter(Boolean);
+    if (!segs.length) continue;
+
+    const place = segs[segs.length - 1];
+    const folder = segs.slice(0, -1).join("/");
+    let parent = root;
+    if (folder) {
+      if (!root.children.has(folder)) {
+        root.children.set(folder, {
+          name: folder, path: home + "/" + folder, depth: 1, role: "folder",
+          children: new Map(), parent: root,
+        });
+      }
+      parent = root.children.get(folder);
+    }
+    if (!parent.children.has(place)) {
+      parent.children.set(place, {
+        name: place, path: p, depth: 2, role: "place", tall: !folder,
+        children: new Map(), parent,
+      });
+    }
+  }
+  return root;
+}
+
+// Equal angular weight per leaf: wedges must not move as agents come and go.
+function assignAngles(node, start, span) {
+  node.a0 = start;
+  node.a1 = start + span;
+  const kids = [...node.children.values()].sort((a, b) => a.name.localeCompare(b.name));
+  const leaves = kids.map(countLeaves);
+  const total = leaves.reduce((a, b) => a + b, 0) || 1;
+  let at = start;
+  kids.forEach((kid, i) => {
+    const w = (leaves[i] / total) * span;
+    assignAngles(kid, at, w);
+    at += w;
+  });
+}
+
+
+
+function countLeaves(node) {
+  if (!node.children.size) return 1;
+  return [...node.children.values()].reduce((n, k) => n + countLeaves(k), 0);
+}
+
+function flatten(node, out = []) {
+  out.push(node);
+  for (const k of node.children.values()) flatten(k, out);
+  return out;
+}
+
+// ---- icons ----
+// 16x16 stroke glyphs, drawn inline so the page needs no icon font.
+const ICONS = {
+  folder: [["path", { d: "M2 4.6a1 1 0 0 1 1-1h3.1l1.4 1.7H13a1 1 0 0 1 1 1v5.9a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z" }]],
+  repo: [
+    ["path", { d: "M4.4 2.6H12a.6.6 0 0 1 .6.6v9.5a.6.6 0 0 1-.6.6H4.4A1.4 1.4 0 0 1 3 11.9V4A1.4 1.4 0 0 1 4.4 2.6z" }],
+    ["path", { d: "M3.2 11.3h9.4" }],
+  ],
+  worktree: [
+    ["circle", { cx: 5, cy: 3.9, r: 1.8 }],
+    ["circle", { cx: 5, cy: 12.1, r: 1.8 }],
+    ["circle", { cx: 11.2, cy: 3.9, r: 1.8 }],
+    ["path", { d: "M5 5.7v4.6" }],
+    ["path", { d: "M11.2 5.7v1.1c0 1.6-1.3 2.9-2.9 2.9H6.9" }],
+  ],
+  pool: [
+    ["path", { d: "M8 2.6 13.8 5.8 8 9 2.2 5.8z" }],
+    ["path", { d: "M2.2 9.3 8 12.5l5.8-3.2" }],
+  ],
+  dir: [["path", { d: "M2 4.6a1 1 0 0 1 1-1h3.1l1.4 1.7H13a1 1 0 0 1 1 1v5.9a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z" }]],
+  agent: [
+    ["circle", { cx: 8, cy: 5.7, r: 2.5 }],
+    ["path", { d: "M3.4 13.5a4.6 4.6 0 0 1 9.2 0" }],
+  ],
+};
+
+// Icons ride the same arc as their label. Position comes from the glyph's own
+// baseline, so it holds for either text direction.
+function arcIcon(kind, r, a, flip, size, cls) {
+  const shapes = ICONS[kind];
+  if (!shapes) return null;
+  const [x, y] = polar(r, a);
+  const deg = (a * 180) / Math.PI + (flip ? 180 : 0);
+  const k = size / 16;
+  const g = el("g", {
+    class: "icon " + cls,
+    transform: `translate(${x},${y}) rotate(${deg}) scale(${k}) translate(-8,-8)`,
+  });
+  for (const [tag, attrs] of shapes) g.append(el(tag, attrs));
+  return g;
+}
+
+// ---- geometry ----
+
+const TAU = Math.PI * 2;
+const polar = (r, a) => [r * Math.cos(a - Math.PI / 2), r * Math.sin(a - Math.PI / 2)];
+const unpolar = (x, y) => Math.atan2(y, x) + Math.PI / 2;
+
+function sector(r0, r1, a0, a1) {
+  const pad = Math.min(0.012, (a1 - a0) * 0.06);
+  const [b0, b1] = [a0 + pad, a1 - pad];
+  const large = b1 - b0 > Math.PI ? 1 : 0;
+  const [x0, y0] = polar(r1, b0), [x1, y1] = polar(r1, b1);
+  const [x2, y2] = polar(r0, b1), [x3, y3] = polar(r0, b0);
+  return `M${x0},${y0}A${r1},${r1} 0 ${large} 1 ${x1},${y1}L${x2},${y2}A${r0},${r0} 0 ${large} 0 ${x3},${y3}Z`;
+}
+
+// ---- render ----
+
+function draw() {
+  layout();
+  for (const n of VIEW.nodes) n.v = targetOf(n);
+  VIEW.extent = VIEW.extentT;
+  paint();
+  resetPanel();
+}
+
+function layout() {
+  const sessions = DATA.sessions.filter((s) => s.status === "active");
+  const entries = DATA.entries;
+
+  const paths = new Set();
+  for (const s of sessions) paths.add(zonePath(s));
+  for (const e of entries) paths.add(roomPath(e.room));
+
+  const { home, exact: homeExact } = detectHome([...paths]);
+  const root = buildTree([...paths], home);
+  assignAngles(root, 0, TAU);
+  const nodes = flatten(root);
+  const byPath = new Map(nodes.map((n) => [n.path, n]));
+
+  const agentsAt = new Map();
+  for (const s of sessions) {
+    const p = zonePath(s);
+    if (!agentsAt.has(p)) agentsAt.set(p, []);
+    agentsAt.get(p).push(s);
+  }
+  const openAt = new Map(), entriesAt = new Map();
+  for (const e of entries) {
+    const p = roomPath(e.room);
+    if (!entriesAt.has(p)) entriesAt.set(p, []);
+    entriesAt.get(p).push(e);
+    if (isOpen(e)) openAt.set(p, (openAt.get(p) || 0) + 1);
+  }
+
+  const waiting = new Map();
+  for (const e of entries) {
+    if (!e.to || !isOpen(e)) continue;
+    waiting.set(e.to, e);
+  }
+
+  for (const n of nodes) n.kind = n.role === "folder" ? "folder" : "repo";
+  for (const sess of sessions) {
+    const n = byPath.get(zonePath(sess));
+    if (!n || n.children.size) continue;
+    n.kind = !sess.repo ? "dir"
+      : sess.pool ? "pool"
+      : sess.repo.is_worktree ? "worktree" : "repo";
+    n.owner = sess.pool && sess.repo ? sess.repo.main_root : null;
+  }
+
+  FOCUS = (FOCUS && byPath.get(FOCUS.path)) || root;
+  // Re-bind the selection to the new tree; drop it if its zone or agent is gone.
+  if (PICK) {
+    const node = byPath.get(PICK.node.path);
+    const here = node ? agentsAt.get(node.path) || [] : [];
+    const alive = !PICK.sessionKey || here.some((x) => x.harness + ":" + x.id === PICK.sessionKey);
+    PICK = node && alive ? { node, sessionKey: PICK.sessionKey } : null;
+  }
+  VIEW = {
+    root, nodes, byPath, sessions, entries, agentsAt, entriesAt, openAt,
+    authors: new Map(sessions.map((x) => [x.harness + ":" + x.id, x.alias])),
+    hues: assignHues(sessions),
+    openTotal: entries.filter(isOpen).length, home, homeExact, total: sessions.length,
+    extent: 0, waiting,
+  };
+  VIEW.extentT = extentFor();
+}
+
+function isUnder(n, focus) {
+  for (let c = n; c; c = c.parent) if (c === focus) return true;
+  return false;
+}
+
+// d3's zoomable-sunburst mapping: focus spans the full circle, depth is relative.
+function targetOf(n) {
+  const span = FOCUS.a1 - FOCUS.a0;
+  return {
+    a0: ((n.a0 - FOCUS.a0) / span) * TAU,
+    a1: ((n.a1 - FOCUS.a0) / span) * TAU,
+    d: n.depth - FOCUS.depth,
+  };
+}
+
+function extentFor() {
+  let max = 1;
+  for (const n of VIEW.nodes) {
+    if (!isUnder(n, FOCUS)) continue;
+    const rings = n.depth - FOCUS.depth + 1 + (VIEW.agentsAt.get(n.path) ? 1 : 0);
+    max = Math.max(max, rings);
+  }
+  return max * RING + 70;
+}
+
+function setFocus(node) {
+  if (!node || node === FOCUS) return;
+  FOCUS = node;
+  const from = VIEW.nodes.map((n) => ({ ...n.v }));
+  const to = VIEW.nodes.map(targetOf);
+  const e0 = VIEW.extent, e1 = extentFor();
+  const start = performance.now(), dur = 560;
+  cancelAnimationFrame(ANIM);
+  if (document.hidden) {
+    VIEW.nodes.forEach((n, i) => { n.v = to[i]; });
+    VIEW.extent = e1;
+    paint();
+    return;
+  }
+  const step = (now) => {
+    const t = Math.min(1, (now - start) / dur);
+    const k = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    VIEW.nodes.forEach((n, i) => {
+      n.v = {
+        a0: from[i].a0 + (to[i].a0 - from[i].a0) * k,
+        a1: from[i].a1 + (to[i].a1 - from[i].a1) * k,
+        d: from[i].d + (to[i].d - from[i].d) * k,
+      };
+    });
+    VIEW.extent = e0 + (e1 - e0) * k;
+    paint();
+    if (t < 1) ANIM = requestAnimationFrame(step);
+  };
+  ANIM = requestAnimationFrame(step);
+}
+
+function visible(n) {
+  return n.v.d >= 0.5 && n.v.a1 - n.v.a0 > 0.004 && n.v.a0 > -0.02 && n.v.a1 < TAU + 0.02;
+}
+
+function paint() {
+  const svg = document.getElementById("svg");
+  svg.replaceChildren();
+  const { agentsAt, openAt, byPath } = VIEW;
+  const RW = RING;
+  const g = el("g");
+  svg.append(g);
+  svg.setAttribute("viewBox", vb(VIEW.extent));
+
+
+  const defs = el("defs");
+  g.append(defs);
+  const shown = VIEW.nodes.filter((n) => n.depth > 0 && n.v.d > 0.5 && visible(n));
+
+  for (const n of shown) {
+    const leaf = !n.children.size;
+    const here = (agentsAt.get(n.path) || []).length;
+    const p = el("path", {
+      class: "zone " + (n.role === "folder" ? "folder" : "place"),
+      d: sector((n.tall ? n.v.d - 1 : n.v.d) * RW, (n.v.d + 1) * RW, n.v.a0, n.v.a1),
+    });
+    p.dataset.path = n.path;
+    p.addEventListener("mouseenter", () => highlight(n));
+    p.addEventListener("mouseleave", resetPanel);
+    if (n.children.size) {
+      p.style.cursor = "zoom-in";
+      p.addEventListener("click", () => setFocus(n));
+    } else {
+      p.addEventListener("click", (ev) => { ev.stopPropagation(); pick(n, null); });
+    }
+    g.append(p);
+      g.append(arcText(defs, n, RW, leaf, here));
+  }
+
+  const agentLayer = el("g");
+  for (const n of shown) {
+    const list = agentsAt.get(n.path);
+    if (!list) continue;
+    const span = (n.v.a1 - n.v.a0) / list.length;
+    list.forEach((sess, i) => {
+      const a0 = n.v.a0 + i * span;
+      agentLayer.append(agentSegment(sess, n, a0, a0 + span, RW, defs));
+    });
+  }
+
+  g.append(agentLayer);
+
+  for (const t of svg.querySelectorAll("text[data-icon]")) {
+    if (!t.getComputedTextLength()) continue;
+    const p0 = t.getStartPositionOfChar(0);
+    const baseR = Math.hypot(p0.x, p0.y);
+    if (!baseR) continue;
+    const flip = !!t.dataset.iflip;
+    const size = +t.dataset.isize;
+    const gap = (4 + size / 2) / baseR;
+    const aStart = unpolar(p0.x, p0.y);
+    const ic = arcIcon(t.dataset.icon, baseR + (flip ? -4 : 4),
+      flip ? aStart + gap : aStart - gap, flip, size, t.dataset.icls);
+    if (ic) t.parentNode.append(ic);
+  }
+
+  const hub = el("circle", { class: "hub", r: RW - 14 });
+  if (FOCUS.parent) {
+    hub.style.cursor = "zoom-out";
+    hub.addEventListener("click", () => setFocus(FOCUS.parent));
+  }
+  g.append(hub);
+  g.append(el("text", { class: "hubtext", y: -2 }, shortName(FOCUS.name)));
+  g.append(el("text", { class: "hubsub", y: 13 },
+    FOCUS.parent ? "click to zoom out" : VIEW.total + " agents"));
+
+  document.getElementById("sub").textContent =
+    `${VIEW.total} agents · ${agentsAt.size} zones · ${VIEW.openTotal} open · ` +
+    `home ${VIEW.home}${VIEW.homeExact ? "" : " (inferred)"}`;
+  renderRooms();
+}
+
+function vb(extent) {
+  return `${-extent} ${-extent} ${extent * 2} ${extent * 2}`;
+}
+
+// Collapsed names get long; the leaf segment carries the meaning.
+function shortName(name) {
+  return name.length > 16 ? name.slice(name.lastIndexOf("/") + 1) : name;
+}
+
+// Titles follow their own arc, so the name sits on the plate it names.
+// Text hangs off its path by dy, and dy's screen direction flips with the arc,
+// so the path radius is nudged to land the glyphs' centre on the band centre.
+function bandText(centreR, flip) {
+  return centreR + (flip ? 9 : 7);
+}
+
+function titleR(n, RW, leaf) {
+  return bandText((n.v.d + 0.5) * RW, flipped(n));
+}
+
+function flipped(n) {
+  return midFlipped((n.v.a0 + n.v.a1) / 2);
+}
+
+function midFlipped(mid) {
+  return mid > Math.PI / 2 && mid < 1.5 * Math.PI;
+}
+
+
+function arcPath(r, a0, a1, flip) {
+  const large = a1 - a0 > Math.PI ? 1 : 0;
+  const [x0, y0] = polar(r, flip ? a1 : a0);
+  const [x1, y1] = polar(r, flip ? a0 : a1);
+  return `M${x0},${y0}A${r},${r} 0 ${large} ${flip ? 0 : 1} ${x1},${y1}`;
+}
+
+function fit(text, chars) {
+  if (chars < 3) return "";
+  return text.length <= chars ? text : text.slice(0, chars - 1) + "…";
+}
+
+function arcText(defs, n, RW, leaf, count) {
+  const flip = flipped(n);
+  const id = "a" + n.depth + "-" + Math.round(n.a0 * 1000);
+  defs.append(el("path", { id, fill: "none", d: arcPath(titleR(n, RW, leaf), n.v.a0, n.v.a1, flip) }));
+  const text = el("text", { class: leaf ? "ztitle" : "btitle", dy: flip ? -5 : 11 });
+  const room = Math.floor(((n.v.a1 - n.v.a0) * titleR(n, RW, leaf) - 10) / (leaf ? 6.4 : 5.6));
+  const label = fit(leaf && count ? `${shortName(n.name)} · ${count}` : shortName(n.name), room);
+  const tp = el("textPath", { href: "#" + id, startOffset: "50%", "text-anchor": "middle" }, label);
+  text.append(tp);
+  if (room >= 5) {
+    const r = titleR(n, RW, leaf);
+    text.dataset.icon = leaf ? n.kind : "folder";
+    text.dataset.iflip = flip ? "1" : "";
+    text.dataset.isize = leaf ? "15" : "13";
+    text.dataset.icls = leaf ? "place" : "folder";
+  }
+  return text;
+}
+
+// The band is the context window; the radial fill is how much of it is spent.
+// Capacity itself is left for height once this becomes 3D.
+function agentSegment(sess, n, a0, a1, RW, defs) {
+  const u = sess.usage || {};
+  const known = u.context_window > 0 && u.context_used > 0;
+  const frac = known ? Math.min(1, u.context_used / u.context_window) : 0;
+  const cls = harnessClass(sess.harness);
+  const r0 = (n.v.d + 1) * RW + 2;
+  const r1 = (n.v.d + 2) * RW - 2;
+
+  const key = sess.harness + ":" + sess.id;
+  const grp = el("g", {
+    class: "aseg " + cls + (known ? "" : " nodata"),
+  });
+  const colour = colourOf(key);
+  grp.append(el("path", { class: "track", fill: colour, d: sector(r0, r1, a0, a1) }));
+  if (known) {
+    grp.append(el("path", { class: "used", fill: colour, d: sector(r0, r0 + (r1 - r0) * frac, a0, a1) }));
+  }
+  grp.append(el("path", { class: "edge", d: sector(r0, r1, a0, a1) }));
+
+  const label = (sess.alias || sess.harness) + " · " + shortModel(u.model || (sess.meta && sess.meta.model));
+  // Outside the rim rather than inside it: the arc is longer out here, so
+  // names truncate less, and the segment stays a clean band of colour.
+  const flip = midFlipped((a0 + a1) / 2);
+  const rt = bandText(r1 + 13, flip);
+  const room = Math.floor(((a1 - a0) * rt - 8) / 6.2);
+  if (room >= 3) {
+    const id = "g" + Math.round(a0 * 1000) + "-" + Math.round(rt);
+    defs.append(el("path", { id, fill: "none", d: arcPath(rt, a0, a1, flip) }));
+    const text = el("text", { class: "alabel", dy: flip ? -4 : 10 });
+    text.append(el("textPath", { href: "#" + id, startOffset: "50%", "text-anchor": "middle" },
+      fit(label, room)));
+    if (room >= 6) {
+      text.dataset.icon = "agent";
+      text.dataset.iflip = flip ? "1" : "";
+      text.dataset.isize = "14";
+      text.dataset.icls = "agent " + cls;
+    }
+    grp.append(text);
+  }
+
+  // The band's own label says what the fill means, in the space the name used
+  // to occupy. Without it the gauge is a coloured bar with no units.
+  grp.append(gaugeLabel(defs, n, a0, a1, RW, known, frac));
+
+  grp.dataset.key = key;
+  grp.dataset.zone = n.path;
+  grp.addEventListener("mouseenter", () => highlight(n, key));
+  grp.addEventListener("mouseleave", resetPanel);
+  grp.addEventListener("click", (ev) => { ev.stopPropagation(); pick(n, key); });
+  if (PICK && PICK.sessionKey === key) grp.classList.add("picked");
+  return grp;
+}
+
+
+
+// A pool slot sits where it lives on disk; the tether shows what it belongs to.
+
+
+
+
+
+
+// ---- agent colour ----
+//
+// Identity is the hue. Assignment is hashed so an agent keeps its colour across
+// refreshes, then nudged so no two *live* agents ever share one.
+
+const HUE_SLOTS = 100;
+const GOLDEN = 137.508;
+
+function hashKey(k) {
+  let h = 2166136261;
+  for (let i = 0; i < k.length; i++) {
+    h ^= k.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+function hueGap(a, b) {
+  const d = Math.abs(a - b) % 360;
+  return Math.min(d, 360 - d);
+}
+
+// Distinct slots are not distinct colours: 100 slots are only 3.6 degrees
+// apart. Separation is enforced in hue space, loosening as the fleet grows.
+// An agent keeps its hashed hue unless it actually clashes, so colours are
+// stable in practice but distinctness always wins when they conflict.
+function assignHues(sessions) {
+  const ordered = [...sessions].sort((a, b) =>
+    (a.harness + a.id).localeCompare(b.harness + b.id));
+  const minSep = Math.min(45, 300 / Math.max(1, ordered.length));
+  const taken = [], out = new Map();
+
+  for (const s of ordered) {
+    const key = s.harness + ":" + s.id;
+    const start = hashKey(key) % HUE_SLOTS;
+    let hue = null;
+    for (let step = 0; step < HUE_SLOTS; step++) {
+      const candidate = (((start + step) % HUE_SLOTS) * GOLDEN) % 360;
+      if (taken.every((t) => hueGap(t, candidate) >= minSep)) { hue = candidate; break; }
+    }
+    if (hue === null) hue = (start * GOLDEN) % 360;  // palette exhausted
+    taken.push(hue);
+    out.set(key, hue);
+  }
+  return out;
+}
+
+function colourOf(key) {
+  const hue = VIEW && VIEW.hues.get(key);
+  if (hue === undefined) return "var(--gray)";
+  return `oklch(var(--al) var(--ac) ${hue.toFixed(1)})`;
+}
+
+// ---- room panel ----
+//
+// Mirrors room.For: the working tree a session sits in, plus the repository
+// that owns it when they differ.
+function roomsOf(sess) {
+  const repo = sess.repo;
+  if (!repo) return sess.cwd ? [sess.cwd] : [];
+  const lease = sess.pool && sess.pool.lease_id;
+  const keys = [lease ? repo.root + "#" + lease : repo.root];
+  if (repo.main_root && repo.main_root !== repo.root) keys.push(repo.main_root);
+  return keys;
+}
+
+function roomName(key, home) {
+  const path = key.split("#")[0];
+  const rel = path.startsWith(home + "/") ? path.slice(home.length + 1) : path;
+  return rel.split("/").filter(Boolean).slice(-1)[0] || rel;
+}
+
+function renderRooms() {
+  const host = document.getElementById("rooms");
+  const { entries, sessions, home } = VIEW;
+
+  const byRoom = new Map();
+  for (const e of entries) {
+    if (!byRoom.has(e.room)) byRoom.set(e.room, []);
+    byRoom.get(e.room).push(e);
+  }
+  const whoIn = new Map();
+  for (const sess of sessions) {
+    for (const key of roomsOf(sess)) {
+      if (!whoIn.has(key)) whoIn.set(key, []);
+      whoIn.get(key).push(sess.harness + ":" + sess.id);
+    }
+  }
+  // A room with no posts but live agents still exists; a room with posts and no
+  // agents is what the next arrival will be told.
+  for (const key of whoIn.keys()) if (!byRoom.has(key)) byRoom.set(key, []);
+
+  const byId = new Map(entries.map((e) => [e.id, e]));
+  const rooms = [...byRoom.keys()].sort((a, b) =>
+    roomName(a, home).localeCompare(roomName(b, home)) || a.localeCompare(b));
+
+  if (!rooms.length) {
+    host.replaceChildren(tag("div", "roomsempty", "No rooms yet."));
+    return;
+  }
+
+  host.replaceChildren(...rooms.map((key) => {
+    const posts = byRoom.get(key);
+    const open = posts.filter(isOpen).length;
+    const scope = posts.length ? posts[0].scope : "worktree";
+
+    const box = document.createElement("details");
+    box.className = "room";
+    if (OPEN_ROOMS.has(key)) box.open = true;
+    box.addEventListener("toggle", () => {
+      box.open ? OPEN_ROOMS.add(key) : OPEN_ROOMS.delete(key);
+    });
+
+    const head = document.createElement("summary");
+    head.append(
+      tag("span", "caret", "\u203a"),
+      tag("span", "rname", roomName(key, home)),
+      tag("span", "rscope", scope),
+      tag("span", "rcount"),
+    );
+    const count = head.querySelector(".rcount");
+    if (open) count.append(tag("b", "", open + " open"), document.createTextNode(" \u00b7 "));
+    count.append(document.createTextNode(posts.length + (posts.length === 1 ? " post" : " posts")));
+    box.append(head);
+
+    const here = whoIn.get(key);
+    if (here && here.length) {
+      const line = tag("div", "rwho");
+      here.forEach((k, i) => {
+        if (i) line.append(document.createTextNode(", "));
+        line.append(named(k));
+      });
+      box.append(line);
+    }
+
+    // Open first, then most recent: the same order the briefing reads in.
+    const ordered = [...posts].sort((a, b) =>
+      (isOpen(b) ? 1 : 0) - (isOpen(a) ? 1 : 0) || b.id - a.id);
+    for (const e of ordered) {
+      if (e.resolves) continue;  // answers are shown under what they answer
+      box.append(postRow(e, byId));
+    }
+    return box;
+  }));
+}
+
+function postRow(e, byId) {
+  const row = tag("div", "post" + (isOpen(e) ? " open" : ""));
+  const line = tag("div");
+  line.append(tag("span", "pmode", e.mode), tag("span", "pbody", e.body));
+  row.append(line);
+
+  const answer = e.resolved_by && byId.get(e.resolved_by);
+  if (answer) row.append(tag("div", "answer", answer.body));
+
+  const meta = tag("div", "pmeta");
+  meta.append(document.createTextNode("#" + e.id + " "), named(e.author));
+  if (e.to) meta.append(document.createTextNode(" \u2192 "), named(e.to));
+  meta.append(document.createTextNode(" \u00b7 " + age(e.created_at)));
+  row.append(meta);
+  return row;
+}
+
+// An author keeps its hue wherever it is named.
+function named(key) {
+  const el2 = tag("span", "who-name", VIEW.authors.get(key) || key.split(":")[0]);
+  if (VIEW.hues.has(key)) el2.style.color = colourOf(key);
+  return el2;
+}
+
+function age(ts) {
+  const then = Date.parse(ts);
+  if (!then) return "";
+  const secs = Math.max(0, (Date.now() - then) / 1000);
+  if (secs < 60) return Math.floor(secs) + "s ago";
+  if (secs < 3600) return Math.floor(secs / 60) + "m ago";
+  if (secs < 86400) return Math.floor(secs / 3600) + "h ago";
+  return Math.floor(secs / 86400) + "d ago";
+}
+
+// ---- interaction ----
+
+function initInteractions(svg) {
+  svg.addEventListener("click", () => {
+    if (SKIP_CLICK) { SKIP_CLICK = false; return; }
+    if (PICK) { PICK = null; paint(); resetPanel(); }
+  });
+}
+
+// ---- hover detail ----
+
+function ancestors(n) {
+  const chain = [];
+  for (let cur = n; cur; cur = cur.parent) chain.unshift(cur);
+  return chain;
+}
+
+// Dimming everything off the ancestor chain is what makes ownership legible.
+function highlight(node, sessionKey) {
+  const chain = new Set(ancestors(node).map((n) => n.path));
+  for (const p of document.querySelectorAll(".zone")) {
+    const inChain = chain.has(p.dataset.path);
+    p.classList.toggle("dim", !inChain);
+    p.classList.toggle("trail", p.dataset.path === node.path);
+  }
+  // The pooled slot's owning repo is lit rather than wired to it.
+  const owner = node.owner && VIEW.byPath.get(node.owner);
+  for (const p of document.querySelectorAll(".zone")) {
+    const isOwner = owner && p.dataset.path === owner.path;
+    if (isOwner) p.classList.remove("dim");
+    p.classList.toggle("owner", !!isOwner);
+  }
+
+  for (const a of document.querySelectorAll(".aseg")) {
+    a.classList.toggle("dim", a.dataset.zone !== node.path);
+  }
+  renderPanel(node, sessionKey);
+}
+
+function pick(node, sessionKey) {
+  const same = PICK && PICK.node === node && PICK.sessionKey === sessionKey;
+  PICK = same ? null : { node, sessionKey };
+  paint();
+  resetPanel();
+}
+
+function resetPanel() {
+  for (const e of document.querySelectorAll(".dim, .trail, .owner")) {
+    e.classList.remove("dim", "trail", "owner");
+  }
+  if (PICK) { highlight(PICK.node, PICK.sessionKey); return; }
+  document.getElementById("panel").hidden = true;
+}
+
+function renderPanel(node, sessionKey) {
+  const panel = document.getElementById("panel");
+  panel.hidden = false;
+  const crumbs = tag("div", "crumbs");
+  const chain = ancestors(node);
+  chain.forEach((n, i) => {
+    const last = i === chain.length - 1;
+    const chip = tag("span", "crumb" + (last ? " last" : ""), elide(n.name));
+    if (chip.textContent !== n.name) chip.title = n.name;
+    crumbs.append(chip);
+    if (!last) crumbs.append(tag("span", "crumb sep", "›"));
+  });
+  crumbs.append(copyPath(node.path));
+
+  const agents = (VIEW.agentsAt.get(node.path) || []);
+  const roster = tag("div", "roster");
+  for (const s of agents) {
+    roster.append(agentRow(s, sessionKey === s.harness + ":" + s.id));
+  }
+  panel.replaceChildren(crumbs);
+  if (agents.length) panel.append(roster);
+  else panel.append(tag("div", "hint", "No agents here."));
+
+  if (node.owner) {
+    const own = VIEW.byPath.get(node.owner);
+    panel.append(tag("div", "openrow", `Leased slot of ${own ? own.name : node.owner.replace(VIEW.home, "~")}`));
+  }
+  for (const s2 of agents) {
+    const asked = VIEW.waiting.get(s2.harness + ":" + s2.id);
+    if (!asked) continue;
+    const from = VIEW.sessions.find((x) => x.harness + ":" + x.id === asked.author);
+    panel.append(tag("div", "openrow", `${s2.alias} is awaiting a reply to ${from ? from.alias : asked.author}: ${asked.body}`));
+  }
+
+  const open = (VIEW.entriesAt.get(node.path) || []).filter((e) => isOpen(e) && !e.to);
+  if (open.length) {
+    const row = tag("div", "openrow");
+    row.append(tag("b", "", open.length + " open: "), document.createTextNode(open.map((e) => e.body).join(" · ")));
+    panel.append(row);
+  }
+}
+
+// A crumb names a place; the full path belongs on the clipboard, not on screen.
+function elide(name, max = 13) {
+  if (name.length <= max) return name;
+  const parts = name.split("/");
+  if (parts.length > 1) {
+    const head = parts[0], tail = parts[parts.length - 1];
+    const joined = head + "/…/" + tail;
+    if (joined.length <= max + 4) return joined;
+    return "…/" + tail.slice(0, max - 2) + (tail.length > max - 2 ? "…" : "");
+  }
+  return name.slice(0, max - 1) + "…";
+}
+
+function copyPath(path) {
+  const btn = document.createElement("button");
+  btn.className = "crumb copy";
+  btn.title = path;
+  btn.textContent = "copy";
+  btn.addEventListener("click", async (ev) => {
+    ev.stopPropagation();
+    try {
+      await navigator.clipboard.writeText(path);
+      btn.textContent = "copied";
+    } catch {
+      btn.textContent = "failed";
+    }
+    setTimeout(() => { btn.textContent = "copy"; }, 1400);
+  });
+  return btn;
+}
+
+function agentRow(s, focused) {
+  const u = s.usage || {};
+  const known = u.context_window > 0 && u.context_used > 0;
+  const cls = harnessClass(s.harness);
+  const row = tag("div", "arow");
+  if (focused) row.style.outline = "1px solid var(--separator)";
+
+  const who = tag("div", "who " + cls);
+  const dot = tag("i", "", "●");
+  who.append(dot, document.createTextNode(s.alias || s.harness));
+  who.style.color = colourOf(s.harness + ":" + s.id);
+  who.append(tag("span", "model", " " + (u.model || (s.meta && s.meta.model) || s.harness)));
+  row.append(who);
+
+  if (known) {
+    const bar = tag("div", "bar " + cls);
+    const fillEl = document.createElement("span");
+    fillEl.style.width = Math.min(100, (u.context_used / u.context_window) * 100) + "%";
+    bar.append(fillEl);
+    row.append(bar, tag("div", "num",
+      `${Math.round((u.context_used / u.context_window) * 100)}% of ${fmt(u.context_window)} · ${fmt(Number(u.input_tokens || 0) + Number(u.output_tokens || 0))} tok`));
+  } else {
+    row.append(tag("div", "bar"), tag("div", "num unknown", "usage unknown"));
+  }
+  return row;
+}
+
+function tag(name, cls, text) {
+  const e = document.createElement(name);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+
+// ---- helpers ----
+
+function isOpen(e) {
+  return e.mode === "request" && !e.resolves && !e.resolved_by;
+}
+
+// gaugeLabel rides the centre of the agent band, over the fill, so it needs a
+// halo the way the name no longer does.
+function gaugeLabel(defs, n, a0, a1, RW, known, frac) {
+  const flip = midFlipped((a0 + a1) / 2);
+  const r = bandText((n.v.d + 1.5) * RW, flip);
+  const room = Math.floor(((a1 - a0) * r - 8) / 5.9);
+  const pct = Math.round(frac * 100) + "%";
+  const full = "context " + pct;
+  const text = known ? (room >= full.length ? full : pct) : "no usage";
+  if (room < text.length) return el("g");
+
+  const id = "c" + Math.round(a0 * 1000) + "-" + Math.round(r);
+  defs.append(el("path", { id, fill: "none", d: arcPath(r, a0, a1, flip) }));
+  const label = el("text", { class: "clabel" + (known ? "" : " unknown"), dy: flip ? -4 : 10 });
+  label.append(el("textPath", { href: "#" + id, startOffset: "50%", "text-anchor": "middle" }, text));
+  return label;
+}
+
+// The harness colour already says claude or codex, so the vendor prefix is noise.
+function shortModel(model) {
+  if (!model) return "?";
+  return model.split("[")[0].replace(/^claude-/, "");
+}
+
+function harnessClass(h) {
+  return h === "claude" || h === "codex" ? h : "unknown";
+}
+
+function fmt(n) {
+  return n >= 1e6 ? n / 1e6 + "M" : Math.round(n / 1000) + "k";
+}
+
+function el(name, attrs = {}, text) {
+  const node = document.createElementNS(SVG_NS, name);
+  for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+// ---- legend ----
+
+function buildLegend() {
+  const swatch = (colour) => {
+    const e = tag("span", "swatch");
+    e.style.background = colour;
+    return e;
+  };
+  const glyph = (kind, extra) => {
+    const svg = el("svg", { viewBox: "0 0 16 16", class: "licon" + (extra ? " " + extra : "") });
+    for (const [t, a] of ICONS[kind]) svg.append(el(t, a));
+    return svg;
+  };
+  const item = (mark, text) => {
+    const s = tag("span", "litem");
+    s.append(mark, tag("b", "", text));
+    return s;
+  };
+  document.getElementById("legend").replaceChildren(
+    item(glyph("agent", "claude"), "claude"),
+    item(glyph("agent", "codex"), "codex"),
+    item(glyph("folder"), "folder · no repo"),
+    item(glyph("repo"), "repository"),
+    item(glyph("worktree"), "worktree"),
+    item(glyph("pool"), "pool slot"),
+    item(glyph("agent"), "agent"),
+    tag("span", "lnote", "each agent has its own colour · fill = context used · click to inspect"),
+  );
+}
+
+// ---- controls ----
+
+
+buildLegend();
+initInteractions(document.getElementById("svg"));
+load().catch((err) => {
+  document.getElementById("sub").textContent = "Failed to load: " + err.message;
+});
+setInterval(() => load().catch(() => {}), 2000);
+</script>
+</body>
+</html>
