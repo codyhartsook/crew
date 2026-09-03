@@ -123,9 +123,15 @@
     box-shadow:0 0 0 0.5px rgba(0,0,0,0.12), 0 6px 20px rgba(0,0,0,0.28);
   }
   .panel[hidden] { display:none; }
-  .crumbs { display:flex; align-items:center; gap:5px; flex-wrap:wrap; font-family:var(--mono); font-size:11px; }
-  .crumb { padding:2px 8px; border-radius:5px; background:var(--fill); color:var(--label-2); }
+  .crumbs { display:flex; align-items:center; gap:5px; font-family:var(--mono); font-size:11px; }
+  .crumb { padding:2px 8px; border-radius:5px; background:var(--fill); color:var(--label-2);
+           white-space:nowrap; }
   .crumb.last { background:color-mix(in srgb, var(--label) 12%, transparent); color:var(--label); font-weight:600; }
+  .crumb.copy {
+    margin-left:auto; border:0; font:inherit; font-family:var(--mono); font-size:10.5px;
+    color:var(--label-3); cursor:pointer;
+  }
+  .crumb.copy:hover { color:var(--label); background:var(--fill); }
   .crumb.sep { background:none; padding:0; color:var(--label-3); }
   .hint { font-size:12px; color:var(--label-3); }
 
@@ -944,9 +950,13 @@ function renderPanel(node, sessionKey) {
   const crumbs = tag("div", "crumbs");
   const chain = ancestors(node);
   chain.forEach((n, i) => {
-    crumbs.append(tag("span", "crumb" + (i === chain.length - 1 ? " last" : ""), n.name));
-    if (i < chain.length - 1) crumbs.append(tag("span", "crumb sep", "›"));
+    const last = i === chain.length - 1;
+    const chip = tag("span", "crumb" + (last ? " last" : ""), elide(n.name));
+    if (chip.textContent !== n.name) chip.title = n.name;
+    crumbs.append(chip);
+    if (!last) crumbs.append(tag("span", "crumb sep", "›"));
   });
+  crumbs.append(copyPath(node.path));
 
   const agents = (VIEW.agentsAt.get(node.path) || []);
   const roster = tag("div", "roster");
@@ -957,12 +967,6 @@ function renderPanel(node, sessionKey) {
   if (agents.length) panel.append(roster);
   else panel.append(tag("div", "hint", "No agents here."));
 
-  const kindWord = { worktree: "linked worktree", pool: "pooled slot", repo: "repository",
-                     dir: "plain directory, not a repository", folder: "folder" };
-  if (node.kind && node.kind !== "folder") {
-    crumbs.append(tag("span", "crumb sep", "·"), tag("span", "crumb", kindWord[node.kind] || node.kind));
-  }
-  if (PICK) crumbs.append(tag("span", "crumb sep", "·"), tag("span", "crumb", "click again to clear"));
   if (node.owner) {
     const own = VIEW.byPath.get(node.owner);
     panel.append(tag("div", "openrow", `Leased slot of ${own ? own.name : node.owner.replace(VIEW.home, "~")}`));
@@ -980,6 +984,37 @@ function renderPanel(node, sessionKey) {
     row.append(tag("b", "", open.length + " open: "), document.createTextNode(open.map((e) => e.body).join(" · ")));
     panel.append(row);
   }
+}
+
+// A crumb names a place; the full path belongs on the clipboard, not on screen.
+function elide(name, max = 13) {
+  if (name.length <= max) return name;
+  const parts = name.split("/");
+  if (parts.length > 1) {
+    const head = parts[0], tail = parts[parts.length - 1];
+    const joined = head + "/…/" + tail;
+    if (joined.length <= max + 4) return joined;
+    return "…/" + tail.slice(0, max - 2) + (tail.length > max - 2 ? "…" : "");
+  }
+  return name.slice(0, max - 1) + "…";
+}
+
+function copyPath(path) {
+  const btn = document.createElement("button");
+  btn.className = "crumb copy";
+  btn.title = path;
+  btn.textContent = "copy";
+  btn.addEventListener("click", async (ev) => {
+    ev.stopPropagation();
+    try {
+      await navigator.clipboard.writeText(path);
+      btn.textContent = "copied";
+    } catch {
+      btn.textContent = "failed";
+    }
+    setTimeout(() => { btn.textContent = "copy"; }, 1400);
+  });
+  return btn;
 }
 
 function agentRow(s, focused) {
