@@ -30,6 +30,7 @@ type Server struct {
 	store backend
 	log   *slog.Logger
 	ui    http.Handler
+	table http.Handler
 }
 
 type Option func(*Server)
@@ -38,6 +39,11 @@ type Option func(*Server)
 // API-only, which is what the tests and any headless use want.
 func WithUI(h http.Handler) Option {
 	return func(s *Server) { s.ui = h }
+}
+
+// WithTableUI mounts the row-per-session view at /table, beside the dashboard.
+func WithTableUI(h http.Handler) Option {
+	return func(s *Server) { s.table = h }
 }
 
 // New returns a Server backed by st. A nil logger discards request logs.
@@ -64,6 +70,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/sessions/{key}/usage", s.setSessionUsage)
 	mux.HandleFunc("GET /v1/entries", s.listEntries)
 	mux.HandleFunc("GET /v1/meta", s.meta)
+	if s.table != nil {
+		mux.Handle("GET /table", s.table)
+	}
 	if s.ui != nil {
 		// "/{$}" matches the root path exactly, so the interface cannot shadow
 		// an API route or swallow unknown paths.

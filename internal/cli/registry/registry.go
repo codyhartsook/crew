@@ -70,7 +70,7 @@ func Serve(ctx context.Context, opts *cmdutil.Options, cfg Config) error {
 	}
 
 	srv := &http.Server{
-		Handler:           api.New(st, log, api.WithUI(ui.Handler())).Handler(),
+		Handler:           api.New(st, log, api.WithUI(ui.Handler()), api.WithTableUI(ui.Table())).Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 

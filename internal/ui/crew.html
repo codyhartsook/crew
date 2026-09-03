@@ -28,10 +28,10 @@
     margin:0; padding:24px; background:var(--window); color:var(--label);
     font:13px/1.45 var(--sans); -webkit-font-smoothing:antialiased;
   }
-  header { max-width:1400px; margin:0 auto 12px; }
+  header { max-width:1560px; margin:0 auto 12px; }
   h1 { margin:0; font-size:20px; font-weight:700; letter-spacing:-0.022em; }
   .sub { margin-top:2px; font-size:12.5px; color:var(--label-2); }
-  .cols { display:flex; gap:22px; max-width:1400px; margin:0 auto; align-items:flex-start; }
+  .cols { display:flex; gap:26px; max-width:1560px; margin:0 auto; align-items:flex-start; }
   .stage { flex:1 1 auto; min-width:0; position:relative; }
   .rooms { flex:0 0 320px; }
   @media (max-width:1100px) {
@@ -70,7 +70,7 @@
   .post .answer { margin-top:4px; padding-left:9px; border-left:2px solid var(--separator);
                   color:var(--label-2); }
   .roomsempty { font-size:12px; color:var(--label-3); padding:4px 2px; }
-  svg { display:block; width:100%; height:auto; max-height:calc(100vh - 190px); }
+  svg { display:block; width:100%; height:auto; max-height:calc(100vh - 150px); }
 
   .ring { fill:none; stroke:var(--separator); stroke-dasharray:2 4; }
 
@@ -90,10 +90,13 @@
   .used { fill-opacity:0.85; stroke:none; }
   .aseg .edge { fill:none; stroke:color-mix(in srgb, var(--label) 30%, transparent); stroke-width:1; }
   .aseg.nodata .edge { stroke-dasharray:3 3; }
-  /* A halo keeps the label legible over any hue, filled or unfilled. */
-  .alabel { font-size:10.5px; font-weight:600; fill:#fff; pointer-events:none;
-            font-family:var(--mono); paint-order:stroke;
-            stroke:rgba(0,0,0,0.55); stroke-width:2.6px; stroke-linejoin:round; }
+  .alabel { font-size:11px; font-weight:600; fill:var(--label); pointer-events:none;
+            font-family:var(--mono); }
+  /* Sits on the fill, so it carries a halo the outside labels do not need. */
+  .clabel { font-size:10px; font-weight:600; fill:#fff; pointer-events:none;
+            font-family:var(--mono); paint-order:stroke; letter-spacing:0.02em;
+            stroke:rgba(0,0,0,0.5); stroke-width:2.4px; stroke-linejoin:round; }
+  .clabel.unknown { fill:var(--label-3); stroke-width:0; font-weight:500; font-style:italic; }
 
   .hub { fill:var(--card); stroke:var(--separator); }
   .hubtext { font-size:14px; font-weight:650; fill:var(--label); text-anchor:middle; }
@@ -140,6 +143,7 @@
   .bar.codex span { background:var(--teal); }
   .arow .num { color:var(--label-2); font-variant-numeric:tabular-nums; text-align:right; font-size:11px; }
   .arow .unknown { color:var(--label-3); font-style:italic; }
+
   .openrow { margin-top:8px; font-size:11.5px; color:var(--label-2); }
   .openrow b { color:var(--label); font-weight:600; }
 
@@ -177,7 +181,8 @@
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const params = new URLSearchParams(location.search);
-const API = params.get("api");
+// Same-origin when the registry serves this page; ?api= points it elsewhere.
+const API = params.get("api") ?? "";
 
 // Ring width is a constant now: the layout is fixed, not tunable.
 const RING = 86;
@@ -204,12 +209,12 @@ function signature(sessions, entries) {
 }
 
 async function load() {
-  if (META === null) {
-    META = API ? await json(API + "/v1/meta").catch(() => ({})) : {};
-  }
-  const [s, e] = API
-    ? await Promise.all([json(API + "/v1/sessions"), json(API + "/v1/entries")])
-    : await Promise.all([json("./sessions.json"), json("./entries.json")]);
+  // An older registry may not serve /v1/meta; home then falls back to a guess.
+  if (META === null) META = await json(API + "/v1/meta").catch(() => ({}));
+  const [s, e] = await Promise.all([
+    json(API + "/v1/sessions"),
+    json(API + "/v1/entries"),
+  ]);
   const sessions = s.sessions || [], entries = e.entries || [];
   const sig = signature(sessions, entries);
   if (sig === SIG) return false;
@@ -657,10 +662,12 @@ function agentSegment(sess, n, a0, a1, RW, defs) {
   grp.append(el("path", { class: "edge", d: sector(r0, r1, a0, a1) }));
 
   const label = (sess.alias || sess.harness) + " · " + shortModel(u.model || (sess.meta && sess.meta.model));
-  const rt = bandText((n.v.d + 1.5) * RW, midFlipped((a0 + a1) / 2)) - 1;
+  // Outside the rim rather than inside it: the arc is longer out here, so
+  // names truncate less, and the segment stays a clean band of colour.
+  const flip = midFlipped((a0 + a1) / 2);
+  const rt = bandText(r1 + 13, flip);
   const room = Math.floor(((a1 - a0) * rt - 8) / 6.2);
   if (room >= 3) {
-    const flip = midFlipped((a0 + a1) / 2);
     const id = "g" + Math.round(a0 * 1000) + "-" + Math.round(rt);
     defs.append(el("path", { id, fill: "none", d: arcPath(rt, a0, a1, flip) }));
     const text = el("text", { class: "alabel", dy: flip ? -4 : 10 });
@@ -674,6 +681,10 @@ function agentSegment(sess, n, a0, a1, RW, defs) {
     }
     grp.append(text);
   }
+
+  // The band's own label says what the fill means, in the space the name used
+  // to occupy. Without it the gauge is a coloured bar with no units.
+  grp.append(gaugeLabel(defs, n, a0, a1, RW, known, frac));
 
   grp.dataset.key = key;
   grp.dataset.zone = n.path;
@@ -1009,6 +1020,24 @@ function tag(name, cls, text) {
 
 function isOpen(e) {
   return e.mode === "request" && !e.resolves && !e.resolved_by;
+}
+
+// gaugeLabel rides the centre of the agent band, over the fill, so it needs a
+// halo the way the name no longer does.
+function gaugeLabel(defs, n, a0, a1, RW, known, frac) {
+  const flip = midFlipped((a0 + a1) / 2);
+  const r = bandText((n.v.d + 1.5) * RW, flip);
+  const room = Math.floor(((a1 - a0) * r - 8) / 5.9);
+  const pct = Math.round(frac * 100) + "%";
+  const full = "context " + pct;
+  const text = known ? (room >= full.length ? full : pct) : "no usage";
+  if (room < text.length) return el("g");
+
+  const id = "c" + Math.round(a0 * 1000) + "-" + Math.round(r);
+  defs.append(el("path", { id, fill: "none", d: arcPath(r, a0, a1, flip) }));
+  const label = el("text", { class: "clabel" + (known ? "" : " unknown"), dy: flip ? -4 : 10 });
+  label.append(el("textPath", { href: "#" + id, startOffset: "50%", "text-anchor": "middle" }, text));
+  return label;
 }
 
 // The harness colour already says claude or codex, so the vendor prefix is noise.
