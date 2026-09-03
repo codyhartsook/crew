@@ -20,6 +20,7 @@ import (
 
 	"github.com/codyhartsook/multiplayer/internal/session"
 	"github.com/codyhartsook/multiplayer/internal/store"
+	"github.com/codyhartsook/multiplayer/internal/usage"
 )
 
 // timeFormat is the on-disk encoding for timestamps. RFC3339 with nanoseconds
@@ -29,7 +30,7 @@ const timeFormat = time.RFC3339Nano
 
 // SchemaVersion is the store layout this binary understands. Raise it whenever
 // a migration changes what older binaries can safely assume.
-const SchemaVersion = 3
+const SchemaVersion = 4
 
 const schema = `
 CREATE TABLE IF NOT EXISTS sessions (
@@ -66,7 +67,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     last_seen        TEXT NOT NULL,
     ended_at         TEXT,
     end_reason       TEXT NOT NULL DEFAULT '',
-    meta             TEXT NOT NULL DEFAULT '{}'
+    meta             TEXT NOT NULL DEFAULT '{}',
+    usage            TEXT NOT NULL DEFAULT ''
 );
 
 CREATE INDEX IF NOT EXISTS sessions_status    ON sessions(status);
@@ -80,7 +82,7 @@ CREATE INDEX IF NOT EXISTS sessions_last_seen ON sessions(last_seen DESC);
 const columns = `key, id, harness, alias, status, pid, host, username, cwd,
     has_repo, repo_name, repo_root, repo_main_root, repo_remote, repo_branch, repo_head, repo_detached, repo_is_worktree,
     has_pool, pool_manager, pool_name, pool_slot, pool_root, pool_leased, pool_lease_id, pool_lease_holder,
-    started_at, last_seen, ended_at, end_reason, meta`
+    started_at, last_seen, ended_at, end_reason, meta, usage`
 
 // migrations bring older databases up to date. Each is ignored when the
 // column already exists.
@@ -95,6 +97,7 @@ var migrations = []string{
 	`ALTER TABLE sessions ADD COLUMN pool_leased       INTEGER NOT NULL DEFAULT 0`,
 	`ALTER TABLE sessions ADD COLUMN pool_lease_id     TEXT NOT NULL DEFAULT ''`,
 	`ALTER TABLE sessions ADD COLUMN pool_lease_holder TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE sessions ADD COLUMN usage             TEXT NOT NULL DEFAULT ''`,
 }
 
 const aliasIndex = `CREATE UNIQUE INDEX IF NOT EXISTS sessions_active_alias
@@ -155,7 +158,7 @@ func migrate(db *sql.DB) error {
 		return fmt.Errorf("read schema version: %w", err)
 	}
 	if found > SchemaVersion {
-		return fmt.Errorf("database is schema version %d, this multiplayer understands %d: upgrade the binary", found, SchemaVersion)
+		return fmt.Errorf("database is schema version %d, this crew understands %d: upgrade the binary", found, SchemaVersion)
 	}
 
 	if _, err := db.ExecContext(ctx, schema+roomSchema); err != nil {
@@ -256,6 +259,16 @@ func (s *Store) upsert(ctx context.Context, sess *session.Session) error {
 	if err != nil {
 		return fmt.Errorf("encode meta: %w", err)
 	}
+	// Empty rather than "null" when absent, so a session that never reported
+	// usage reads back as nil instead of a zero snapshot.
+	usageJSON := ""
+	if sess.Usage != nil {
+		encoded, err := json.Marshal(sess.Usage)
+		if err != nil {
+			return fmt.Errorf("encode usage: %w", err)
+		}
+		usageJSON = string(encoded)
+	}
 	repo := sess.Repo
 	if repo == nil {
 		repo = &session.Repo{}
@@ -270,7 +283,7 @@ INSERT INTO sessions (` + columns + `)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?, ?, ?, ?, ?,
-        ?, ?, ?, ?, ?)
+        ?, ?, ?, ?, ?, ?)
 ON CONFLICT(key) DO UPDATE SET
     status = excluded.status,
     alias = excluded.alias,
@@ -298,13 +311,14 @@ ON CONFLICT(key) DO UPDATE SET
     last_seen = excluded.last_seen,
     ended_at = excluded.ended_at,
     end_reason = excluded.end_reason,
-    meta = excluded.meta`
+    meta = excluded.meta,
+    usage = excluded.usage`
 
 	_, err = s.db.ExecContext(ctx, q,
 		sess.Key(), sess.ID, string(sess.Harness), sess.Alias, string(sess.Status), sess.PID, sess.Host, sess.User, sess.CWD,
 		sess.Repo != nil, repo.Name, repo.Root, repo.MainRoot, repo.Remote, repo.Branch, repo.Head, repo.Detached, repo.IsWorktree,
 		sess.Pool != nil, pool.Manager, pool.Name, pool.Slot, pool.Root, pool.Leased, pool.LeaseID, pool.LeaseHolder,
-		formatTime(sess.StartedAt), formatTime(sess.LastSeen), formatTimePtr(sess.EndedAt), sess.EndReason, string(meta),
+		formatTime(sess.StartedAt), formatTime(sess.LastSeen), formatTimePtr(sess.EndedAt), sess.EndReason, string(meta), usageJSON,
 	)
 	if err != nil {
 		return fmt.Errorf("upsert session %s: %w", sess.Key(), err)
@@ -436,6 +450,27 @@ func (s *Store) Touch(ctx context.Context, key string, at time.Time) error {
 	return err
 }
 
+func (s *Store) SetUsage(ctx context.Context, key string, u *usage.Snapshot) error {
+	if u == nil {
+		return nil
+	}
+	encoded, err := json.Marshal(u)
+	if err != nil {
+		return fmt.Errorf("encode usage: %w", err)
+	}
+	const q = `UPDATE sessions SET usage = ? WHERE key = ? AND ended_at IS NULL`
+	res, err := s.db.ExecContext(ctx, q, string(encoded), key)
+	if err != nil {
+		return fmt.Errorf("set usage %s: %w", key, err)
+	}
+	if n, err := res.RowsAffected(); err == nil && n > 0 {
+		return nil
+	}
+	// Nothing changed: the key is unknown, or the session has already ended.
+	_, err = s.Get(ctx, key)
+	return err
+}
+
 func (s *Store) Get(ctx context.Context, key string) (*session.Session, error) {
 	row := s.db.QueryRowContext(ctx, `SELECT `+columns+` FROM sessions WHERE key = ?`, key)
 	sess, err := scanSession(row)
@@ -537,13 +572,14 @@ func scanSession(sc scanner) (*session.Session, error) {
 		lastSeen  string
 		endedAt   sql.NullString
 		metaJSON  string
+		usageJSON string
 	)
 
 	err := sc.Scan(
 		&key, &sess.ID, &harness, &sess.Alias, &status, &sess.PID, &sess.Host, &sess.User, &sess.CWD,
 		&hasRepo, &repo.Name, &repo.Root, &repo.MainRoot, &repo.Remote, &repo.Branch, &repo.Head, &repo.Detached, &repo.IsWorktree,
 		&hasPool, &pool.Manager, &pool.Name, &pool.Slot, &pool.Root, &pool.Leased, &pool.LeaseID, &pool.LeaseHolder,
-		&startedAt, &lastSeen, &endedAt, &sess.EndReason, &metaJSON,
+		&startedAt, &lastSeen, &endedAt, &sess.EndReason, &metaJSON, &usageJSON,
 	)
 	if err != nil {
 		return nil, err
@@ -574,6 +610,13 @@ func scanSession(sc scanner) (*session.Session, error) {
 		if err := json.Unmarshal([]byte(metaJSON), &sess.Meta); err != nil {
 			return nil, fmt.Errorf("decode meta: %w", err)
 		}
+	}
+	if usageJSON != "" {
+		var u usage.Snapshot
+		if err := json.Unmarshal([]byte(usageJSON), &u); err != nil {
+			return nil, fmt.Errorf("decode usage: %w", err)
+		}
+		sess.Usage = &u
 	}
 	if len(sess.Meta) == 0 {
 		sess.Meta = nil

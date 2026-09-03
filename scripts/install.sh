@@ -1,5 +1,5 @@
 #!/bin/sh
-# Install multiplayer from a GitHub Release.
+# Install the crew CLI from a GitHub Release.
 set -eu
 
 repo="codyhartsook/multiplayer"
@@ -9,13 +9,13 @@ destination="${MULTIPLAYER_INSTALL_DIR:-$HOME/.local/bin}"
 case "$(uname -s)" in
 Darwin) os="darwin" ;;
 Linux) os="linux" ;;
-*) echo "multiplayer: unsupported operating system: $(uname -s)" >&2; exit 1 ;;
+*) echo "crew: unsupported operating system: $(uname -s)" >&2; exit 1 ;;
 esac
 
 case "$(uname -m)" in
 x86_64 | amd64) arch="amd64" ;;
 arm64 | aarch64) arch="arm64" ;;
-*) echo "multiplayer: unsupported architecture: $(uname -m)" >&2; exit 1 ;;
+*) echo "crew: unsupported architecture: $(uname -m)" >&2; exit 1 ;;
 esac
 
 asset="multiplayer_${os}_${arch}.tar.gz"
@@ -34,7 +34,7 @@ curl --fail --location --silent --show-error --output "$tmp/checksums.txt" "$bas
 
 expected="$(awk -v asset="$asset" '$2 == asset { print $1 }' "$tmp/checksums.txt")"
 if [ -z "$expected" ]; then
-	echo "multiplayer: checksum missing for $asset" >&2
+	echo "crew: checksum missing for $asset" >&2
 	exit 1
 fi
 if command -v shasum >/dev/null 2>&1; then
@@ -42,20 +42,20 @@ if command -v shasum >/dev/null 2>&1; then
 elif command -v sha256sum >/dev/null 2>&1; then
 	actual="$(sha256sum "$tmp/$asset" | awk '{ print $1 }')"
 else
-	echo "multiplayer: need shasum or sha256sum to verify the download" >&2
+	echo "crew: need shasum or sha256sum to verify the download" >&2
 	exit 1
 fi
 if [ "$actual" != "$expected" ]; then
-	echo "multiplayer: checksum verification failed" >&2
+	echo "crew: checksum verification failed" >&2
 	exit 1
 fi
 
-tar -xzf "$tmp/$asset" -C "$tmp" multiplayer
+tar -xzf "$tmp/$asset" -C "$tmp" crew
 mkdir -p "$destination"
-install -m 0755 "$tmp/multiplayer" "$destination/multiplayer"
+install -m 0755 "$tmp/crew" "$destination/crew"
 
-echo "multiplayer installed to $destination/multiplayer"
+echo "crew installed to $destination/crew"
 case ":$PATH:" in
 *":$destination:"*) ;;
-*) echo "add $destination to PATH, then run: multiplayer init" ;;
+*) echo "add $destination to PATH, then run: crew init" ;;
 esac

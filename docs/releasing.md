@@ -1,4 +1,4 @@
-# Releasing multiplayer
+# Releasing crew
 
 Releases are immutable version tags. Build and publish them from the current
 `main` branch; do not move or reuse a published tag.
@@ -30,7 +30,7 @@ Releases are immutable version tags. Build and publish them from the current
 
    ```sh
    curl -fsSL https://raw.githubusercontent.com/codyhartsook/multiplayer/main/scripts/install.sh | sh
-   multiplayer --version
+   crew --version
    ```
 
 ## If a release is wrong

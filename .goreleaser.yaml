@@ -2,9 +2,10 @@ version: 2
 project_name: multiplayer
 
 builds:
-  - main: ./cmd/multiplayer
+  - main: ./cmd/crew
+    binary: crew
     ldflags:
-      - -s -w -X github.com/codyhartsook/multiplayer/internal/cli.version={{ .Version }}
+      - -s -w -X github.com/codyhartsook/multiplayer/internal/version.value={{ .Version }}
     goos:
       - darwin
       - linux

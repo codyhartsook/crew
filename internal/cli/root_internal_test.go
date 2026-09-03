@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"io"
 	"strings"
 	"testing"
 )
@@ -31,9 +32,7 @@ func TestPublicCommands(t *testing.T) {
 }
 
 func TestRoomAckRequiresInbox(t *testing.T) {
-	cmd := newRoomCmd(&options{})
-	cmd.SetArgs([]string{"--ack"})
-	if err := cmd.Execute(); err == nil || err.Error() != "--ack requires --inbox" {
+	if err := run(t, "room", "--ack"); err == nil || err.Error() != "--ack requires --inbox" {
 		t.Errorf("room --ack error = %v, want --ack requires --inbox", err)
 	}
 }
@@ -62,10 +61,19 @@ func TestDashboardAliasesAndInitBrokerFlags(t *testing.T) {
 }
 
 func TestDashboardRequiresInit(t *testing.T) {
-	cmd := newFleetCmd(&options{})
-	cmd.SetArgs([]string{"--addr", "127.0.0.1:0", "--no-open"})
-	err := cmd.Execute()
-	if err == nil || !strings.Contains(err.Error(), "multiplayer init") {
+	err := run(t, "dashboard", "--addr", "127.0.0.1:0", "--no-open")
+	if err == nil || !strings.Contains(err.Error(), "crew init") {
 		t.Errorf("dashboard error = %v, want init guidance", err)
 	}
+}
+
+// run executes one command through the root, which is where the flags are
+// parsed and so the only place a command behaves as it does in the terminal.
+func run(t *testing.T, args ...string) error {
+	t.Helper()
+	root := New()
+	root.SetArgs(args)
+	root.SetOut(io.Discard)
+	root.SetErr(io.Discard)
+	return root.Execute()
 }

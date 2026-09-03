@@ -15,6 +15,7 @@ import (
 	"github.com/codyhartsook/multiplayer/internal/room"
 	"github.com/codyhartsook/multiplayer/internal/session"
 	"github.com/codyhartsook/multiplayer/internal/store"
+	"github.com/codyhartsook/multiplayer/internal/usage"
 )
 
 // backend is the local database the dashboard serves. A remote registry is a
@@ -59,6 +60,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("DELETE /v1/sessions/{key}", s.deleteSession)
 	mux.HandleFunc("POST /v1/sessions/{key}/end", s.endSession)
 	mux.HandleFunc("POST /v1/sessions/{key}/touch", s.touchSession)
+	mux.HandleFunc("POST /v1/sessions/{key}/usage", s.setSessionUsage)
 	mux.HandleFunc("GET /v1/entries", s.listEntries)
 	mux.HandleFunc("GET /v1/state", s.listState)
 	if s.ui != nil {
@@ -242,6 +244,19 @@ func (s *Server) touchSession(w http.ResponseWriter, r *http.Request) {
 		at = req.At.UTC()
 	}
 	if err := s.store.Touch(r.Context(), r.PathValue("key"), at); err != nil {
+		s.fail(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) setSessionUsage(w http.ResponseWriter, r *http.Request) {
+	var u usage.Snapshot
+	if err := decodeJSON(r, &u); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if err := s.store.SetUsage(r.Context(), r.PathValue("key"), &u); err != nil {
 		s.fail(w, err)
 		return
 	}

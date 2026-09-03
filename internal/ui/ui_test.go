@@ -27,7 +27,7 @@ func TestHandlerServesPage(t *testing.T) {
 	body := rec.Body.String()
 	// The page must carry its own styles and script: nothing is fetched from a
 	// CDN, so the dashboard works with no network at all.
-	for _, want := range []string{"<title>multiplayer</title>", "<style>", "/v1/sessions"} {
+	for _, want := range []string{"<title>crew</title>", "<style>", "/v1/sessions"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("page is missing %q", want)
 		}

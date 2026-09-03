@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/codyhartsook/multiplayer/internal/session"
+	"github.com/codyhartsook/multiplayer/internal/usage"
 )
 
 // ErrNotFound is returned when a session id is not present in the store.
@@ -47,6 +48,10 @@ type Store interface {
 	// ErrNotFound for an unknown key and does nothing to a session that has
 	// already ended.
 	Touch(ctx context.Context, key string, at time.Time) error
+
+	// SetUsage records what a session has spent. Reported by a turn, so it
+	// lands on an active session only; an ended one is left as it was.
+	SetUsage(ctx context.Context, key string, u *usage.Snapshot) error
 
 	// Get returns one session by key, or ErrNotFound.
 	Get(ctx context.Context, key string) (*session.Session, error)

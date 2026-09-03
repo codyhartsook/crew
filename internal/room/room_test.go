@@ -207,7 +207,7 @@ func TestBriefingNamesLongStateWithoutReproducingIt(t *testing.T) {
 	}
 	for _, want := range []string{
 		"cluster/update: 1. drain the node pool (5 lines)",
-		"multiplayer state get cluster/update",
+		"crew state get cluster/update",
 		// A short value is still worth stating outright.
 		"build/status: green",
 	} {

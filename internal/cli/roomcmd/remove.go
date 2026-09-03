@@ -1,0 +1,55 @@
+package roomcmd
+
+import (
+	"fmt"
+	"strconv"
+
+	"github.com/spf13/cobra"
+
+	"github.com/codyhartsook/multiplayer/internal/cli/cmdutil"
+	"github.com/codyhartsook/multiplayer/internal/cli/roomctx"
+)
+
+func NewRemove(opts *cmdutil.Options) *cobra.Command {
+	var as string
+
+	cmd := &cobra.Command{
+		Use:   "remove <id>",
+		Short: "Remove one of your unthreaded entries",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			id, err := strconv.ParseInt(args[0], 10, 64)
+			if err != nil || id <= 0 {
+				return fmt.Errorf("invalid entry id %q", args[0])
+			}
+			rc, err := roomctx.Open(cmd.Context(), opts, roomctx.Cwd())
+			if err != nil {
+				return err
+			}
+			defer rc.Close()
+
+			target, err := rc.Entry(cmd.Context(), id)
+			if err != nil {
+				return err
+			}
+			if !rc.Has(target.Room) {
+				return fmt.Errorf("entry [%d] is not in this room", id)
+			}
+			author, err := rc.Author(cmd.Context(), as)
+			if err != nil {
+				return err
+			}
+			removed, err := rc.Rooms.RemoveEntry(cmd.Context(), id, author)
+			if err != nil {
+				return err
+			}
+			if !removed {
+				return fmt.Errorf("entry [%d] is not yours or is part of a thread", id)
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "removed [%d]\n", id)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&as, "as", "", "session key, if not inferable")
+	return cmd
+}

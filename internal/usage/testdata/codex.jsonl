@@ -1,0 +1,4 @@
+{"timestamp":"2026-09-02T20:00:00.000Z","type":"turn_context","payload":{"turn_id":"t1","model":"gpt-x-codex","cwd":"/src"}}
+{"timestamp":"2026-09-02T20:01:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":1000,"cached_input_tokens":800,"output_tokens":50},"last_token_usage":{"input_tokens":700,"cached_input_tokens":600,"output_tokens":10},"model_context_window":258400}}}
+{"timestamp":"2026-09-02T20:02:00.000Z","type":"response_item","payload":{"type":"message","content":"no usage here"}}
+{"timestamp":"2026-09-02T20:03:00.000Z","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":3000,"cached_input_tokens":2500,"output_tokens":90},"last_token_usage":{"input_tokens":1200,"cached_input_tokens":1100,"output_tokens":40},"model_context_window":258400}}}

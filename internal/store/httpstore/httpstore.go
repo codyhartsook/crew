@@ -19,6 +19,7 @@ import (
 	"github.com/codyhartsook/multiplayer/internal/api"
 	"github.com/codyhartsook/multiplayer/internal/session"
 	"github.com/codyhartsook/multiplayer/internal/store"
+	"github.com/codyhartsook/multiplayer/internal/usage"
 )
 
 // defaultTimeout bounds a hook's call to the server. A hook runs in front of
@@ -66,6 +67,11 @@ func (s *Store) End(ctx context.Context, key string, at time.Time, reason string
 func (s *Store) Touch(ctx context.Context, key string, at time.Time) error {
 	body := api.TouchRequest{At: &at}
 	_, err := s.do(ctx, http.MethodPost, "/v1/sessions/"+url.PathEscape(key)+"/touch", body, nil)
+	return err
+}
+
+func (s *Store) SetUsage(ctx context.Context, key string, u *usage.Snapshot) error {
+	_, err := s.do(ctx, http.MethodPost, "/v1/sessions/"+url.PathEscape(key)+"/usage", u, nil)
 	return err
 }
 
