@@ -12,43 +12,31 @@ import (
 	"github.com/codyhartsook/multiplayer/internal/session"
 )
 
-// Kind is the sort of thing an entry records.
-type Kind string
+// Mode determines whether an entry is reference material or a request.
+type Mode string
 
 const (
-	// KindDecision is a choice made and the reasoning behind it.
-	KindDecision Kind = "decision"
-	// KindFinding is something learned about the code or the system.
-	KindFinding Kind = "finding"
-	// KindQuestion asks the room something and stays open until answered.
-	KindQuestion Kind = "question"
-	// KindHandoff passes work and its state to whoever picks it up next.
-	KindHandoff Kind = "handoff"
-	// KindReview is a critique of work in this room.
-	KindReview Kind = "review"
+	// ModeNote is durable context for everyone in the room.
+	ModeNote Mode = "note"
+	// ModeRequest asks the room to act and stays open until resolved.
+	ModeRequest Mode = "request"
 )
 
-// Kinds lists every valid kind, in the order a briefing presents them.
-var Kinds = []Kind{KindDecision, KindFinding, KindQuestion, KindHandoff, KindReview}
+// Modes lists every valid mode, in display order.
+var Modes = []Mode{ModeNote, ModeRequest}
 
-func (k Kind) Valid() bool {
-	for _, known := range Kinds {
-		if k == known {
+func (m Mode) Valid() bool {
+	for _, known := range Modes {
+		if m == known {
 			return true
 		}
 	}
 	return false
 }
 
-// Addressed reports whether this kind is pushed to other members at their next
-// turn. Decisions and findings are reference material; the rest are directed at
-// somebody and stay open until resolved.
-func (k Kind) Addressed() bool {
-	switch k {
-	case KindQuestion, KindHandoff, KindReview:
-		return true
-	}
-	return false
+// Addressed reports whether this mode is pushed to other members.
+func (m Mode) Addressed() bool {
+	return m == ModeRequest
 }
 
 // Scope distinguishes the two levels of room.
@@ -74,7 +62,7 @@ type Entry struct {
 	ID     int64  `json:"id"`
 	Room   string `json:"room"`
 	Scope  Scope  `json:"scope"`
-	Kind   Kind   `json:"kind"`
+	Mode   Mode   `json:"mode"`
 	Author string `json:"author"`
 	To     string `json:"to,omitempty"`
 	Body   string `json:"body"`
@@ -88,10 +76,10 @@ type Entry struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-// Open reports whether the entry still wants an answer. Only addressed kinds
+// Open reports whether the entry still wants an answer. Only requests
 // can be open, and only while nothing has resolved them.
 func (e *Entry) Open() bool {
-	return e.Kind.Addressed() && e.Resolves == 0 && e.ResolvedBy == 0
+	return e.Mode.Addressed() && e.Resolves == 0 && e.ResolvedBy == 0
 }
 
 // Membership records that a session is listening to a room.
@@ -106,9 +94,16 @@ type Membership struct {
 type Filter struct {
 	IDs      []int64
 	Rooms    []string
-	Kinds    []Kind
+	Modes    []Mode
 	OpenOnly bool
 	Limit    int
+}
+
+// Query is a free-text search over room entries.
+type Query struct {
+	Text  string
+	Rooms []string
+	Limit int
 }
 
 // For returns the rooms a location belongs to: its working tree and the
@@ -141,8 +136,7 @@ func Keys(rooms []Room) []string {
 
 // worktreeKey identifies the working-tree room. A pooled slot's path is handed
 // to the next lease, so the lease is part of the room's identity: keyed on the
-// path alone, a returned slot gives the next feature the previous one's
-// decisions and open questions.
+// path alone, a returned slot gives the next feature the previous room context.
 func worktreeKey(repo *session.Repo, pool *session.Pool) string {
 	if pool != nil && pool.LeaseID != "" {
 		return repo.Root + "#" + pool.LeaseID

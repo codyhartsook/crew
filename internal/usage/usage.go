@@ -1,5 +1,4 @@
-// Package usage records how much context and money a session has spent, so
-// work can be routed to the agent with the most headroom or the lowest cost.
+// Package usage records a session's context and token use.
 //
 // Neither harness puts usage in its hook payload, but both write it to a local
 // file the hook can read: Claude to its transcript, Codex to its rollout.
@@ -45,28 +44,6 @@ func (s Snapshot) Headroom() (float64, bool) {
 	return free, true
 }
 
-// Price is what a model charges per million tokens.
-type Price struct {
-	Input  float64
-	Output float64
-}
-
-// prices are Anthropic first-party API rates, cached 2026-06-24. Codex models
-// are deliberately absent: quoting a rate we cannot cite would make a cost
-// comparison look authoritative when it is a guess, so cost reads as unknown
-// and selection falls back to headroom.
-var prices = map[string]Price{
-	"claude-fable-5-1":  {Input: 10, Output: 50},
-	"claude-fable-5":    {Input: 10, Output: 50},
-	"claude-opus-5":     {Input: 5, Output: 25},
-	"claude-opus-4-8":   {Input: 5, Output: 25},
-	"claude-opus-4-7":   {Input: 5, Output: 25},
-	"claude-opus-4-6":   {Input: 5, Output: 25},
-	"claude-sonnet-5":   {Input: 2, Output: 10},
-	"claude-sonnet-4-6": {Input: 3, Output: 15},
-	"claude-haiku-4-5":  {Input: 1, Output: 5},
-}
-
 // windows are context capacities for models that do not report their own.
 // Codex states model_context_window in its rollout, so only Claude needs this.
 var windows = map[string]int{
@@ -81,17 +58,6 @@ var windows = map[string]int{
 	"claude-haiku-4-5":  200_000,
 }
 
-// PriceOf returns a model's rates. Names may carry a suffix the table does not
-// list, as Claude Code reports "claude-opus-5[1m]", so the base name is tried
-// after an exact miss.
-func PriceOf(model string) (Price, bool) {
-	if p, ok := prices[model]; ok {
-		return p, true
-	}
-	p, ok := prices[baseModel(model)]
-	return p, ok
-}
-
 // WindowOf returns a model's context capacity, for harnesses that do not say.
 func WindowOf(model string) (int, bool) {
 	if w, ok := windows[model]; ok {
@@ -99,29 +65,6 @@ func WindowOf(model string) (int, bool) {
 	}
 	w, ok := windows[baseModel(model)]
 	return w, ok
-}
-
-// Multiplier is a model's output rate relative to the cheapest model we price.
-// It is what makes "send this to the cheapest agent" comparable across models.
-//
-// A dollar figure is deliberately not offered: most input on a long session is
-// served from cache at a fraction of the input rate, and we have no citable
-// cache-read rate per model, so a total would overstate spend several-fold.
-func Multiplier(model string) (float64, bool) {
-	p, ok := PriceOf(model)
-	if !ok {
-		return 0, false
-	}
-	cheapest := p.Output
-	for _, other := range prices {
-		if other.Output < cheapest {
-			cheapest = other.Output
-		}
-	}
-	if cheapest <= 0 {
-		return 0, false
-	}
-	return p.Output / cheapest, true
 }
 
 // baseModel strips a bracketed variant, so "claude-opus-5[1m]" prices as

@@ -62,7 +62,6 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/sessions/{key}/touch", s.touchSession)
 	mux.HandleFunc("POST /v1/sessions/{key}/usage", s.setSessionUsage)
 	mux.HandleFunc("GET /v1/entries", s.listEntries)
-	mux.HandleFunc("GET /v1/state", s.listState)
 	if s.ui != nil {
 		// "/{$}" matches the root path exactly, so the interface cannot shadow
 		// an API route or swallow unknown paths.
@@ -95,12 +94,6 @@ type ListResponse struct {
 type EntriesResponse struct {
 	Entries []*room.Entry `json:"entries"`
 	Count   int           `json:"count"`
-}
-
-// StateResponse wraps a room state listing.
-type StateResponse struct {
-	State []*room.State `json:"state"`
-	Count int           `json:"count"`
 }
 
 // ErrorResponse is the body of every non-2xx reply.
@@ -143,12 +136,12 @@ func (s *Server) listEntries(w http.ResponseWriter, r *http.Request) {
 func entryFilterFromQuery(r *http.Request) (room.Filter, error) {
 	q := r.URL.Query()
 	f := room.Filter{Rooms: q["room"]}
-	for _, k := range q["kind"] {
-		kind := room.Kind(k)
-		if !kind.Valid() {
-			return room.Filter{}, errors.New("unknown kind " + k)
+	for _, value := range q["mode"] {
+		mode := room.Mode(value)
+		if !mode.Valid() {
+			return room.Filter{}, errors.New("unknown mode " + value)
 		}
-		f.Kinds = append(f.Kinds, kind)
+		f.Modes = append(f.Modes, mode)
 	}
 	if v := q.Get("open"); v != "" {
 		b, err := strconv.ParseBool(v)
@@ -165,25 +158,6 @@ func entryFilterFromQuery(r *http.Request) (room.Filter, error) {
 		f.Limit = n
 	}
 	return f, nil
-}
-
-func (s *Server) listState(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
-	f := room.StateFilter{Rooms: q["room"], Prefix: q.Get("prefix")}
-	if v := q.Get("limit"); v != "" {
-		n, err := strconv.Atoi(v)
-		if err != nil || n < 0 {
-			writeError(w, http.StatusBadRequest, errors.New("limit must be a non-negative integer"))
-			return
-		}
-		f.Limit = n
-	}
-	values, err := s.store.States(r.Context(), f)
-	if err != nil {
-		s.fail(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, StateResponse{State: values, Count: len(values)})
 }
 
 func (s *Server) getSession(w http.ResponseWriter, r *http.Request) {

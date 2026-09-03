@@ -80,35 +80,9 @@ func TestHeadroomSaysWhenItCannotTell(t *testing.T) {
 	}
 }
 
-// Claude Code reports the model as "claude-opus-5[1m]", so a bracketed variant
-// must price as its base model rather than falling off the table.
-func TestPricingAcceptsAVariantSuffix(t *testing.T) {
-	plain, ok := PriceOf("claude-opus-5")
-	if !ok {
-		t.Fatal("claude-opus-5 is not priced")
-	}
-	variant, ok := PriceOf("claude-opus-5[1m]")
-	if !ok || variant != plain {
-		t.Errorf("PriceOf(variant) = (%v, %v), want %v", variant, ok, plain)
-	}
+func TestWindowAcceptsAVariantSuffix(t *testing.T) {
 	if w, ok := WindowOf("claude-opus-5[1m]"); !ok || w != 1_000_000 {
 		t.Errorf("WindowOf(variant) = (%d, %v), want 1000000", w, ok)
-	}
-}
-
-// Cheapness has to be comparable across models, and unknown for a model we do
-// not price rather than defaulting to cheap.
-func TestMultiplier(t *testing.T) {
-	haiku, ok := Multiplier("claude-haiku-4-5")
-	if !ok || haiku != 1 {
-		t.Errorf("cheapest model multiplier = (%v, %v), want (1, true)", haiku, ok)
-	}
-	opus, ok := Multiplier("claude-opus-5")
-	if !ok || opus != 5 {
-		t.Errorf("opus multiplier = (%v, %v), want (5, true)", opus, ok)
-	}
-	if _, ok := Multiplier("gpt-x-codex"); ok {
-		t.Error("an unpriced model must report unknown, not a number")
 	}
 }
 

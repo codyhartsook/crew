@@ -1,4 +1,4 @@
-// Package searchcmd finds runbooks, state and entries by topic.
+// Package searchcmd finds room entries by topic.
 package searchcmd
 
 import (
@@ -24,11 +24,11 @@ func New(opts *cmdutil.Options) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "search <term>",
-		Short: "Find runbooks, state and entries by topic",
-		Long: `Search this room for a term, across state keys and values and entry bodies.
+		Short: "Find room entries by topic",
+		Long: `Search this room for a term across entry bodies.
 
-Use it before starting anything multi-step: a runbook for the task may already
-exist, and somebody may have recorded why the obvious approach does not work.`,
+Use it before starting anything multi-step: somebody may already have recorded
+why the obvious approach does not work.`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rc, err := roomctx.Open(cmd.Context(), opts, roomctx.Cwd())
@@ -41,7 +41,7 @@ exist, and somebody may have recorded why the obvious approach does not work.`,
 			if !all {
 				q.Rooms = rc.Keys()
 			}
-			results, err := rc.Rooms.Search(cmd.Context(), q)
+			entries, err := rc.Rooms.Search(cmd.Context(), q)
 			if err != nil {
 				return err
 			}
@@ -49,42 +49,15 @@ exist, and somebody may have recorded why the obvious approach does not work.`,
 			if asJSON {
 				enc := json.NewEncoder(out)
 				enc.SetIndent("", "  ")
-				return enc.Encode(results)
+				return enc.Encode(entries)
 			}
-			if results.Empty() {
+			if len(entries) == 0 {
 				fmt.Fprintf(out, "nothing matching %q\n", q.Text)
 				return nil
 			}
 
-			// Runbooks first: they answer "how do I do this" more directly than
-			// an entry that happened to mention it.
-			var procs, facts []*room.State
-			for _, v := range results.State {
-				if v.IsProcedure() {
-					procs = append(procs, v)
-					continue
-				}
-				facts = append(facts, v)
-			}
-
-			if len(procs) > 0 {
-				fmt.Fprintln(out, "procedures")
-				for _, v := range procs {
-					fmt.Fprintf(out, "  %s\n    %s (%d lines)\n    crew state get %s\n",
-						strings.TrimPrefix(v.Key, room.ProcedurePrefix), v.Summary(), v.Lines(), v.Key)
-				}
-			}
-			if len(facts) > 0 {
-				fmt.Fprintln(out, "state")
-				for _, v := range facts {
-					fmt.Fprintf(out, "  %s = %s\n", v.Key, cmdutil.Truncate(v.Value, 64))
-				}
-			}
-			if len(results.Entries) > 0 {
-				fmt.Fprintln(out, "entries")
-				for _, e := range results.Entries {
-					fmt.Fprintf(out, "  [%d] %-8s %s\n", e.ID, e.Kind, cmdutil.Truncate(e.Body, 64))
-				}
+			for _, e := range entries {
+				fmt.Fprintf(out, "[%d] %-8s %s\n", e.ID, e.Mode, cmdutil.Truncate(e.Body, 64))
 			}
 			return nil
 		},

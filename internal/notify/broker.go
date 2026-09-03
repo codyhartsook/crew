@@ -144,9 +144,9 @@ func noticeText(unread []*room.Entry, authors room.Authors) string {
 	newest := unread[len(unread)-1]
 	from := authors.Name(newest.Author)
 	if len(unread) == 1 {
-		return fmt.Sprintf("crew: %s [%d] from %s is addressed to you. Read it with: crew room --inbox --ack",
-			newest.Kind, newest.ID, from)
+		return fmt.Sprintf("crew: %s [%d] from %s is addressed to you. Read it with: crew room",
+			newest.Mode, newest.ID, from)
 	}
-	return fmt.Sprintf("crew: %d entries are addressed to you, newest %s [%d] from %s. Read them with: crew room --inbox --ack",
-		len(unread), newest.Kind, newest.ID, from)
+	return fmt.Sprintf("crew: %d entries are addressed to you, newest %s [%d] from %s. Read them with: crew room",
+		len(unread), newest.Mode, newest.ID, from)
 }

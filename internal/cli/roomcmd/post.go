@@ -15,36 +15,34 @@ import (
 
 func NewPost(opts *cmdutil.Options) *cobra.Command {
 	var (
-		toRepo   bool
-		resolves int64
-		as       string
-		to       string
+		toRepo bool
+		as     string
+		to     string
 	)
 
 	cmd := &cobra.Command{
-		Use:   "post <" + strings.Join(kindNames(), "|") + "> <body>",
+		Use:   "post <" + strings.Join(modeNames(), "|") + "> <body>",
 		Short: "Post an entry to this worktree's room",
-		Long: `Decisions and findings are reference material, read by agents arriving
-in the room. Questions, handoffs and reviews are addressed to the other agents
-here and stay open until resolved.`,
+		Long: `Notes are durable context for the room. Requests are delivered to other
+agents and stay open until resolved.`,
 		Args: cobra.MinimumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			kind := room.Kind(args[0])
-			if !kind.Valid() {
-				return fmt.Errorf("unknown kind %q: want one of %s", args[0], strings.Join(kindNames(), ", "))
+			mode := room.Mode(args[0])
+			if !mode.Valid() {
+				return fmt.Errorf("unknown mode %q: want one of %s", args[0], strings.Join(modeNames(), ", "))
 			}
-			return post(cmd, opts, kind, strings.Join(args[1:], " "), toRepo, resolves, as, to)
+			return post(cmd, opts, mode, strings.Join(args[1:], " "), toRepo, as, to)
 		},
 	}
 
 	cmd.Flags().BoolVar(&toRepo, "repo", false, "post to the repository room")
-	cmd.Flags().Int64Var(&resolves, "resolves", 0, "entry id this one answers or closes")
 	cmd.Flags().StringVar(&as, "as", "", "session key, if not inferable")
+	_ = cmd.Flags().MarkHidden("as")
 	cmd.Flags().StringVar(&to, "to", "", "send an addressed entry to this agent alias")
 	return cmd
 }
 
-func post(cmd *cobra.Command, opts *cmdutil.Options, kind room.Kind, body string, toRepo bool, resolves int64, as, to string) error {
+func post(cmd *cobra.Command, opts *cmdutil.Options, mode room.Mode, body string, toRepo bool, as, to string) error {
 	rc, err := roomctx.Open(cmd.Context(), opts, roomctx.Cwd())
 	if err != nil {
 		return err
@@ -71,8 +69,8 @@ func post(cmd *cobra.Command, opts *cmdutil.Options, kind room.Kind, body string
 	}
 	recipient := ""
 	if to != "" {
-		if !kind.Addressed() {
-			return errors.New("--to is only valid for questions, handoffs, and reviews")
+		if !mode.Addressed() {
+			return errors.New("--to is only valid for requests")
 		}
 		recipient, err = roomctx.ResolveAgent(cmd.Context(), rc.Store, []string{target.Key}, to)
 		if err != nil {
@@ -86,30 +84,29 @@ func post(cmd *cobra.Command, opts *cmdutil.Options, kind room.Kind, body string
 	e := &room.Entry{
 		Room:      target.Key,
 		Scope:     target.Scope,
-		Kind:      kind,
+		Mode:      mode,
 		Author:    author,
 		To:        recipient,
 		Body:      body,
-		Resolves:  resolves,
 		CreatedAt: time.Now().UTC(),
 	}
 	if err := rc.Rooms.Post(cmd.Context(), e); err != nil {
 		return err
 	}
-	if e.Kind.Addressed() {
+	if e.Mode.Addressed() {
 		opts.SignalBroker()
 	}
 	if to != "" {
-		fmt.Fprintf(cmd.OutOrStdout(), "[%d] %s for %s posted to %s\n", e.ID, kind, to, target.Name)
+		fmt.Fprintf(cmd.OutOrStdout(), "[%d] %s for %s posted to %s\n", e.ID, mode, to, target.Name)
 	} else {
-		fmt.Fprintf(cmd.OutOrStdout(), "[%d] %s posted to %s\n", e.ID, kind, target.Name)
+		fmt.Fprintf(cmd.OutOrStdout(), "[%d] %s posted to %s\n", e.ID, mode, target.Name)
 	}
 	return nil
 }
 
-func kindNames() []string {
-	out := make([]string, 0, len(room.Kinds))
-	for _, k := range room.Kinds {
+func modeNames() []string {
+	out := make([]string, 0, len(room.Modes))
+	for _, k := range room.Modes {
 		out = append(out, string(k))
 	}
 	return out

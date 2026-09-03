@@ -38,7 +38,7 @@ func (f *fakeReader) End(_ context.Context, key string, _ time.Time, _ string) e
 func entries(ids ...int64) []*room.Entry {
 	out := make([]*room.Entry, 0, len(ids))
 	for _, id := range ids {
-		out = append(out, &room.Entry{ID: id, Kind: room.KindQuestion, Author: "codex:other", Room: "r"})
+		out = append(out, &room.Entry{ID: id, Mode: room.ModeRequest, Author: "codex:other", Room: "r"})
 	}
 	return out
 }
@@ -157,11 +157,11 @@ func TestSweepForgetsEndedSessions(t *testing.T) {
 func TestWakeTextNamesTheEntry(t *testing.T) {
 	named := room.Authors{"codex:other": "coral-lynx"}
 	one := noticeText(entries(12), named)
-	if !strings.Contains(one, "[12]") || !strings.Contains(one, "question") || !strings.Contains(one, "crew room --inbox --ack") {
+	if !strings.Contains(one, "[12]") || !strings.Contains(one, "request") || !strings.Contains(one, "crew room") {
 		t.Errorf("single-entry text lost detail: %q", one)
 	}
 	many := noticeText(entries(12, 13), named)
-	if !strings.Contains(many, "2 entries") || !strings.Contains(many, "[13]") || !strings.Contains(many, "crew room --inbox --ack") {
+	if !strings.Contains(many, "2 entries") || !strings.Contains(many, "[13]") || !strings.Contains(many, "crew room") {
 		t.Errorf("multi-entry text lost detail: %q", many)
 	}
 }

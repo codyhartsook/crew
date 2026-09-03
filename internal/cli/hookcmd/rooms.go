@@ -21,9 +21,6 @@ import (
 // being asked. MULTIPLAYER_AUTO_JOIN overrides it.
 const autoJoinDefault = true
 
-// stateLimitPerRoom bounds how much state a briefing pulls per room.
-const stateLimitPerRoom = 16
-
 func autoJoinEnabled() bool {
 	switch os.Getenv(cmdutil.EnvAutoJoin) {
 	case "":
@@ -101,11 +98,6 @@ func briefingFor(ctx context.Context, st store.Store, rs store.RoomStore, sess *
 	if err != nil {
 		return "", err
 	}
-	values, err := rs.States(ctx, room.StateFilter{Rooms: keys, Limit: stateLimitPerRoom * len(keys)})
-	if err != nil {
-		return "", err
-	}
-
 	rc := &roomctx.Context{Store: st, Rooms: rs, Here: here}
 	others, err := rc.Others(ctx, sess.Key())
 	if err != nil {
@@ -122,7 +114,7 @@ func briefingFor(ctx context.Context, st store.Store, rs store.RoomStore, sess *
 	if err != nil {
 		return "", err
 	}
-	return room.Briefing(here, entries, values, others, authors), nil
+	return room.Briefing(here, entries, others, authors), nil
 }
 
 // noticeFor injects a nudge when something is waiting, nothing otherwise. It

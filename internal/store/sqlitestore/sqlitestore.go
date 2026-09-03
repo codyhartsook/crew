@@ -30,7 +30,7 @@ const timeFormat = time.RFC3339Nano
 
 // SchemaVersion is the store layout this binary understands. Raise it whenever
 // a migration changes what older binaries can safely assume.
-const SchemaVersion = 4
+const SchemaVersion = 5
 
 const schema = `
 CREATE TABLE IF NOT EXISTS sessions (
@@ -84,33 +84,8 @@ const columns = `key, id, harness, alias, status, pid, host, username, cwd,
     has_pool, pool_manager, pool_name, pool_slot, pool_root, pool_leased, pool_lease_id, pool_lease_holder,
     started_at, last_seen, ended_at, end_reason, meta, usage`
 
-// migrations bring older databases up to date. Each is ignored when the
-// column already exists.
-var migrations = []string{
-	`ALTER TABLE sessions ADD COLUMN alias             TEXT NOT NULL DEFAULT ''`,
-	`ALTER TABLE entries ADD COLUMN recipient          TEXT NOT NULL DEFAULT ''`,
-	`ALTER TABLE sessions ADD COLUMN has_pool          INTEGER NOT NULL DEFAULT 0`,
-	`ALTER TABLE sessions ADD COLUMN pool_manager      TEXT NOT NULL DEFAULT ''`,
-	`ALTER TABLE sessions ADD COLUMN pool_name         TEXT NOT NULL DEFAULT ''`,
-	`ALTER TABLE sessions ADD COLUMN pool_slot         TEXT NOT NULL DEFAULT ''`,
-	`ALTER TABLE sessions ADD COLUMN pool_root         TEXT NOT NULL DEFAULT ''`,
-	`ALTER TABLE sessions ADD COLUMN pool_leased       INTEGER NOT NULL DEFAULT 0`,
-	`ALTER TABLE sessions ADD COLUMN pool_lease_id     TEXT NOT NULL DEFAULT ''`,
-	`ALTER TABLE sessions ADD COLUMN pool_lease_holder TEXT NOT NULL DEFAULT ''`,
-	`ALTER TABLE sessions ADD COLUMN usage             TEXT NOT NULL DEFAULT ''`,
-}
-
 const aliasIndex = `CREATE UNIQUE INDEX IF NOT EXISTS sessions_active_alias
 ON sessions(alias) WHERE status = 'active' AND alias != ''`
-
-// backfillPool carries the treehouse-named columns forward. It runs only where
-// they exist, since a database created at v2 never had them.
-const backfillPool = `
-UPDATE sessions SET
-    has_pool = has_treehouse, pool_manager = 'treehouse', pool_name = th_pool,
-    pool_slot = th_slot, pool_root = th_root, pool_leased = th_leased,
-    pool_lease_id = th_lease_id, pool_lease_holder = th_lease_holder
-WHERE has_treehouse = 1 AND has_pool = 0`
 
 // Store is a SQLite-backed store.Store.
 type Store struct {
@@ -144,9 +119,7 @@ func Open(path string) (*Store, error) {
 	return &Store{db: db}, nil
 }
 
-// migrate creates missing tables, adds columns a database created by an earlier
-// version lacks, then builds the indexes. Column additions come before indexes
-// because some indexed columns arrived after the table first shipped.
+// migrate creates a fresh schema or verifies that an existing one matches it.
 func migrate(db *sql.DB) error {
 	ctx := context.Background()
 
@@ -160,19 +133,16 @@ func migrate(db *sql.DB) error {
 	if found > SchemaVersion {
 		return fmt.Errorf("database is schema version %d, this crew understands %d: upgrade the binary", found, SchemaVersion)
 	}
+	if found > 0 && found < SchemaVersion {
+		return fmt.Errorf("database is schema version %d, crew now requires a fresh version %d database: move the old database aside and restart", found, SchemaVersion)
+	}
+	var legacy int
+	if found == 0 && db.QueryRowContext(ctx, `SELECT 1 FROM sqlite_master WHERE type = 'table' AND name IN ('sessions', 'entries') LIMIT 1`).Scan(&legacy) == nil {
+		return fmt.Errorf("crew now requires a fresh version %d database: move the unversioned database aside and restart", SchemaVersion)
+	}
 
 	if _, err := db.ExecContext(ctx, schema+roomSchema); err != nil {
 		return fmt.Errorf("apply schema: %w", err)
-	}
-	for _, stmt := range migrations {
-		if _, err := db.ExecContext(ctx, stmt); err != nil && !isDuplicateColumn(err) {
-			return fmt.Errorf("migrate: %s: %w", stmt, err)
-		}
-	}
-	if hasColumn(ctx, db, "sessions", "has_treehouse") {
-		if _, err := db.ExecContext(ctx, backfillPool); err != nil {
-			return fmt.Errorf("backfill pool columns: %w", err)
-		}
 	}
 	if _, err := db.ExecContext(ctx, aliasIndex); err != nil {
 		return fmt.Errorf("create alias index: %w", err)
@@ -188,23 +158,6 @@ func migrate(db *sql.DB) error {
 		return fmt.Errorf("record schema version: %w", err)
 	}
 	return nil
-}
-
-// isDuplicateColumn reports the error SQLite gives when a column is already
-// there, which is the normal outcome on every open after the first.
-// hasColumn reports whether a table carries the column, so a migration reading a
-// legacy column is skipped on a database that never had one.
-func hasColumn(ctx context.Context, db *sql.DB, table, column string) bool {
-	rows, err := db.QueryContext(ctx, `SELECT 1 FROM pragma_table_info(?) WHERE name = ?`, table, column)
-	if err != nil {
-		return false
-	}
-	defer rows.Close()
-	return rows.Next()
-}
-
-func isDuplicateColumn(err error) bool {
-	return strings.Contains(err.Error(), "duplicate column name")
 }
 
 // dsnFor builds the connection string, creating the parent directory for a

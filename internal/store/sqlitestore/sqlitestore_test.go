@@ -11,7 +11,6 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"github.com/codyhartsook/multiplayer/internal/room"
 	"github.com/codyhartsook/multiplayer/internal/session"
 
 	"github.com/codyhartsook/multiplayer/internal/store"
@@ -43,8 +42,7 @@ func TestRoomStore(t *testing.T) {
 	})
 }
 
-// A database written by an earlier version must keep working.
-func TestOpenMigratesAnOlderDatabase(t *testing.T) {
+func TestOpenRefusesAnOlderDatabase(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "old.db")
 
 	db, err := sql.Open("sqlite", "file:"+path)
@@ -70,29 +68,13 @@ VALUES ('/src/widget', 'worktree', 'decision', 'codex:a', 'chose sqlite', '2026-
 	}
 	db.Close()
 
-	s, err := sqlitestore.Open(path)
-	if err != nil {
-		t.Fatalf("Open on an older database: %v", err)
+	_, err = sqlitestore.Open(path)
+	if err == nil || !strings.Contains(err.Error(), "fresh") {
+		t.Fatalf("Open on an older database = %v, want fresh-database guidance", err)
 	}
-	defer s.Close()
-
-	ctx := context.Background()
-
-	// The pre-existing row survives.
-	existing, err := s.Entries(ctx, room.Filter{})
-	if err != nil {
-		t.Fatalf("Entries: %v", err)
-	}
-	if len(existing) != 1 || existing[0].Body != "chose sqlite" {
-		t.Fatalf("entries = %+v, want the row written by the older version", existing)
-	}
-	if existing[0].To != "" {
-		t.Fatalf("migrated recipient = %q, want broadcast", existing[0].To)
-	}
-
 }
 
-// Opening twice must not fail on the second pass over the migrations.
+// Opening the current schema repeatedly is safe.
 func TestOpenIsIdempotent(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "twice.db")
 	for i := 0; i < 3; i++ {
@@ -148,101 +130,6 @@ func TestOpenRecordsSchemaVersion(t *testing.T) {
 	}
 	if got != sqlitestore.SchemaVersion {
 		t.Errorf("user_version = %d, want %d", got, sqlitestore.SchemaVersion)
-	}
-}
-
-// v1Sessions is the sessions table as it shipped, with the pooled-worktree
-// columns named after treehouse.
-const v1Sessions = `
-CREATE TABLE sessions (
-    key              TEXT PRIMARY KEY,
-    id               TEXT NOT NULL,
-    harness          TEXT NOT NULL,
-    status           TEXT NOT NULL,
-    pid              INTEGER NOT NULL DEFAULT 0,
-    host             TEXT NOT NULL DEFAULT '',
-    username         TEXT NOT NULL DEFAULT '',
-    cwd              TEXT NOT NULL DEFAULT '',
-    has_repo         INTEGER NOT NULL DEFAULT 0,
-    repo_name        TEXT NOT NULL DEFAULT '',
-    repo_root        TEXT NOT NULL DEFAULT '',
-    repo_main_root   TEXT NOT NULL DEFAULT '',
-    repo_remote      TEXT NOT NULL DEFAULT '',
-    repo_branch      TEXT NOT NULL DEFAULT '',
-    repo_head        TEXT NOT NULL DEFAULT '',
-    repo_detached    INTEGER NOT NULL DEFAULT 0,
-    repo_is_worktree INTEGER NOT NULL DEFAULT 0,
-    has_treehouse    INTEGER NOT NULL DEFAULT 0,
-    th_pool          TEXT NOT NULL DEFAULT '',
-    th_slot          TEXT NOT NULL DEFAULT '',
-    th_root          TEXT NOT NULL DEFAULT '',
-    th_leased        INTEGER NOT NULL DEFAULT 0,
-    th_lease_id      TEXT NOT NULL DEFAULT '',
-    th_lease_holder  TEXT NOT NULL DEFAULT '',
-    started_at       TEXT NOT NULL,
-    last_seen        TEXT NOT NULL,
-    ended_at         TEXT,
-    end_reason       TEXT NOT NULL DEFAULT '',
-    meta             TEXT NOT NULL DEFAULT '{}'
-);`
-
-// A database written before pools were generalized must keep its slot and lease
-// after migration, under whichever manager it came from.
-func TestMigrateCarriesTreehouseColumnsForward(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "v1.db")
-
-	db, err := sql.Open("sqlite", "file:"+path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec(v1Sessions); err != nil {
-		t.Fatalf("create v1 schema: %v", err)
-	}
-	_, err = db.Exec(`INSERT INTO sessions
-        (key, id, harness, status, cwd, has_repo, repo_name, repo_root,
-         has_treehouse, th_pool, th_slot, th_root, th_leased, th_lease_id, th_lease_holder,
-         started_at, last_seen)
-        VALUES ('codex:old', 'old', 'codex', 'active', '/pool/widget-abc/3/widget',
-                1, 'widget', '/pool/widget-abc/3/widget',
-                1, 'widget-abc', '3', '/pool/widget-abc/3/widget', 1, '70b6d0fd', 'agent:x',
-                '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`)
-	if err != nil {
-		t.Fatalf("insert v1 row: %v", err)
-	}
-	db.Close()
-
-	s, err := sqlitestore.Open(path)
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-	defer s.Close()
-
-	got, err := s.Get(context.Background(), "codex:old")
-	if err != nil {
-		t.Fatalf("Get: %v", err)
-	}
-	if got.Pool == nil {
-		t.Fatal("Pool = nil, want the migrated slot")
-	}
-	if got.Alias == "" {
-		t.Fatal("active migrated session has no alias")
-	}
-	want := session.Pool{
-		Manager: "treehouse", Name: "widget-abc", Slot: "3",
-		Root: "/pool/widget-abc/3/widget", Leased: true,
-		LeaseID: "70b6d0fd", LeaseHolder: "agent:x",
-	}
-	if *got.Pool != want {
-		t.Errorf("Pool = %+v, want %+v", *got.Pool, want)
-	}
-
-	// The filter must see it too, since it reads the new column.
-	pooled, err := s.List(context.Background(), store.Filter{PooledOnly: true})
-	if err != nil {
-		t.Fatalf("List: %v", err)
-	}
-	if len(pooled) != 1 {
-		t.Errorf("pooled sessions = %d, want 1", len(pooled))
 	}
 }
 

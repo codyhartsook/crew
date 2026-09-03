@@ -173,20 +173,12 @@
     padding: 1px 6px; border-radius: 4px; white-space: nowrap;
     background: var(--fill); color: var(--label-2);
   }
-  .kind.question, .kind.handoff, .kind.review {
+  .kind.request {
     background: color-mix(in srgb, var(--orange) 16%, transparent); color: var(--orange);
   }
   .entry.resolved .kind { background: var(--fill); color: var(--label-3); }
   .ebody { flex: 1 1 220px; font-size: 12.5px; }
   .emeta { font-size: 11px; color: var(--label-3); white-space: nowrap; font-family: var(--mono); }
-
-  /* ---- room state ---- */
-  .state { box-shadow: inset 0 0.5px 0 var(--separator); background: color-mix(in srgb, var(--fill) 30%, transparent); }
-  .kv { display: flex; align-items: baseline; gap: 8px; padding: 6px 14px; flex-wrap: wrap; }
-  .kv + .kv { box-shadow: inset 0 0.5px 0 var(--separator); }
-  .kvkey { font-family: var(--mono); font-size: 11.5px; color: var(--label-2); }
-  .kvval { flex: 1 1 200px; font-size: 12.5px; }
-  .kvrev { font-family: var(--mono); font-size: 10.5px; color: var(--label-3); white-space: nowrap; }
 
   .empty {
     background: var(--card); border-radius: 10px; box-shadow: var(--shadow);
@@ -272,12 +264,11 @@ for (const button of document.querySelectorAll(".segmented button")) {
 
 async function refresh() {
   try {
-    const [sessions, entries, state] = await Promise.all([
+    const [sessions, entries] = await Promise.all([
       getJSON("/v1/sessions"),
       getJSON("/v1/entries"),
-      getJSON("/v1/state"),
     ]);
-    render(sessions.sessions || [], entries.entries || [], state.state || []);
+    render(sessions.sessions || [], entries.entries || []);
     setConnection("ok", "Live");
   } catch {
     setConnection("error", "Disconnected");
@@ -329,7 +320,7 @@ function worktreeTag(session) {
   return { text: suffix, kind: "pool" };
 }
 
-function render(allSessions, entries, state) {
+function render(allSessions, entries) {
   const authors = new Map(allSessions.map((s) => [s.harness + ":" + s.id, s.alias]));
   const sessions = view.showEnded ? allSessions : allSessions.filter((s) => s.status === "active");
   // Two agents live in one working tree is the situation this tool exists to
@@ -345,12 +336,6 @@ function render(allSessions, entries, state) {
     if (!byRoom.has(e.room)) byRoom.set(e.room, []);
     byRoom.get(e.room).push(e);
   }
-  const stateByRoom = new Map();
-  for (const v of state) {
-    if (!stateByRoom.has(v.room)) stateByRoom.set(v.room, []);
-    stateByRoom.get(v.room).push(v);
-  }
-
   const groups = new Map();
   for (const session of sessions) {
     const meta = groupOf(session);
@@ -359,12 +344,11 @@ function render(allSessions, entries, state) {
   }
   for (const group of groups.values()) {
     group.entries = byRoom.get(group.path) || [];
-    group.state = stateByRoom.get(group.path) || [];
   }
 
   // A room with context but no live agent still matters: it is what the next
   // agent to arrive there will be told.
-  for (const roomKey of new Set([...byRoom.keys(), ...stateByRoom.keys()])) {
+  for (const roomKey of byRoom.keys()) {
     if ([...groups.values()].some((g) => g.path === roomKey)) continue;
     groups.set("room:" + roomKey, {
       key: "room:" + roomKey,
@@ -373,7 +357,6 @@ function render(allSessions, entries, state) {
       tag: null,
       sessions: [],
       entries: byRoom.get(roomKey) || [],
-      state: stateByRoom.get(roomKey) || [],
     });
   }
 
@@ -439,7 +422,7 @@ function renderGroup(group, perWorktree, authors) {
   const open = group.entries.filter(isOpen).length;
   if (open) head.append(span("tag collide", open + " open"));
   head.append(span("group-count", group.sessions.length === 0
-    ? `${group.entries.length + group.state.length} ${plural("item", group.entries.length + group.state.length)}`
+    ? `${group.entries.length} ${plural("item", group.entries.length)}`
     : active === group.sessions.length
       ? `${active} ${plural("agent", active)}`
       : `${active} active · ${group.sessions.length} total`));
@@ -449,19 +432,6 @@ function renderGroup(group, perWorktree, authors) {
     (a, b) => rank(a) - rank(b) || (Date.parse(b.last_seen) || 0) - (Date.parse(a.last_seen) || 0)
   );
   for (const session of rows) card.append(renderRow(session, perWorktree));
-
-  // State first: what is currently true outranks what happened.
-  if (group.state.length) {
-    const box = div("state");
-    for (const v of [...group.state].sort((a, b) => a.key.localeCompare(b.key))) {
-      const el = div("kv");
-      el.append(span("kvkey", v.key));
-      el.append(span("kvval", v.value));
-      el.append(span("kvrev", "r" + v.revision + " · " + age(v.updated_at)));
-      box.append(el);
-    }
-    card.append(box);
-  }
 
   if (group.entries.length) {
     const box = div("entries");
@@ -480,19 +450,15 @@ function renderGroup(group, perWorktree, authors) {
   return section;
 }
 
-const ADDRESSED = new Set(["question", "handoff", "review"]);
-
 function isOpen(entry) {
-  return ADDRESSED.has(entry.kind) && !entry.resolves && !entry.resolved_by;
+  return entry.mode === "request" && !entry.resolves && !entry.resolved_by;
 }
 
 function renderEntry(entry, authors) {
-  // Only a closed question, handoff or review is spent. Decisions and findings
-  // are reference material and stay at full weight.
-  const spent = ADDRESSED.has(entry.kind) && !isOpen(entry);
+  const spent = entry.mode === "request" && !isOpen(entry);
   const el = div("entry" + (spent ? " resolved" : ""));
   el.append(span("eid", "#" + entry.id));
-  el.append(span("kind " + entry.kind, entry.kind));
+  el.append(span("kind " + entry.mode, entry.mode));
   el.append(span("ebody", entry.body));
   let byline = shortAuthor(entry.author, authors);
   if (entry.to) byline += " → " + shortAuthor(entry.to, authors);

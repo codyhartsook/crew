@@ -14,9 +14,10 @@ func NewRemove(opts *cmdutil.Options) *cobra.Command {
 	var as string
 
 	cmd := &cobra.Command{
-		Use:   "remove <id>",
-		Short: "Remove one of your unthreaded entries",
-		Args:  cobra.ExactArgs(1),
+		Use:    "remove <id>",
+		Short:  "Remove one of your unthreaded entries",
+		Hidden: true,
+		Args:   cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := strconv.ParseInt(args[0], 10, 64)
 			if err != nil || id <= 0 {
@@ -51,5 +52,6 @@ func NewRemove(opts *cmdutil.Options) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&as, "as", "", "session key, if not inferable")
+	_ = cmd.Flags().MarkHidden("as")
 	return cmd
 }

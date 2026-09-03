@@ -11,27 +11,20 @@ import (
 
 // Briefing renders what a session should know on arriving in its rooms.
 // Returns "" when there is nothing worth injecting.
-func Briefing(rooms []Room, entries []*Entry, values []*State, others []string, authors Authors) string {
-	byRoomState := map[string][]*State{}
-	for _, v := range values {
-		byRoomState[v.Room] = append(byRoomState[v.Room], v)
-	}
+func Briefing(rooms []Room, entries []*Entry, others []string, authors Authors) string {
 	byRoom := group(entries)
 	var b strings.Builder
 
 	for _, r := range rooms {
-		live, state := byRoom[r.Key], byRoomState[r.Key]
-		if len(live) == 0 && len(state) == 0 && len(others) == 0 {
+		live := byRoom[r.Key]
+		if len(live) == 0 && len(others) == 0 {
 			continue
 		}
 		fmt.Fprintf(&b, "## crew room: %s (%s)\n\n", r.Name, r.Scope)
 		if len(others) > 0 && r.Scope == ScopeWorktree {
 			fmt.Fprintf(&b, "Also here: %s\n\n", strings.Join(others, ", "))
 		}
-		writeState(&b, state, authors)
-		writeProcedures(&b, state)
-		writeSection(&b, "Decisions", live, KindDecision, authors)
-		writeSection(&b, "Findings", live, KindFinding, authors)
+		writeSection(&b, "Notes", live, ModeNote, authors)
 		writeOpen(&b, live, authors)
 		writeAnswered(&b, live, authors)
 	}
@@ -49,18 +42,18 @@ func Notice(entries []*Entry) string {
 	if len(entries) == 0 {
 		return ""
 	}
-	counts := map[Kind]int{}
+	counts := map[Mode]int{}
 	answers := 0
 	for _, e := range entries {
 		switch {
 		case e.Resolves != 0:
 			answers++
 		default:
-			counts[e.Kind]++
+			counts[e.Mode]++
 		}
 	}
 	var parts []string
-	for _, k := range Kinds {
+	for _, k := range Modes {
 		if n := counts[k]; n > 0 {
 			parts = append(parts, fmt.Sprintf("%d %s", n, plural(string(k), string(k)+"s", n)))
 		}
@@ -68,90 +61,18 @@ func Notice(entries []*Entry) string {
 	if answers > 0 {
 		parts = append(parts, fmt.Sprintf("%d %s", answers, plural("answer", "answers", answers)))
 	}
-	return fmt.Sprintf("crew: %s unread in this room, run `crew room --inbox --ack` to read %s.",
+	return fmt.Sprintf("crew: %s unread in this room, run `crew room` to read %s.",
 		strings.Join(parts, ", "), plural("it", "them", len(entries)))
 }
 
-// Delivery renders addressed entries a session has not yet been shown.
-func Delivery(entries []*Entry, authors Authors) string {
-	if len(entries) == 0 {
-		return ""
-	}
-	var b strings.Builder
-	fmt.Fprintf(&b, "## crew: %d new %s\n\n", len(entries), plural("entry", "entries", len(entries)))
-	for _, e := range entries {
-		switch {
-		case e.Resolves != 0:
-			fmt.Fprintf(&b, "- [%d] answer to [%d] from %s: %s\n", e.ID, e.Resolves, authors.Name(e.Author), oneLine(e.Body))
-		default:
-			fmt.Fprintf(&b, "- [%d] %s from %s: %s\n", e.ID, e.Kind, authors.Name(e.Author), oneLine(e.Body))
-		}
-	}
-	return b.String() + "\n" + hint
-}
-
-const hint = "Read new entries with `crew room --inbox`, post with " +
-	"`crew post <decision|finding|question|handoff|review> \"...\"`, " +
+const hint = "Read and acknowledge entries with `crew room`, post with " +
+	"`crew post <note|request> \"...\"`, " +
 	"answer with `crew resolve <id> \"...\"`."
 
-// stateLimit caps how many values a briefing carries.
-const stateLimit = 12
-
-func writeState(b *strings.Builder, values []*State, authors Authors) {
-	var facts []*State
-	for _, v := range values {
-		if !v.IsProcedure() {
-			facts = append(facts, v)
-		}
-	}
-	if len(facts) == 0 {
-		return
-	}
-	values = facts
-	if len(values) > stateLimit {
-		values = values[:stateLimit]
-	}
-	b.WriteString("### State\n")
-	for _, v := range values {
-		if v.IsProcedure() {
-			continue
-		}
-		// A long value is named, not reproduced: an arriving agent needs to
-		// know a runbook exists, and can read it when it is about to use it.
-		if v.Long() {
-			fmt.Fprintf(b, "- %s: %s (%d lines) - `crew state get %s`\n",
-				v.Key, v.Summary(), v.Lines(), v.Key)
-			continue
-		}
-		fmt.Fprintf(b, "- %s: %s - %s, %s\n", v.Key, oneLine(v.Value), authors.Name(v.Author), Ago(v.UpdatedAt))
-	}
-	b.WriteString("\n")
-}
-
-// writeProcedures lists runbooks separately: an agent scanning for "is there a
-// way to do this already" should not have to pick them out of status values.
-func writeProcedures(b *strings.Builder, values []*State) {
-	var procs []*State
-	for _, v := range values {
-		if v.IsProcedure() {
-			procs = append(procs, v)
-		}
-	}
-	if len(procs) == 0 {
-		return
-	}
-	b.WriteString("### Procedures\n")
-	for _, v := range procs {
-		fmt.Fprintf(b, "- %s - %s - `crew state get %s`\n",
-			strings.TrimPrefix(v.Key, ProcedurePrefix), v.Summary(), v.Key)
-	}
-	b.WriteString("\n")
-}
-
-func writeSection(b *strings.Builder, title string, entries []*Entry, kind Kind, authors Authors) {
+func writeSection(b *strings.Builder, title string, entries []*Entry, mode Mode, authors Authors) {
 	var matching []*Entry
 	for _, e := range entries {
-		if e.Kind == kind {
+		if e.Mode == mode {
 			matching = append(matching, e)
 		}
 	}
@@ -184,7 +105,7 @@ func writeOpen(b *strings.Builder, entries []*Entry, authors Authors) {
 		if e.To != "" {
 			to = " to " + authors.Name(e.To)
 		}
-		fmt.Fprintf(b, "- [%d] %s%s: %s - %s, %s\n", e.ID, e.Kind, to, oneLine(e.Body), authors.Name(e.Author), Ago(e.CreatedAt))
+		fmt.Fprintf(b, "- [%d] %s%s: %s - %s, %s\n", e.ID, e.Mode, to, oneLine(e.Body), authors.Name(e.Author), Ago(e.CreatedAt))
 	}
 	b.WriteString("\n")
 }
@@ -203,7 +124,7 @@ func writeAnswered(b *strings.Builder, entries []*Entry, authors Authors) {
 
 	var threads []*Entry
 	for _, e := range entries {
-		if e.Kind.Addressed() && e.Resolves == 0 && e.ResolvedBy != 0 {
+		if e.Mode.Addressed() && e.Resolves == 0 && e.ResolvedBy != 0 {
 			threads = append(threads, e)
 		}
 	}
@@ -220,7 +141,7 @@ func writeAnswered(b *strings.Builder, entries []*Entry, authors Authors) {
 		if e.To != "" {
 			to = " to " + authors.Name(e.To)
 		}
-		fmt.Fprintf(b, "- [%d] %s%s: %s\n", e.ID, e.Kind, to, oneLine(e.Body))
+		fmt.Fprintf(b, "- [%d] %s%s: %s\n", e.ID, e.Mode, to, oneLine(e.Body))
 		if answer, ok := byID[e.ResolvedBy]; ok {
 			fmt.Fprintf(b, "  → %s - %s\n", oneLine(answer.Body), authors.Name(answer.Author))
 		}

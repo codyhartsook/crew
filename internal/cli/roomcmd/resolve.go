@@ -35,17 +35,20 @@ func NewResolve(opts *cmdutil.Options) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if !target.Open() {
+				return fmt.Errorf("entry [%d] is not an open request", target.ID)
+			}
 			author, err := rc.Author(cmd.Context(), as)
 			if err != nil {
 				return err
 			}
 
-			// A resolution inherits the room and kind of what it closes so the
+			// A resolution inherits the room and mode of what it closes so the
 			// pair reads as one thread.
 			e := &room.Entry{
 				Room:      target.Room,
 				Scope:     target.Scope,
-				Kind:      target.Kind,
+				Mode:      target.Mode,
 				Author:    author,
 				Body:      strings.Join(args[1:], " "),
 				Resolves:  target.ID,
@@ -61,5 +64,6 @@ func NewResolve(opts *cmdutil.Options) *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&as, "as", "", "session key, if not inferable")
+	_ = cmd.Flags().MarkHidden("as")
 	return cmd
 }

@@ -2,7 +2,6 @@ package sqlitestore
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
@@ -20,7 +19,7 @@ CREATE TABLE IF NOT EXISTS entries (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     room       TEXT    NOT NULL,
     scope      TEXT    NOT NULL,
-    kind       TEXT    NOT NULL,
+    mode       TEXT    NOT NULL CHECK (mode IN ('note', 'request')),
     author     TEXT    NOT NULL,
     recipient  TEXT    NOT NULL DEFAULT '',
     body       TEXT    NOT NULL,
@@ -36,17 +35,6 @@ CREATE TABLE IF NOT EXISTS memberships (
     PRIMARY KEY (session_key, room)
 );
 
-CREATE TABLE IF NOT EXISTS state (
-    room       TEXT    NOT NULL,
-    key        TEXT    NOT NULL,
-    value      TEXT    NOT NULL,
-    scope      TEXT    NOT NULL,
-    author     TEXT    NOT NULL,
-    revision   INTEGER NOT NULL DEFAULT 1,
-    updated_at TEXT    NOT NULL,
-    PRIMARY KEY (room, key)
-);
-
 CREATE TABLE IF NOT EXISTS cursors (
     session_key TEXT PRIMARY KEY,
     last_seen   INTEGER NOT NULL
@@ -57,7 +45,6 @@ const roomIndexes = `
 CREATE INDEX IF NOT EXISTS entries_room     ON entries(room);
 CREATE INDEX IF NOT EXISTS entries_resolves ON entries(resolves) WHERE resolves != 0;
 CREATE INDEX IF NOT EXISTS memberships_room ON memberships(room);
-CREATE INDEX IF NOT EXISTS state_room       ON state(room);
 `
 
 var _ store.RoomStore = (*Store)(nil)
@@ -65,7 +52,7 @@ var _ store.RoomStore = (*Store)(nil)
 // entryColumns is the projection every entry read shares. resolved_by is
 // derived rather than stored, so resolution stays an append and never a write
 // back over somebody else's row.
-const entryColumns = `e.id, e.room, e.scope, e.kind, e.author, e.recipient, e.body, e.resolves,
+const entryColumns = `e.id, e.room, e.scope, e.mode, e.author, e.recipient, e.body, e.resolves,
     COALESCE(r.id, 0) AS resolved_by, e.created_at`
 
 const entryFrom = ` FROM entries e LEFT JOIN entries r ON r.resolves = e.id`
@@ -136,26 +123,26 @@ func (s *Store) Post(ctx context.Context, e *room.Entry) error {
 	if e.Room == "" || e.Author == "" {
 		return errors.New("post: room and author are required")
 	}
-	if !e.Kind.Valid() {
-		return fmt.Errorf("post: unknown kind %q", e.Kind)
+	if !e.Mode.Valid() {
+		return fmt.Errorf("post: unknown mode %q", e.Mode)
 	}
 	if strings.TrimSpace(e.Body) == "" {
 		return errors.New("post: body is empty")
 	}
-	if e.To != "" && !e.Kind.Addressed() {
-		return errors.New("post: only questions, handoffs, and reviews can target an agent")
+	if e.To != "" && !e.Mode.Addressed() {
+		return errors.New("post: only requests can target an agent")
 	}
 	if e.To != "" && e.To == e.Author {
 		return errors.New("post: author cannot target itself")
 	}
 
 	const q = `
-INSERT INTO entries (room, scope, kind, author, recipient, body, resolves,
+INSERT INTO entries (room, scope, mode, author, recipient, body, resolves,
                      created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
 
 	res, err := s.db.ExecContext(ctx, q,
-		e.Room, string(e.Scope), string(e.Kind), e.Author, e.To, e.Body, e.Resolves, formatTime(e.CreatedAt))
+		e.Room, string(e.Scope), string(e.Mode), e.Author, e.To, e.Body, e.Resolves, formatTime(e.CreatedAt))
 	if err != nil {
 		return fmt.Errorf("post entry: %w", err)
 	}
@@ -184,9 +171,9 @@ func (s *Store) Entries(ctx context.Context, f room.Filter) ([]*room.Entry, erro
 			args = append(args, r)
 		}
 	}
-	if len(f.Kinds) > 0 {
-		where = append(where, "e.kind IN ("+placeholders(len(f.Kinds))+")")
-		for _, k := range f.Kinds {
+	if len(f.Modes) > 0 {
+		where = append(where, "e.mode IN ("+placeholders(len(f.Modes))+")")
+		for _, k := range f.Modes {
 			args = append(args, string(k))
 		}
 	}
@@ -206,12 +193,12 @@ func (s *Store) Entries(ctx context.Context, f room.Filter) ([]*room.Entry, erro
 	return s.queryEntries(ctx, q, args...)
 }
 
-// openPredicate matches entries that still want an answer: an addressed kind,
+// openPredicate matches requests that still want an answer:
 // not itself a resolution, and nothing has closed it.
-const openPredicate = `e.kind IN ('question', 'handoff', 'review') AND e.resolves = 0 AND r.id IS NULL`
+const openPredicate = `e.mode = 'request' AND e.resolves = 0 AND r.id IS NULL`
 
 // answersToMe matches a resolution of something this session asked. Without it
-// an agent is never told that its own question was answered, since a resolution
+// an agent is never told that its own request was answered, since a resolution
 // is by definition not open.
 const answersToMe = `e.resolves != 0 AND EXISTS (
     SELECT 1 FROM entries t WHERE t.id = e.resolves AND t.author = ?)`
@@ -288,252 +275,50 @@ func scanEntry(sc scanner) (*room.Entry, error) {
 	var (
 		e         room.Entry
 		scope     string
-		kind      string
+		mode      string
 		createdAt string
 	)
-	err := sc.Scan(&e.ID, &e.Room, &scope, &kind, &e.Author, &e.To, &e.Body, &e.Resolves,
+	err := sc.Scan(&e.ID, &e.Room, &scope, &mode, &e.Author, &e.To, &e.Body, &e.Resolves,
 		&e.ResolvedBy, &createdAt)
 	if err != nil {
 		return nil, err
 	}
 	e.Scope = room.Scope(scope)
-	e.Kind = room.Kind(kind)
+	e.Mode = room.Mode(mode)
 	if e.CreatedAt, err = parseTime(createdAt); err != nil {
 		return nil, fmt.Errorf("parse created_at: %w", err)
 	}
 	return &e, nil
 }
 
-const stateColumns = `room, scope, key, value, author, revision, updated_at`
-
-func (s *Store) SetState(ctx context.Context, st *room.State) error {
-	if st == nil || st.Room == "" || st.Author == "" {
-		return errors.New("set state: room and author are required")
-	}
-	if err := room.ValidKey(st.Key); err != nil {
-		return fmt.Errorf("set state: %w", err)
-	}
-
-	// revision counts writes, so a reader can see a value that keeps changing
-	// without the store keeping every version of it.
-	const q = `
-INSERT INTO state (` + stateColumns + `) VALUES (?, ?, ?, ?, ?, 1, ?)
-ON CONFLICT(room, key) DO UPDATE SET
-    value = excluded.value,
-    scope = excluded.scope,
-    author = excluded.author,
-    revision = state.revision + 1,
-    updated_at = excluded.updated_at`
-
-	if _, err := s.db.ExecContext(ctx, q,
-		st.Room, string(st.Scope), st.Key, st.Value, st.Author, formatTime(st.UpdatedAt)); err != nil {
-		return fmt.Errorf("set state %s: %w", st.Key, err)
-	}
-	// Report the revision actually stored.
-	stored, err := s.GetState(ctx, st.Room, st.Key)
-	if err != nil {
-		return err
-	}
-	st.Revision = stored.Revision
-	return nil
-}
-
-func (s *Store) GetState(ctx context.Context, roomKey, key string) (*room.State, error) {
-	row := s.db.QueryRowContext(ctx,
-		`SELECT `+stateColumns+` FROM state WHERE room = ? AND key = ?`, roomKey, key)
-	st, err := scanState(row)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, fmt.Errorf("%s: %w", key, store.ErrNotFound)
-	}
-	if err != nil {
-		return nil, fmt.Errorf("get state %s: %w", key, err)
-	}
-	return st, nil
-}
-
-func (s *Store) States(ctx context.Context, f room.StateFilter) ([]*room.State, error) {
-	var (
-		where []string
-		args  []any
-	)
-	if len(f.Rooms) > 0 {
-		where = append(where, "room IN ("+placeholders(len(f.Rooms))+")")
-		for _, r := range f.Rooms {
-			args = append(args, r)
-		}
-	}
-	if f.Prefix != "" {
-		where = append(where, `key LIKE ? ESCAPE '!'`)
-		args = append(args, escapeLike(f.Prefix)+"%")
-	}
-
-	q := `SELECT ` + stateColumns + ` FROM state`
-	if len(where) > 0 {
-		q += " WHERE " + strings.Join(where, " AND ")
-	}
-	q += " ORDER BY room, key"
-	if f.Limit > 0 {
-		q += " LIMIT ?"
-		args = append(args, f.Limit)
-	}
-
-	rows, err := s.db.QueryContext(ctx, q, args...)
-	if err != nil {
-		return nil, fmt.Errorf("list state: %w", err)
-	}
-	defer rows.Close()
-
-	out := []*room.State{}
-	for rows.Next() {
-		st, err := scanState(rows)
-		if err != nil {
-			return nil, fmt.Errorf("list state: %w", err)
-		}
-		out = append(out, st)
-	}
-	return out, rows.Err()
-}
-
-// Promote moves a thread: the entry and anything that resolves it, so a
-// question and its answer never end up in different rooms.
-func (s *Store) Promote(ctx context.Context, id int64, toRoom string, scope room.Scope) (int, error) {
-	const q = `UPDATE entries SET room = ?, scope = ? WHERE id = ? OR resolves = ?`
-	res, err := s.db.ExecContext(ctx, q, toRoom, string(scope), id, id)
-	if err != nil {
-		return 0, fmt.Errorf("promote entry %d: %w", id, err)
-	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return 0, fmt.Errorf("promote entry %d: %w", id, err)
-	}
-	if n == 0 {
-		return 0, fmt.Errorf("no entry [%d]: %w", id, store.ErrNotFound)
-	}
-	return int(n), nil
-}
-
-func (s *Store) PromoteState(ctx context.Context, fromRoom, key, toRoom string, scope room.Scope) error {
-	if _, err := s.GetState(ctx, fromRoom, key); err != nil {
-		return err
-	}
-	// State is keyed per room, so a clash is a real conflict rather than
-	// something to silently overwrite.
-	if existing, err := s.GetState(ctx, toRoom, key); err == nil {
-		return fmt.Errorf("%q already exists in the destination room (%s)", key, truncateValue(existing.Value))
-	} else if !errors.Is(err, store.ErrNotFound) {
-		return err
-	}
-
-	const q = `UPDATE state SET room = ?, scope = ? WHERE room = ? AND key = ?`
-	if _, err := s.db.ExecContext(ctx, q, toRoom, string(scope), fromRoom, key); err != nil {
-		return fmt.Errorf("promote state %s: %w", key, err)
-	}
-	return nil
-}
-
-func truncateValue(v string) string {
-	v = strings.Join(strings.Fields(v), " ")
-	if len(v) > 40 {
-		return v[:40] + "…"
-	}
-	return v
-}
-
 // Search matches with LIKE rather than a full-text index. A room holds
 // hundreds of rows, not millions, so a scan is instant - and an FTS table would
 // need keeping in step with the rows, which is the drift a single source of
 // truth exists to avoid.
-func (s *Store) Search(ctx context.Context, q room.Query) (*room.Results, error) {
+func (s *Store) Search(ctx context.Context, q room.Query) ([]*room.Entry, error) {
 	term := strings.TrimSpace(q.Text)
 	if term == "" {
 		return nil, errors.New("search: empty query")
 	}
 	like := "%" + escapeLike(term) + "%"
 
-	results := &room.Results{State: []*room.State{}, Entries: []*room.Entry{}}
 	roomFilter, roomArgs := "", []any{}
 	if len(q.Rooms) > 0 {
-		roomFilter = " AND room IN (" + placeholders(len(q.Rooms)) + ")"
+		roomFilter = " AND e.room IN (" + placeholders(len(q.Rooms)) + ")"
 		for _, r := range q.Rooms {
 			roomArgs = append(roomArgs, r)
 		}
 	}
 
-	// A key match outranks a value match: naming the thing you asked for is a
-	// stronger signal than mentioning it.
-	stateQ := `SELECT ` + stateColumns + ` FROM state
- WHERE (key LIKE ? ESCAPE '!' OR value LIKE ? ESCAPE '!')` + roomFilter + `
- ORDER BY CASE WHEN key LIKE ? ESCAPE '!' THEN 0 ELSE 1 END, key`
-	args := append([]any{like, like}, roomArgs...)
-	args = append(args, like)
-	if q.Limit > 0 {
-		stateQ += " LIMIT ?"
-		args = append(args, q.Limit)
-	}
-	rows, err := s.db.QueryContext(ctx, stateQ, args...)
-	if err != nil {
-		return nil, fmt.Errorf("search state: %w", err)
-	}
-	for rows.Next() {
-		st, err := scanState(rows)
-		if err != nil {
-			rows.Close()
-			return nil, fmt.Errorf("search state: %w", err)
-		}
-		results.State = append(results.State, st)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("search state: %w", err)
-	}
-
-	entryRoomFilter := strings.ReplaceAll(roomFilter, "room IN", "e.room IN")
 	entryQ := `SELECT ` + entryColumns + entryFrom + `
- WHERE e.body LIKE ? ESCAPE '!'` + entryRoomFilter + `
+ WHERE e.body LIKE ? ESCAPE '!'` + roomFilter + `
  ORDER BY e.id DESC`
-	args = append([]any{like}, roomArgs...)
+	args := append([]any{like}, roomArgs...)
 	if q.Limit > 0 {
 		entryQ += " LIMIT ?"
 		args = append(args, q.Limit)
 	}
-	entries, err := s.queryEntries(ctx, entryQ, args...)
-	if err != nil {
-		return nil, err
-	}
-	results.Entries = entries
-	return results, nil
-}
-
-func (s *Store) DeleteState(ctx context.Context, roomKey, key string) error {
-	res, err := s.db.ExecContext(ctx, `DELETE FROM state WHERE room = ? AND key = ?`, roomKey, key)
-	if err != nil {
-		return fmt.Errorf("delete state %s: %w", key, err)
-	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("delete state %s: %w", key, err)
-	}
-	if n == 0 {
-		return fmt.Errorf("%s: %w", key, store.ErrNotFound)
-	}
-	return nil
-}
-
-func scanState(sc scanner) (*room.State, error) {
-	var (
-		st        room.State
-		scope     string
-		updatedAt string
-	)
-	if err := sc.Scan(&st.Room, &scope, &st.Key, &st.Value, &st.Author, &st.Revision, &updatedAt); err != nil {
-		return nil, err
-	}
-	st.Scope = room.Scope(scope)
-	var err error
-	if st.UpdatedAt, err = parseTime(updatedAt); err != nil {
-		return nil, fmt.Errorf("parse updated_at: %w", err)
-	}
-	return &st, nil
+	return s.queryEntries(ctx, entryQ, args...)
 }
 
 // escapeLike neutralises LIKE wildcards in user text. The escape character is

@@ -10,12 +10,9 @@ import (
 )
 
 func TestKindAddressed(t *testing.T) {
-	addressed := map[room.Kind]bool{
-		room.KindDecision: false,
-		room.KindFinding:  false,
-		room.KindQuestion: true,
-		room.KindHandoff:  true,
-		room.KindReview:   true,
+	addressed := map[room.Mode]bool{
+		room.ModeNote:    false,
+		room.ModeRequest: true,
 	}
 	for kind, want := range addressed {
 		if got := kind.Addressed(); got != want {
@@ -25,7 +22,7 @@ func TestKindAddressed(t *testing.T) {
 			t.Errorf("%s should be valid", kind)
 		}
 	}
-	if room.Kind("gossip").Valid() {
+	if room.Mode("gossip").Valid() {
 		t.Error("unknown kind reported valid")
 	}
 }
@@ -106,10 +103,10 @@ func TestEntryOpen(t *testing.T) {
 		entry room.Entry
 		want  bool
 	}{
-		"unanswered question": {room.Entry{Kind: room.KindQuestion, CreatedAt: now}, true},
-		"answered question":   {room.Entry{Kind: room.KindQuestion, ResolvedBy: 9, CreatedAt: now}, false},
-		"the answer itself":   {room.Entry{Kind: room.KindQuestion, Resolves: 4, CreatedAt: now}, false},
-		"a decision":          {room.Entry{Kind: room.KindDecision, CreatedAt: now}, false},
+		"unanswered question": {room.Entry{Mode: room.ModeRequest, CreatedAt: now}, true},
+		"answered question":   {room.Entry{Mode: room.ModeRequest, ResolvedBy: 9, CreatedAt: now}, false},
+		"the answer itself":   {room.Entry{Mode: room.ModeRequest, Resolves: 4, CreatedAt: now}, false},
+		"a decision":          {room.Entry{Mode: room.ModeNote, CreatedAt: now}, false},
 	}
 	for name, tc := range cases {
 		if got := tc.entry.Open(); got != tc.want {
@@ -122,16 +119,16 @@ func TestBriefing(t *testing.T) {
 	here := []room.Room{{Key: "/src/widget", Scope: room.ScopeWorktree, Name: "widget"}}
 	now := time.Now()
 	entries := []*room.Entry{
-		{ID: 1, Room: "/src/widget", Kind: room.KindDecision, Author: "codex:abcdef123", Body: "chose sqlite", CreatedAt: now},
-		{ID: 2, Room: "/src/widget", Kind: room.KindQuestion, Author: "codex:abcdef123", Body: "who owns retries?", ResolvedBy: 3, CreatedAt: now},
-		{ID: 3, Room: "/src/widget", Kind: room.KindQuestion, Author: "claude:zzz", Body: "the gateway does", Resolves: 2, CreatedAt: now},
-		{ID: 4, Room: "/src/widget", Kind: room.KindReview, Author: "claude:zzz", To: "codex:abcdef123", Body: "this leaks", CreatedAt: now},
+		{ID: 1, Room: "/src/widget", Mode: room.ModeNote, Author: "codex:abcdef123", Body: "chose sqlite", CreatedAt: now},
+		{ID: 2, Room: "/src/widget", Mode: room.ModeRequest, Author: "codex:abcdef123", Body: "who owns retries?", ResolvedBy: 3, CreatedAt: now},
+		{ID: 3, Room: "/src/widget", Mode: room.ModeRequest, Author: "claude:zzz", Body: "the gateway does", Resolves: 2, CreatedAt: now},
+		{ID: 4, Room: "/src/widget", Mode: room.ModeRequest, Author: "claude:zzz", To: "codex:abcdef123", Body: "this leaks", CreatedAt: now},
 	}
 
-	out := room.Briefing(here, entries, nil, []string{"moss-otter (just now)"}, room.Authors{
+	out := room.Briefing(here, entries, []string{"moss-otter (just now)"}, room.Authors{
 		"claude:zzz": "moss-otter", "codex:abcdef123": "blue-wren",
 	})
-	for _, want := range []string{"chose sqlite", "Open", "review to blue-wren", "this leaks", "Answered", "the gateway does", "moss-otter"} {
+	for _, want := range []string{"chose sqlite", "Open", "request to blue-wren", "this leaks", "Answered", "the gateway does", "moss-otter"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("briefing is missing %q:\n%s", want, out)
 		}
@@ -149,93 +146,8 @@ func TestBriefing(t *testing.T) {
 
 func TestBriefingEmpty(t *testing.T) {
 	here := []room.Room{{Key: "/src/widget", Scope: room.ScopeWorktree, Name: "widget"}}
-	if out := room.Briefing(here, nil, nil, nil, nil); out != "" {
+	if out := room.Briefing(here, nil, nil, nil); out != "" {
 		t.Errorf("briefing on an empty room = %q, want empty", out)
-	}
-	if out := room.Delivery(nil, nil); out != "" {
-		t.Errorf("delivery with nothing new = %q, want empty", out)
-	}
-}
-
-func TestValidKey(t *testing.T) {
-	for _, bad := range []string{"", "   ", "two words", "tab\there", strings.Repeat("k", 500)} {
-		if err := room.ValidKey(bad); err == nil {
-			t.Errorf("ValidKey(%q) accepted it", bad)
-		}
-	}
-	for _, ok := range []string{"status", "build/status", "a.b-c_d", "migration/2026/step-1"} {
-		if err := room.ValidKey(ok); err != nil {
-			t.Errorf("ValidKey(%q) = %v, want nil", ok, err)
-		}
-	}
-}
-
-// State is what an arriving agent most needs, so it leads the briefing.
-func TestBriefingIncludesState(t *testing.T) {
-	here := []room.Room{{Key: "/src/widget", Scope: room.ScopeWorktree, Name: "widget"}}
-	now := time.Now()
-	values := []*room.State{
-		{Room: "/src/widget", Key: "build/status", Value: "green", Author: "codex:a", Revision: 3, UpdatedAt: now},
-	}
-
-	out := room.Briefing(here, nil, values, nil, nil)
-	if !strings.Contains(out, "### State") || !strings.Contains(out, "build/status: green") {
-		t.Errorf("briefing is missing state:\n%s", out)
-	}
-	// A room with state but no entries is still worth briefing.
-	if strings.Contains(out, "### Decisions") {
-		t.Errorf("briefing invented an empty section:\n%s", out)
-	}
-	if idx := strings.Index(out, "### State"); idx < 0 {
-		t.Errorf("state section absent:\n%s", out)
-	}
-}
-
-// A runbook belongs in state, but pushing it whole at every arriving agent
-// costs more context than it is worth.
-func TestBriefingNamesLongStateWithoutReproducingIt(t *testing.T) {
-	here := []room.Room{{Key: "/src/widget", Scope: room.ScopeWorktree, Name: "widget"}}
-	runbook := "1. drain the node pool\n2. helm upgrade\n3. rollout status\n4. smoke suite\n5. uncordon"
-	values := []*room.State{
-		{Room: "/src/widget", Key: "cluster/update", Value: runbook, Author: "codex:a", Revision: 1, UpdatedAt: time.Now()},
-		{Room: "/src/widget", Key: "build/status", Value: "green", Author: "codex:a", Revision: 1, UpdatedAt: time.Now()},
-	}
-
-	out := room.Briefing(here, nil, values, nil, nil)
-	if strings.Contains(out, "helm upgrade") {
-		t.Errorf("the runbook body leaked into the briefing:\n%s", out)
-	}
-	for _, want := range []string{
-		"cluster/update: 1. drain the node pool (5 lines)",
-		"crew state get cluster/update",
-		// A short value is still worth stating outright.
-		"build/status: green",
-	} {
-		if !strings.Contains(out, want) {
-			t.Errorf("briefing is missing %q:\n%s", want, out)
-		}
-	}
-}
-
-func TestStateLong(t *testing.T) {
-	short := &room.State{Value: "green"}
-	multiline := &room.State{Value: "one\ntwo"}
-	wide := &room.State{Value: strings.Repeat("x", 200)}
-
-	if short.Long() {
-		t.Error("a short single-line value should inline")
-	}
-	if !multiline.Long() || !wide.Long() {
-		t.Error("a multi-line or very wide value should not inline")
-	}
-	if got := multiline.Summary(); got != "one" {
-		t.Errorf("Summary() = %q, want the first line", got)
-	}
-	if got := multiline.Lines(); got != 2 {
-		t.Errorf("Lines() = %d, want 2", got)
-	}
-	if got := short.Lines(); got != 1 {
-		t.Errorf("Lines() = %d, want 1", got)
 	}
 }
 
