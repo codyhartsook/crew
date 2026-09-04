@@ -86,8 +86,13 @@
   .zone.folder:hover, .zone.place:hover { stroke:var(--label-2); stroke-width:2; }
 
   /* Agent segments carry the agent's own hue; the harness is only the icon. */
-  .track { stroke:none; fill-opacity:0.17; }
-  .used { fill-opacity:0.85; stroke:none; }
+  /* Track and fill sit close together so the ring reads calmly; a hairline at
+     the fill's edge keeps the level legible without the contrast doing it. */
+  .track { stroke:none; fill-opacity:0.34; }
+  .used {
+    fill-opacity:0.66;
+    stroke:color-mix(in srgb, var(--label) 32%, transparent); stroke-width:0.75;
+  }
   .aseg .edge { fill:none; stroke:color-mix(in srgb, var(--label) 30%, transparent); stroke-width:1; }
   .aseg.nodata .edge { stroke-dasharray:3 3; }
   .alabel { font-size:11px; font-weight:600; fill:var(--label); pointer-events:none;
