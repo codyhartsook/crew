@@ -48,6 +48,14 @@ crew init
 Safe to run again. It configures the agent CLIs and starts the local broker;
 use `crew dashboard` in another terminal to open the UI.
 
+After installing a new binary, replace the running broker gracefully. Lifecycle
+events are appended to `~/.multiplayer/broker.log`.
+
+```sh
+crew init --restart
+crew stop
+```
+
 ## Commands
 
 | Command | What it does |
@@ -55,6 +63,7 @@ use `crew dashboard` in another terminal to open the UI.
 | `init` / `uninstall` | Set up or remove the automatic integration. |
 | `ls` | List active agents by friendly name. |
 | `dashboard` (`fleet`) | Open the dashboard for the running local broker. |
+| `stop` | Gracefully stop the local broker. |
 | `post` / `resolve` | Post an entry, or answer and close a request. |
 | `room` | Show the room and acknowledge requests. |
 | `search` | Find earlier entries by topic. |

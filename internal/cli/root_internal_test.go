@@ -18,7 +18,7 @@ import (
 
 func TestPublicCommands(t *testing.T) {
 	root := New()
-	for _, name := range []string{"init", "uninstall", "ls", "dashboard", "room", "post", "resolve", "search", "docs", "publish", "open"} {
+	for _, name := range []string{"init", "uninstall", "ls", "dashboard", "stop", "room", "post", "resolve", "search", "docs", "publish", "open"} {
 		cmd, _, err := root.Find([]string{name})
 		if err != nil || cmd.Name() != name || cmd.Hidden {
 			t.Errorf("public command %q = (%v, %v)", name, cmd, err)
@@ -169,7 +169,7 @@ func TestDashboardAliasesAndInitBrokerFlags(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"addr", "verbose"} {
+	for _, name := range []string{"addr", "verbose", "restart"} {
 		if f := init.Flags().Lookup(name); f == nil || f.Hidden {
 			t.Errorf("init --%s = %v, want public flag", name, f)
 		}

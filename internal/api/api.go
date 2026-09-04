@@ -8,6 +8,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"strconv"
@@ -31,6 +32,7 @@ type Server struct {
 	log   *slog.Logger
 	ui    http.Handler
 	table http.Handler
+	stop  func()
 }
 
 type Option func(*Server)
@@ -44,6 +46,11 @@ func WithUI(h http.Handler) Option {
 // WithTableUI mounts the row-per-session view at /table, beside the dashboard.
 func WithTableUI(h http.Handler) Option {
 	return func(s *Server) { s.table = h }
+}
+
+// WithShutdown enables the local broker's graceful shutdown endpoint.
+func WithShutdown(stop func()) Option {
+	return func(s *Server) { s.stop = stop }
 }
 
 // New returns a Server backed by st. A nil logger discards request logs.
@@ -70,6 +77,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/sessions/{key}/usage", s.setSessionUsage)
 	mux.HandleFunc("GET /v1/entries", s.listEntries)
 	mux.HandleFunc("GET /v1/meta", s.meta)
+	if s.stop != nil {
+		mux.HandleFunc("POST /v1/shutdown", s.shutdown)
+	}
 	if s.table != nil {
 		mux.Handle("GET /table", s.table)
 	}
@@ -79,6 +89,16 @@ func (s *Server) Handler() http.Handler {
 		mux.Handle("GET /{$}", s.ui)
 	}
 	return s.logRequests(mux)
+}
+
+func (s *Server) shutdown(w http.ResponseWriter, r *http.Request) {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil || !net.ParseIP(host).IsLoopback() || r.Header.Get("Origin") != "" {
+		writeError(w, http.StatusForbidden, errors.New("shutdown is local CLI access only"))
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+	go s.stop()
 }
 
 // EndRequest is the body of POST /v1/sessions/{key}/end. An omitted EndedAt
