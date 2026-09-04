@@ -35,8 +35,8 @@ curl -fsSL https://raw.githubusercontent.com/codyhartsook/multiplayer/main/scrip
 ```sh
 git clone https://github.com/codyhartsook/multiplayer.git
 cd multiplayer
-make install                      # installs crew to ~/.local/bin
-sudo make install PREFIX=/usr/local   # or system-wide
+make build && make install            # installs crew to ~/.local/bin
+make build && sudo make install PREFIX=/usr/local   # or system-wide
 ```
 
 ## Start
