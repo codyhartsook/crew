@@ -10,7 +10,6 @@
     --label: rgba(0,0,0,0.88); --label-2: rgba(60,60,67,0.6); --label-3: rgba(60,60,67,0.35);
     --separator: rgba(60,60,67,0.14);
     --orange:#ff9500; --teal:#0fa3b1; --gray:#8e8e93; --violet:#8b5cf6;
-    --al:0.60; --ac:0.14;   /* agent colour: fixed L and C, hue is identity */
     --mono: ui-monospace,"SF Mono",SFMono-Regular,Menlo,monospace;
     --sans: -apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",sans-serif;
   }
@@ -19,7 +18,6 @@
       --window:#1c1c1e; --card:#2c2c2e; --fill:rgba(118,118,128,0.18);
       --label:rgba(255,255,255,0.92); --label-2:rgba(235,235,245,0.58); --label-3:rgba(235,235,245,0.32);
       --separator:rgba(84,84,88,0.6);
-      --al:0.68; --ac:0.14;
       --orange:#ff9f0a; --teal:#40c8e0; --gray:#98989d; --violet:#c4b5fd;
     }
   }
@@ -86,13 +84,10 @@
   .zone.folder:hover, .zone.place:hover { stroke:var(--label-2); stroke-width:2; }
 
   /* Agent segments carry the agent's own hue; the harness is only the icon. */
-  /* Track and fill sit close together so the ring reads calmly; a hairline at
-     the fill's edge keeps the level legible without the contrast doing it. */
-  .track { stroke:none; fill-opacity:0.34; }
-  .used {
-    fill-opacity:0.66;
-    stroke:color-mix(in srgb, var(--label) 32%, transparent); stroke-width:0.75;
-  }
+  /* Track and fill sit close together so the ring reads calmly. Nothing marks
+     the boundary between them: the step in opacity is the whole signal. */
+  .track { stroke:none; }
+  .used { stroke:none; }
   .aseg .edge { fill:none; stroke:color-mix(in srgb, var(--label) 30%, transparent); stroke-width:1; }
   .aseg.nodata .edge { stroke-dasharray:3 3; }
   .alabel { font-size:11px; font-weight:600; fill:var(--label); pointer-events:none;
@@ -164,6 +159,8 @@
   .dim { opacity:0.18; }
   .zone.trail { stroke:var(--label); stroke-width:2.25; }
 
+  .opt { display:inline-flex; align-items:center; gap:6px; margin-top:8px;
+         font-size:11.5px; color:var(--label-2); cursor:pointer; }
   .legend { display:flex; gap:14px; flex-wrap:wrap; align-items:center;
             margin-top:9px; font-size:11.5px; color:var(--label-2); }
   .litem { display:inline-flex; align-items:center; gap:5px; }
@@ -181,6 +178,9 @@
   <h1>crew</h1>
   <div class="sub" id="sub">Loading…</div>
   <div class="legend" id="legend"></div>
+  <label class="opt">
+    <input type="checkbox" id="opt-usage" checked> Show context usage
+  </label>
 </header>
 <div class="cols">
   <div class="stage"><div class="panel" id="panel" hidden></div><svg id="svg" viewBox="-500 -500 1000 1000"></svg></div>
@@ -197,6 +197,7 @@ const API = params.get("api") ?? "";
 
 // Ring width is a constant now: the layout is fixed, not tunable.
 const RING = 86;
+let SHOW_USAGE = remembered("crew.usage", "1") === "1";
 
 let DATA = { sessions: [], entries: [] };
 let VIEW = null;
@@ -207,6 +208,11 @@ let FOCUS = null;
 let ANIM = 0;
 let SKIP_CLICK = false;
 let PICK = null;  // { node, sessionKey } while something is selected
+
+// Named apart from load(): a second load() silently shadowed the data fetcher.
+function remembered(key, fallback) {
+  try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; }
+}
 
 // ---- data ----
 
@@ -447,7 +453,7 @@ function layout() {
   VIEW = {
     root, nodes, byPath, sessions, entries, agentsAt, entriesAt, openAt,
     authors: new Map(sessions.map((x) => [x.harness + ":" + x.id, x.alias])),
-    hues: assignHues(sessions),
+    palette: assignColours(sessions),
     openTotal: entries.filter(isOpen).length, home, homeExact, total: sessions.length,
     extent: 0, waiting,
   };
@@ -666,9 +672,14 @@ function agentSegment(sess, n, a0, a1, RW, defs) {
     class: "aseg " + cls + (known ? "" : " nodata"),
   });
   const colour = colourOf(key);
-  grp.append(el("path", { class: "track", fill: colour, d: sector(r0, r1, a0, a1) }));
+  // Mixing toward the page rather than going transparent keeps the unused part
+  // muted without dragging the whole band dark.
+  const muted = `color-mix(in srgb, ${colour} 42%, var(--window))`;
+  grp.append(el("path", { class: "track", fill: muted, d: sector(r0, r1, a0, a1) }));
   if (known) {
-    grp.append(el("path", { class: "used", fill: colour, d: sector(r0, r0 + (r1 - r0) * frac, a0, a1) }));
+    if (SHOW_USAGE) {
+      grp.append(el("path", { class: "used", fill: colour, d: sector(r0, r0 + (r1 - r0) * frac, a0, a1) }));
+    }
   }
   grp.append(el("path", { class: "edge", d: sector(r0, r1, a0, a1) }));
 
@@ -695,7 +706,7 @@ function agentSegment(sess, n, a0, a1, RW, defs) {
 
   // The band's own label says what the fill means, in the space the name used
   // to occupy. Without it the gauge is a coloured bar with no units.
-  grp.append(gaugeLabel(defs, n, a0, a1, RW, known, frac));
+  if (SHOW_USAGE) grp.append(gaugeLabel(defs, n, a0, a1, RW, known, frac));
 
   grp.dataset.key = key;
   grp.dataset.zone = n.path;
@@ -720,52 +731,55 @@ function agentSegment(sess, n, a0, a1, RW, defs) {
 // Identity is the hue. Assignment is hashed so an agent keeps its colour across
 // refreshes, then nudged so no two *live* agents ever share one.
 
-const HUE_SLOTS = 100;
-const GOLDEN = 137.508;
-
-function hashKey(k) {
-  let h = 2166136261;
-  for (let i = 0; i < k.length; i++) {
-    h ^= k.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return h >>> 0;
-}
-
-function hueGap(a, b) {
-  const d = Math.abs(a - b) % 360;
-  return Math.min(d, 360 - d);
-}
-
-// Distinct slots are not distinct colours: 100 slots are only 3.6 degrees
-// apart. Separation is enforced in hue space, loosening as the fleet grows.
-// An agent keeps its hashed hue unless it actually clashes, so colours are
-// stable in practice but distinctness always wins when they conflict.
-function assignHues(sessions) {
+// d3.quantize(interpolateRainbow, n + 1): n evenly spaced samples across the
+// whole ramp, in order. Sampling at arbitrary points instead lands agents in
+// the dark middle of the rainbow and loses the palette's character.
+// d3.quantize(interpolateRainbow, n + 1): evenly spaced samples across the
+// ramp. Lightened, because the example gets its pastels from drawing at low
+// opacity on white; on a dark ground that same trick darkens instead.
+function assignColours(sessions) {
   const ordered = [...sessions].sort((a, b) =>
     (a.harness + a.id).localeCompare(b.harness + b.id));
-  const minSep = Math.min(45, 300 / Math.max(1, ordered.length));
-  const taken = [], out = new Map();
+  const steps = ordered.length || 1;
+  const agents = new Map();
+  // The trailing sample is dropped: rainbow is cyclic, so 1 repeats 0.
+  ordered.forEach((sess, i) =>
+    agents.set(sess.harness + ":" + sess.id, lighten(rainbow(i / steps), 0.34)));
+  return agents;
+}
 
-  for (const s of ordered) {
-    const key = s.harness + ":" + s.id;
-    const start = hashKey(key) % HUE_SLOTS;
-    let hue = null;
-    for (let step = 0; step < HUE_SLOTS; step++) {
-      const candidate = (((start + step) % HUE_SLOTS) * GOLDEN) % 360;
-      if (taken.every((t) => hueGap(t, candidate) >= minSep)) { hue = candidate; break; }
-    }
-    if (hue === null) hue = (start * GOLDEN) % 360;  // palette exhausted
-    taken.push(hue);
-    out.set(key, hue);
-  }
-  return out;
+// Shades within a family, by mixing toward white.
+function lighten(colour, f) {
+  const parts = colour.match(/\d+/g);
+  if (!parts || f <= 0) return colour;
+  const [r, g, b] = parts.map(Number);
+  const up = (c) => Math.round(c + (255 - c) * f);
+  return `rgb(${up(r)},${up(g)},${up(b)})`;
+}
+
+// d3.interpolateRainbow, reimplemented so the page stays dependency free.
+// Cubehelix rather than a plain hue sweep: lightness and saturation ride with
+// the hue, which is what gives that palette its character.
+const CH = { A: -0.14861, B: 1.78277, C: -0.29227, D: -0.90649, E: 1.97294 };
+
+function cubehelix(h, s, l) {
+  const rad = ((h + 120) * Math.PI) / 180;
+  const a = s * l * (1 - l);
+  const cos = Math.cos(rad), sin = Math.sin(rad);
+  const byte = (x) => Math.max(0, Math.min(255, Math.round(255 * x)));
+  return `rgb(${byte(l + a * (CH.A * cos + CH.B * sin))},` +
+         `${byte(l + a * (CH.C * cos + CH.D * sin))},` +
+         `${byte(l + a * (CH.E * cos))})`;
+}
+
+function rainbow(t) {
+  t -= Math.floor(t);
+  const ts = Math.abs(t - 0.5);
+  return cubehelix(360 * t - 100, 1.5 - 1.5 * ts, 0.8 - 0.9 * ts);
 }
 
 function colourOf(key) {
-  const hue = VIEW && VIEW.hues.get(key);
-  if (hue === undefined) return "var(--gray)";
-  return `oklch(var(--al) var(--ac) ${hue.toFixed(1)})`;
+  return (VIEW && VIEW.palette.get(key)) || "var(--gray)";
 }
 
 // ---- room panel ----
@@ -881,7 +895,7 @@ function postRow(e, byId) {
 // An author keeps its hue wherever it is named.
 function named(key) {
   const el2 = tag("span", "who-name", VIEW.authors.get(key) || key.split(":")[0]);
-  if (VIEW.hues.has(key)) el2.style.color = colourOf(key);
+  if (VIEW.palette.has(key)) el2.style.color = colourOf(key);
   return el2;
 }
 
@@ -1133,6 +1147,14 @@ function buildLegend() {
 
 // ---- controls ----
 
+
+const usageBox = document.getElementById("opt-usage");
+usageBox.checked = SHOW_USAGE;
+usageBox.addEventListener("change", () => {
+  SHOW_USAGE = usageBox.checked;
+  try { localStorage.setItem("crew.usage", SHOW_USAGE ? "1" : "0"); } catch { /* private mode */ }
+  paint();
+});
 
 buildLegend();
 initInteractions(document.getElementById("svg"));

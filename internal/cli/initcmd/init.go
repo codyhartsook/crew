@@ -124,8 +124,12 @@ the broker wakes live sessions when they have addressed entries.`,
 			}
 			if !dryRun {
 				baseURL := "http://" + addr
+				// Someone else is already serving, so this command has nothing
+				// left to do. Say that plainly: the same tick that means "now
+				// serving" below would otherwise read as if init stayed up.
 				if registry.IsUp(cmd.Context(), baseURL) {
 					fmt.Fprintf(out, "  %s broker already running at %s\n", view.success("✓"), baseURL)
+					fmt.Fprintln(out, "  "+view.muted("started by another process, so init is exiting rather than serving"))
 					printInitNextSteps(out, view)
 					return nil
 				}
@@ -135,6 +139,7 @@ the broker wakes live sessions when they have addressed entries.`,
 					Log:     cmd.ErrOrStderr(),
 					OnReady: func(url string) {
 						fmt.Fprintf(out, "  %s broker running at %s (notifications enabled)\n", view.success("✓"), url)
+						fmt.Fprintln(out, "  "+view.muted("serving here; this command stays running until you stop it"))
 						printInitNextSteps(out, view)
 					},
 				})
