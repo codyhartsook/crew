@@ -3,6 +3,7 @@ package clearcmd
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/spf13/cobra"
 
@@ -27,12 +28,23 @@ func New(opts *cmdutil.Options) *cobra.Command {
 				return err
 			}
 			defer rc.Close()
+			author, err := rc.Author(cmd.Context(), "")
+			if err != nil {
+				return err
+			}
+			keys, err := rc.Accessible(cmd.Context(), author)
+			if err != nil {
+				return err
+			}
 
 			targets := rc.Here[:1]
 			if alsoRepo {
 				targets = rc.Here
 			}
 			for _, r := range targets {
+				if !slices.Contains(keys, r.Key) {
+					return fmt.Errorf("the active agent has not joined %s", r.Name)
+				}
 				entries, err := rc.Rooms.Entries(cmd.Context(), room.Filter{Rooms: []string{r.Key}})
 				if err != nil {
 					return err

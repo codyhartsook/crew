@@ -11,6 +11,7 @@ import (
 	"github.com/codyhartsook/multiplayer/internal/cli/clearcmd"
 	"github.com/codyhartsook/multiplayer/internal/cli/cmdutil"
 	"github.com/codyhartsook/multiplayer/internal/cli/dashboardcmd"
+	"github.com/codyhartsook/multiplayer/internal/cli/documentcmd"
 	"github.com/codyhartsook/multiplayer/internal/cli/hookcmd"
 	"github.com/codyhartsook/multiplayer/internal/cli/initcmd"
 	"github.com/codyhartsook/multiplayer/internal/cli/lscmd"
@@ -50,6 +51,9 @@ call records the git checkout, and the pool slot if there is one.`,
 		lscmd.New(opts),
 		servecmd.New(opts),
 		dashboardcmd.New(opts),
+		documentcmd.NewDocs(opts),
+		documentcmd.NewPublish(opts),
+		documentcmd.NewOpen(opts),
 		roomcmd.NewPost(opts),
 		roomcmd.NewResolve(opts),
 		roomcmd.NewRemove(opts),

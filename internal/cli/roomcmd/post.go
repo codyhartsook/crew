@@ -3,6 +3,7 @@ package roomcmd
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -66,6 +67,13 @@ func post(cmd *cobra.Command, opts *cmdutil.Options, mode room.Mode, body string
 	author, err := rc.Author(cmd.Context(), as)
 	if err != nil {
 		return err
+	}
+	keys, err := rc.Accessible(cmd.Context(), author)
+	if err != nil {
+		return err
+	}
+	if !slices.Contains(keys, target.Key) {
+		return errors.New("the active agent has not joined this room")
 	}
 	recipient := ""
 	if to != "" {

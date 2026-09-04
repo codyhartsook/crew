@@ -2,6 +2,7 @@ package roomcmd
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 
 	"github.com/spf13/cobra"
@@ -39,6 +40,13 @@ func NewRemove(opts *cmdutil.Options) *cobra.Command {
 			author, err := rc.Author(cmd.Context(), as)
 			if err != nil {
 				return err
+			}
+			keys, err := rc.Accessible(cmd.Context(), author)
+			if err != nil {
+				return err
+			}
+			if !slices.Contains(keys, target.Room) {
+				return fmt.Errorf("entry [%d] is not in this room", id)
 			}
 			removed, err := rc.Rooms.RemoveEntry(cmd.Context(), id, author)
 			if err != nil {
