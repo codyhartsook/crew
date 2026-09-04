@@ -8,7 +8,7 @@
   :root {
     --window: #f2f2f7; --card: #fff; --fill: rgba(116,116,128,0.08);
     --label: rgba(0,0,0,0.88); --label-2: rgba(60,60,67,0.6); --label-3: rgba(60,60,67,0.35);
-    --separator: rgba(60,60,67,0.14);
+    --separator: rgba(60,60,67,0.14); --edge: rgba(60,60,67,0.3);
     --orange:#ff9500; --teal:#0fa3b1; --gray:#8e8e93; --violet:#8b5cf6;
     --mono: ui-monospace,"SF Mono",SFMono-Regular,Menlo,monospace;
     --sans: -apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",sans-serif;
@@ -17,7 +17,7 @@
     :root {
       --window:#1c1c1e; --card:#2c2c2e; --fill:rgba(118,118,128,0.18);
       --label:rgba(255,255,255,0.92); --label-2:rgba(235,235,245,0.58); --label-3:rgba(235,235,245,0.32);
-      --separator:rgba(84,84,88,0.6);
+      --separator:rgba(84,84,88,0.6); --edge:rgba(235,235,245,0.3);
       --orange:#ff9f0a; --teal:#40c8e0; --gray:#98989d; --violet:#c4b5fd;
     }
   }
@@ -68,70 +68,71 @@
   .post .answer { margin-top:4px; padding-left:9px; border-left:2px solid var(--separator);
                   color:var(--label-2); }
   .roomsempty { font-size:12px; color:var(--label-3); padding:4px 2px; }
-  svg { display:block; width:100%; height:auto; max-height:calc(100vh - 150px); }
 
-  .ring { fill:none; stroke:var(--separator); stroke-dasharray:2 4; }
+  /* ---- graph ---- */
+  svg { display:block; width:100%; height:auto; max-height:calc(100vh - 190px);
+        touch-action:none; cursor:grab; }
+  svg.panning { cursor:grabbing; }
 
-  /* Rings read inward-out: folders are structure, repos are places, agents are people. */
-  .zone.folder {
-    fill:color-mix(in srgb, var(--label) 3%, transparent);
-    stroke:var(--separator); stroke-width:1;
-  }
-  .zone.place {
-    fill:color-mix(in srgb, var(--label) 11%, var(--card));
-    stroke:color-mix(in srgb, var(--label) 30%, transparent); stroke-width:1.25;
-  }
-  .zone.folder:hover, .zone.place:hover { stroke:var(--label-2); stroke-width:2; }
+  /* One faint guide per depth, so the rings read as structure. */
+  .guide { fill:none; stroke:var(--separator); stroke-dasharray:2 5; }
 
-  /* Agent segments carry the agent's own hue; the harness is only the icon. */
-  /* Track and fill sit close together so the ring reads calmly. Nothing marks
-     the boundary between them: the step in opacity is the whole signal. */
-  .track { stroke:none; }
-  .used { stroke:none; }
-  .aseg .edge { fill:none; stroke:color-mix(in srgb, var(--label) 30%, transparent); stroke-width:1; }
-  .aseg.nodata .edge { stroke-dasharray:3 3; }
-  .alabel { font-size:11px; font-weight:600; fill:var(--label); pointer-events:none;
-            font-family:var(--mono); }
-  /* Sits on the fill, so it carries a halo the outside labels do not need. */
-  .clabel { font-size:10px; font-weight:600; fill:#fff; pointer-events:none;
-            font-family:var(--mono); paint-order:stroke; letter-spacing:0.02em;
-            stroke:rgba(0,0,0,0.5); stroke-width:2.4px; stroke-linejoin:round; }
-  .clabel.unknown { fill:var(--label-3); stroke-width:0; font-weight:500; font-style:italic; }
+  .link { fill:none; stroke:var(--edge); stroke-width:1.4; stroke-opacity:0.75; }
+  /* Heavier than the structure it hangs off, in the agent's own colour. */
+  .link.agent { stroke-width:2.4; stroke-opacity:0.9; }
+  .link.tether { stroke:var(--violet); stroke-dasharray:4 5; stroke-opacity:0.8; }
 
-  .hub { fill:var(--card); stroke:var(--separator); }
-  .hubtext { font-size:14px; font-weight:650; fill:var(--label); text-anchor:middle; }
-  .hubsub { font-size:9.5px; fill:var(--label-3); text-anchor:middle; font-family:var(--mono); }
+  /* Structure square, agents round: shape says place or person. */
+  .shape { stroke-width:1.25; }
+  .shape.folder { fill:color-mix(in srgb, var(--label) 5%, var(--card));
+                  stroke:var(--separator); }
+  .shape.place { fill:var(--card); stroke:color-mix(in srgb, var(--label) 26%, transparent); }
+  .shape.agent { stroke:color-mix(in srgb, var(--label) 26%, transparent); }
+  .shape.home { fill:var(--card); stroke:var(--separator); stroke-width:1; }
+  .hubtext { font-size:17px; font-weight:650; fill:var(--label); text-anchor:middle;
+             pointer-events:none; font-family:var(--mono); }
 
+  /* The ring around an agent is its context window; the arc is what is spent. */
+  .gtrack { fill:none; stroke-width:3.2; }
+  .gfill { fill:none; stroke-width:3.2; stroke-linecap:butt; }
+  .gnone { fill:none; stroke:var(--label-3); stroke-width:1; stroke-dasharray:2 3; }
 
-  .icon { fill:none; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; pointer-events:none; }
+  .icon { fill:none; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round;
+          pointer-events:none; }
   .icon.place { stroke:var(--label-2); }
   .icon.folder { stroke:var(--label-3); }
-  .icon.agent { stroke:var(--label-2); }
-  .icon.agent.claude { stroke:var(--orange); }
-  .icon.agent.codex { stroke:var(--teal); }
+  .icon.agent { stroke:rgba(0,0,0,0.55); }
 
-  .ztitle { font-size:11.5px; font-weight:650; fill:var(--label); letter-spacing:-0.006em; pointer-events:none; }
-  .btitle { font-size:10.5px; fill:var(--label-2); font-family:var(--mono); pointer-events:none; letter-spacing:0.04em; }
+  .nlabel, .nsub {
+    pointer-events:none; text-anchor:middle; font-family:var(--mono);
+    paint-order:stroke; stroke:var(--window); stroke-width:3.2px; stroke-linejoin:round;
+  }
+  .nlabel { font-size:11px; font-weight:650; fill:var(--label); }
+  .nlabel.folder { font-size:10.5px; fill:var(--label-2); font-weight:600; letter-spacing:0.03em; }
+  .nsub { font-size:9.5px; fill:var(--label-3); }
+  body.no-labels .nlabel, body.no-labels .nsub { display:none; }
 
-
-  .zone.owner { stroke:var(--violet); stroke-width:2.5; }
+  .node { cursor:pointer; }
+  .node, .link { transition:opacity 0.12s ease; }
+  .dim { opacity:0.15; }
+  .node.trail .shape { stroke:var(--label); stroke-width:2.25; }
+  .node.owner .shape { stroke:var(--violet); stroke-width:2.5; }
+  .node.picked .shape { stroke:var(--label); stroke-width:2.5; }
+  .node.waiting .shape { stroke:var(--orange); stroke-width:2.25; }
 
   /* hover detail */
   .panel {
     position:absolute; top:0; left:0; z-index:3; width:min(370px, 100%);
     background:var(--card); border-radius:10px; padding:10px 12px;
     box-shadow:0 0 0 0.5px rgba(0,0,0,0.12), 0 6px 20px rgba(0,0,0,0.28);
+    pointer-events:none;
   }
   .panel[hidden] { display:none; }
   .crumbs { display:flex; align-items:center; gap:5px; font-family:var(--mono); font-size:11px; }
   .crumb { padding:2px 8px; border-radius:5px; background:var(--fill); color:var(--label-2);
            white-space:nowrap; }
-  .crumb.last { background:color-mix(in srgb, var(--label) 12%, transparent); color:var(--label); font-weight:600; }
-  .crumb.copy {
-    margin-left:auto; border:0; font:inherit; font-family:var(--mono); font-size:10.5px;
-    color:var(--label-3); cursor:pointer;
-  }
-  .crumb.copy:hover { color:var(--label); background:var(--fill); }
+  .crumb.last { background:color-mix(in srgb, var(--label) 12%, transparent); color:var(--label);
+                font-weight:600; }
   .crumb.sep { background:none; padding:0; color:var(--label-3); }
   .hint { font-size:12px; color:var(--label-3); }
 
@@ -140,32 +141,29 @@
   .arow .bar { grid-column:1 / -1; }
   .arow .who { font-weight:600; font-family:var(--mono); font-size:11px; }
   .arow .who i { font-style:normal; margin-right:5px; }
-  .arow .who.claude i { color:var(--orange); }
-  .arow .who.codex i { color:var(--teal); }
   .arow .model { color:var(--label-3); font-family:var(--mono); font-size:10px; grid-column:1; }
   .bar { height:7px; border-radius:4px; background:var(--fill); overflow:hidden; }
   .bar span { display:block; height:100%; border-radius:4px; }
   .bar.claude span { background:var(--orange); }
   .bar.codex span { background:var(--teal); }
-  .arow .num { color:var(--label-2); font-variant-numeric:tabular-nums; text-align:right; font-size:11px; }
+  .arow .num { color:var(--label-2); font-variant-numeric:tabular-nums; text-align:right;
+               font-size:11px; }
   .arow .unknown { color:var(--label-3); font-style:italic; }
 
   .openrow { margin-top:8px; font-size:11.5px; color:var(--label-2); }
   .openrow b { color:var(--label); font-weight:600; }
 
-  .zone, .aseg { transition:opacity 0.12s ease; }
-  .zone.place, .aseg { cursor:pointer; }
-  .aseg.picked .edge { stroke:var(--label); stroke-width:2.5; }
-  .dim { opacity:0.18; }
-  .zone.trail { stroke:var(--label); stroke-width:2.25; }
-
-  .opt { display:inline-flex; align-items:center; gap:6px; margin-top:8px;
-         font-size:11.5px; color:var(--label-2); cursor:pointer; }
+  .controls { display:flex; gap:14px; align-items:center; flex-wrap:wrap; margin-top:9px; }
+  .opt { display:inline-flex; align-items:center; gap:6px; font-size:11.5px;
+         color:var(--label-2); cursor:pointer; }
+  .btn { border:0; border-radius:6px; padding:4px 10px; background:var(--fill);
+         color:var(--label-2); font:inherit; font-size:11.5px; cursor:pointer;
+         text-decoration:none; display:inline-block; }
+  .btn:hover { color:var(--label); }
   .legend { display:flex; gap:14px; flex-wrap:wrap; align-items:center;
             margin-top:9px; font-size:11.5px; color:var(--label-2); }
   .litem { display:inline-flex; align-items:center; gap:5px; }
   .litem b { font-weight:500; color:var(--label-2); }
-  .swatch { display:inline-block; width:9px; height:9px; border-radius:50%; }
   .licon { width:15px; height:15px; fill:none; stroke:var(--label-2);
            stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; }
   .licon.claude { stroke:var(--orange); }
@@ -178,12 +176,15 @@
   <h1>crew</h1>
   <div class="sub" id="sub">Loading…</div>
   <div class="legend" id="legend"></div>
-  <label class="opt">
-    <input type="checkbox" id="opt-usage" checked> Show context usage
-  </label>
+  <div class="controls">
+    <label class="opt"><input type="checkbox" id="opt-usage" checked> Show context usage</label>
+    <label class="opt"><input type="checkbox" id="opt-labels" checked> Labels</label>
+    <button class="btn" id="reheat" type="button">Reheat</button>
+    <button class="btn" id="recentre" type="button">Fit</button>
+  </div>
 </header>
 <div class="cols">
-  <div class="stage"><div class="panel" id="panel" hidden></div><svg id="svg" viewBox="-500 -500 1000 1000"></svg></div>
+  <div class="stage"><div class="panel" id="panel" hidden></div><svg id="svg"></svg></div>
   <aside class="rooms" id="rooms"></aside>
 </div>
 
@@ -195,29 +196,53 @@ const params = new URLSearchParams(location.search);
 // Same-origin when the registry serves this page; ?api= points it elsewhere.
 const API = params.get("api") ?? "";
 
-// Ring width is a constant now: the layout is fixed, not tunable.
-const RING = 86;
+const TAU = Math.PI * 2;
+
+// One ring per depth: home, folders, places, agents. Ring means role; the
+// simulation only picks where on the ring a node sits.
+const MIN_GAP = [0, 118, 118, 108];
+const MIN_EXTENT = 260;
+
+// Wide enough that everything on the ring fits round it, but no wider: fixed
+// radii leave a small fleet as a few nodes lost on a huge circle.
+function ringRadii(counts) {
+  const rings = [0];
+  for (let d = 1; d < MIN_GAP.length; d++) {
+    rings.push(Math.max(rings[d - 1] + MIN_GAP[d], (counts[d] * COLLIDE[d]) / Math.PI));
+  }
+  return rings;
+}
+
 let SHOW_USAGE = remembered("crew.usage", "1") === "1";
+let SHOW_LABELS = remembered("crew.labels", "1") === "1";
 
 let DATA = { sessions: [], entries: [] };
 let VIEW = null;
+let SCENE = null;
+let SIM = null;
 let SIG = "";
 let META = null;
 const OPEN_ROOMS = new Set();   // rooms the reader has expanded
-let FOCUS = null;
-let ANIM = 0;
-let SKIP_CLICK = false;
-let PICK = null;  // { node, sessionKey } while something is selected
+const KEEP = new Map();         // id -> {x,y,vx,vy}, so a poll does not restart the layout
+let PICK = null;                // { node, sessionKey } while something is selected
+let HOVER = null;
+let TX = { k: 1, x: 0, y: 0 };
+let USER_VIEW = false;          // the reader has panned or zoomed; stop refitting
+let DRAGGING = 0;               // nodes currently held; the view must hold still
+let RAF = 0;
 
-// Named apart from load(): a second load() silently shadowed the data fetcher.
 function remembered(key, fallback) {
   try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; }
 }
 
+function remember(key, value) {
+  try { localStorage.setItem(key, value); } catch { /* private mode */ }
+}
+
 // ---- data ----
 
-// Repainting on a timer would destroy any hover the cursor is sitting on, so a
-// poll that finds nothing changed leaves the DOM alone.
+// A poll that finds nothing changed leaves the DOM and the layout alone;
+// repainting would drop the hover and reheat the simulation.
 function signature(sessions, entries) {
   return JSON.stringify([
     sessions.map((s) => [s.harness + ":" + s.id, s.status, s.alias, s.usage && s.usage.context_used]),
@@ -270,10 +295,10 @@ function detectHome(paths) {
   return { home: "/", exact: false };
 }
 
-// ---- layout ----
+// ---- tree ----
 
-// Exactly two structural levels: the folder chain, compressed into one
-// segment, then the place. Ring means role, not distance from home.
+// Two structural levels: the folder chain compressed into one segment, then
+// the place. Home is the root, and everything hangs off it.
 function buildTree(paths, home) {
   const root = { name: "~", path: home, depth: 0, children: new Map() };
   for (const p of paths) {
@@ -295,7 +320,7 @@ function buildTree(paths, home) {
     }
     if (!parent.children.has(place)) {
       parent.children.set(place, {
-        name: place, path: p, depth: 2, role: "place", tall: !folder,
+        name: place, path: p, depth: 2, role: "place",
         children: new Map(), parent,
       });
     }
@@ -303,7 +328,15 @@ function buildTree(paths, home) {
   return root;
 }
 
-// Equal angular weight per leaf: wedges must not move as agents come and go.
+function flatten(node, out = []) {
+  out.push(node);
+  for (const k of node.children.values()) flatten(k, out);
+  return out;
+}
+
+// An angular slot per node, weighted by leaf count, used as the starting
+// position only. Seeding any other way scatters siblings and the links settle
+// into a tangle they cannot undo.
 function assignAngles(node, start, span) {
   node.a0 = start;
   node.a1 = start + span;
@@ -318,18 +351,12 @@ function assignAngles(node, start, span) {
   });
 }
 
-
-
 function countLeaves(node) {
   if (!node.children.size) return 1;
   return [...node.children.values()].reduce((n, k) => n + countLeaves(k), 0);
 }
 
-function flatten(node, out = []) {
-  out.push(node);
-  for (const k of node.children.values()) flatten(k, out);
-  return out;
-}
+const polar = (r, a) => [r * Math.cos(a - Math.PI / 2), r * Math.sin(a - Math.PI / 2)];
 
 // ---- icons ----
 // 16x16 stroke glyphs, drawn inline so the page needs no icon font.
@@ -357,48 +384,31 @@ const ICONS = {
   ],
 };
 
-// Icons ride the same arc as their label. Position comes from the glyph's own
-// baseline, so it holds for either text direction.
-function arcIcon(kind, r, a, flip, size, cls) {
-  const shapes = ICONS[kind];
-  if (!shapes) return null;
-  const [x, y] = polar(r, a);
-  const deg = (a * 180) / Math.PI + (flip ? 180 : 0);
+function glyph(kind, size, cls) {
+  const shapes = ICONS[kind] || ICONS.dir;
   const k = size / 16;
-  const g = el("g", {
-    class: "icon " + cls,
-    transform: `translate(${x},${y}) rotate(${deg}) scale(${k}) translate(-8,-8)`,
-  });
-  for (const [tag, attrs] of shapes) g.append(el(tag, attrs));
+  const g = el("g", { class: "icon " + cls, transform: "scale(" + k + ") translate(-8,-8)" });
+  for (const [name, attrs] of shapes) g.append(el(name, attrs));
   return g;
 }
 
-// ---- geometry ----
+// ---- graph model ----
+//
+// Radius is the drawn size; collide adds room for the label.
+const KIND = {
+  home:     { r: 38, collide: 62, icon: null,       square: false, rx: 0 },
+  folder:   { r: 18, collide: 46, icon: "folder",   square: true,  rx: 9 },
+  repo:     { r: 15, collide: 42, icon: "repo",     square: true,  rx: 7 },
+  worktree: { r: 15, collide: 42, icon: "worktree", square: true,  rx: 7 },
+  pool:     { r: 15, collide: 42, icon: "pool",     square: true,  rx: 7 },
+  dir:      { r: 15, collide: 42, icon: "dir",      square: true,  rx: 7 },
+  agent:    { r: 13, collide: 38, icon: "agent",    square: false, rx: 0 },
+};
 
-const TAU = Math.PI * 2;
-const polar = (r, a) => [r * Math.cos(a - Math.PI / 2), r * Math.sin(a - Math.PI / 2)];
-const unpolar = (x, y) => Math.atan2(y, x) + Math.PI / 2;
+// Collide radius of whatever sits on each ring, for sizing it.
+const COLLIDE = [0, KIND.folder.collide, KIND.repo.collide, KIND.agent.collide];
 
-function sector(r0, r1, a0, a1) {
-  const pad = Math.min(0.012, (a1 - a0) * 0.06);
-  const [b0, b1] = [a0 + pad, a1 - pad];
-  const large = b1 - b0 > Math.PI ? 1 : 0;
-  const [x0, y0] = polar(r1, b0), [x1, y1] = polar(r1, b1);
-  const [x2, y2] = polar(r0, b1), [x3, y3] = polar(r0, b0);
-  return `M${x0},${y0}A${r1},${r1} 0 ${large} 1 ${x1},${y1}L${x2},${y2}A${r0},${r0} 0 ${large} 0 ${x3},${y3}Z`;
-}
-
-// ---- render ----
-
-function draw() {
-  layout();
-  for (const n of VIEW.nodes) n.v = targetOf(n);
-  VIEW.extent = VIEW.extentT;
-  paint();
-  resetPanel();
-}
-
-function layout() {
+function buildGraph() {
   const sessions = DATA.sessions.filter((s) => s.status === "active");
   const entries = DATA.entries;
 
@@ -409,8 +419,9 @@ function layout() {
   const { home, exact: homeExact } = detectHome([...paths]);
   const root = buildTree([...paths], home);
   assignAngles(root, 0, TAU);
-  const nodes = flatten(root);
-  const byPath = new Map(nodes.map((n) => [n.path, n]));
+  const zones = flatten(root).filter((n) => n.depth > 0);
+  const byPath = new Map(zones.map((n) => [n.path, n]));
+  byPath.set(root.path, root);
 
   const agentsAt = new Map();
   for (const s of sessions) {
@@ -432,311 +443,471 @@ function layout() {
     waiting.set(e.to, e);
   }
 
-  for (const n of nodes) n.kind = n.role === "folder" ? "folder" : "repo";
+  for (const n of zones) n.kind = n.role === "folder" ? "folder" : "repo";
   for (const sess of sessions) {
     const n = byPath.get(zonePath(sess));
     if (!n || n.children.size) continue;
-    n.kind = !sess.repo ? "dir"
-      : sess.pool ? "pool"
-      : sess.repo.is_worktree ? "worktree" : "repo";
+    n.kind = !sess.repo ? "dir" : sess.repo.is_worktree ? "worktree" : "repo";
     n.owner = sess.pool && sess.repo ? sess.repo.main_root : null;
+    n.branch = sess.repo ? sess.repo.branch : "";
+
+    // A pooled checkout sits at <pool>/<slot>/<repo>, so the folder above it is
+    // the slot the manager lent out. The session says which; the path only
+    // spells it, and reads as a bare number.
+    if (sess.pool && n.parent.role === "folder") {
+      n.parent.glyph = "pool";
+      n.parent.label = sess.pool.name;
+      n.parent.sub = sess.pool.manager + " · slot " + sess.pool.slot;
+    }
   }
 
-  FOCUS = (FOCUS && byPath.get(FOCUS.path)) || root;
-  // Re-bind the selection to the new tree; drop it if its zone or agent is gone.
+  root.kind = "home";
+  root.zone = root;
+  root.id = "z:" + root.path;
+  Object.assign(root, KIND.home);
+  const nodes = [root], links = [];
+  for (const n of zones) {
+    n.id = "z:" + n.path;
+    n.zone = n;
+    Object.assign(n, KIND[n.kind] || KIND.dir);
+    nodes.push(n);
+    links.push({ source: n.parent, target: n, kind: "structure" });
+  }
+
+  const palette = assignColours(sessions);
+  for (const [path, here] of agentsAt) {
+    // An agent sitting in home itself has no place of its own; it hangs off
+    // the centre.
+    const place = byPath.get(path) || root;
+    const span = (place.a1 - place.a0) / here.length;
+    here.forEach((sess, i) => {
+      const key = sess.harness + ":" + sess.id;
+      const node = Object.assign({
+        id: "a:" + key, key, sess, kind: "agent", role: "agent",
+        name: sess.alias || sess.harness, path: place.path,
+        parent: place, zone: place, depth: 3,
+        a0: place.a0 + i * span, a1: place.a0 + (i + 1) * span,
+        children: new Map(), colour: palette.get(key) || "var(--gray)",
+      }, KIND.agent);
+      nodes.push(node);
+      links.push({ source: place, target: node, kind: "agent", colour: node.colour });
+    });
+  }
+
+  const counts = [0, 0, 0, 0];
+  for (const n of nodes) if (n.depth) counts[n.depth]++;
+  const rings = ringRadii(counts);
+  for (const n of nodes) {
+    n.ring = rings[n.depth];
+    n.ringPull = n.kind === "agent" ? 0.5 : 0.65;
+  }
+
+  // A pooled slot lives where it sits on disk; the tether says what owns it.
+  for (const n of zones) {
+    const own = n.owner ? byPath.get(n.owner) : null;
+    if (own) links.push({ source: own, target: n, kind: "tether" });
+  }
+
+  // Re-bind the selection to the new graph; drop it if its zone or agent is gone.
   if (PICK) {
     const node = byPath.get(PICK.node.path);
     const here = node ? agentsAt.get(node.path) || [] : [];
     const alive = !PICK.sessionKey || here.some((x) => x.harness + ":" + x.id === PICK.sessionKey);
     PICK = node && alive ? { node, sessionKey: PICK.sessionKey } : null;
   }
+
   VIEW = {
-    root, nodes, byPath, sessions, entries, agentsAt, entriesAt, openAt,
+    root, nodes, links, byPath, zones, sessions, entries, agentsAt, entriesAt, openAt,
     authors: new Map(sessions.map((x) => [x.harness + ":" + x.id, x.alias])),
-    palette: assignColours(sessions),
-    openTotal: entries.filter(isOpen).length, home, homeExact, total: sessions.length,
-    extent: 0, waiting,
-  };
-  VIEW.extentT = extentFor();
-}
-
-function isUnder(n, focus) {
-  for (let c = n; c; c = c.parent) if (c === focus) return true;
-  return false;
-}
-
-// d3's zoomable-sunburst mapping: focus spans the full circle, depth is relative.
-function targetOf(n) {
-  const span = FOCUS.a1 - FOCUS.a0;
-  return {
-    a0: ((n.a0 - FOCUS.a0) / span) * TAU,
-    a1: ((n.a1 - FOCUS.a0) / span) * TAU,
-    d: n.depth - FOCUS.depth,
+    palette, openTotal: entries.filter(isOpen).length, home, homeExact,
+    total: sessions.length, waiting,
   };
 }
 
-function extentFor() {
-  let max = 1;
-  for (const n of VIEW.nodes) {
-    if (!isUnder(n, FOCUS)) continue;
-    const rings = n.depth - FOCUS.depth + 1 + (VIEW.agentsAt.get(n.path) ? 1 : 0);
-    max = Math.max(max, rings);
-  }
-  return max * RING + 70;
-}
+// ---- force simulation ----
+//
+// d3's link, many-body and collide, plus radial in place of the example's x
+// and y: home is pinned at the origin, everything else pulled to its ring.
+//
+// Written out rather than fetched: the page must work offline. Many-body is
+// the naive O(n^2) pass, since a fleet is tens of nodes.
 
-function setFocus(node) {
-  if (!node || node === FOCUS) return;
-  FOCUS = node;
-  const from = VIEW.nodes.map((n) => ({ ...n.v }));
-  const to = VIEW.nodes.map(targetOf);
-  const e0 = VIEW.extent, e1 = extentFor();
-  const start = performance.now(), dur = 560;
-  cancelAnimationFrame(ANIM);
-  if (document.hidden) {
-    VIEW.nodes.forEach((n, i) => { n.v = to[i]; });
-    VIEW.extent = e1;
-    paint();
-    return;
-  }
-  const step = (now) => {
-    const t = Math.min(1, (now - start) / dur);
-    const k = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
-    VIEW.nodes.forEach((n, i) => {
-      n.v = {
-        a0: from[i].a0 + (to[i].a0 - from[i].a0) * k,
-        a1: from[i].a1 + (to[i].a1 - from[i].a1) * k,
-        d: from[i].d + (to[i].d - from[i].d) * k,
-      };
-    });
-    VIEW.extent = e0 + (e1 - e0) * k;
-    paint();
-    if (t < 1) ANIM = requestAnimationFrame(step);
+const JIGGLE = () => (Math.random() - 0.5) * 1e-6;
+
+function createSim(nodes, links) {
+  const sim = {
+    nodes, links,
+    alpha: 1, alphaMin: 0.001, alphaTarget: 0,
+    alphaDecay: 1 - Math.pow(0.001, 1 / 300), velocityDecay: 0.6,
   };
-  ANIM = requestAnimationFrame(step);
+  placeNodes(nodes);
+  prepareLinks(links);
+  // Modest: many-body is global, so raising it inflates every link at once.
+  // Separation along a ring is collide's job.
+  for (const n of nodes) n.charge = -(110 + n.r * 7);
+  return sim;
 }
 
-function visible(n) {
-  return n.v.d >= 0.5 && n.v.a1 - n.v.a0 > 0.004 && n.v.a0 > -0.02 && n.v.a1 < TAU + 0.02;
-}
-
-function paint() {
-  const svg = document.getElementById("svg");
-  svg.replaceChildren();
-  const { agentsAt, openAt, byPath } = VIEW;
-  const RW = RING;
-  const g = el("g");
-  svg.append(g);
-  svg.setAttribute("viewBox", vb(VIEW.extent));
-
-
-  const defs = el("defs");
-  g.append(defs);
-  const shown = VIEW.nodes.filter((n) => n.depth > 0 && n.v.d > 0.5 && visible(n));
-
-  for (const n of shown) {
-    const leaf = !n.children.size;
-    const here = (agentsAt.get(n.path) || []).length;
-    const p = el("path", {
-      class: "zone " + (n.role === "folder" ? "folder" : "place"),
-      d: sector((n.tall ? n.v.d - 1 : n.v.d) * RW, (n.v.d + 1) * RW, n.v.a0, n.v.a1),
-    });
-    p.dataset.path = n.path;
-    p.addEventListener("mouseenter", () => highlight(n));
-    p.addEventListener("mouseleave", resetPanel);
-    if (n.children.size) {
-      p.style.cursor = "zoom-in";
-      p.addEventListener("click", () => setFocus(n));
+// Seeded on its own ring at its assigned angle, so the first frame is already
+// the right shape. Home is the fixed centre.
+function placeNodes(nodes) {
+  for (const n of nodes) {
+    const kept = KEEP.get(n.id);
+    if (kept) {
+      n.x = kept.x; n.y = kept.y; n.vx = kept.vx; n.vy = kept.vy;
     } else {
-      p.addEventListener("click", (ev) => { ev.stopPropagation(); pick(n, null); });
+      [n.x, n.y] = polar(n.ring, (n.a0 + n.a1) / 2);
+      n.vx = 0; n.vy = 0;
     }
-    g.append(p);
-      g.append(arcText(defs, n, RW, leaf, here));
+    n.fx = null; n.fy = null;
   }
+  nodes[0].x = 0; nodes[0].y = 0; nodes[0].fx = 0; nodes[0].fy = 0;
+}
 
-  const agentLayer = el("g");
-  for (const n of shown) {
-    const list = agentsAt.get(n.path);
-    if (!list) continue;
-    const span = (n.v.a1 - n.v.a0) / list.length;
-    list.forEach((sess, i) => {
-      const a0 = n.v.a0 + i * span;
-      agentLayer.append(agentSegment(sess, n, a0, a0 + span, RW, defs));
-    });
+function prepareLinks(links) {
+  const count = new Map();
+  const bump = (n) => count.set(n.id, (count.get(n.id) || 0) + 1);
+  for (const l of links) { bump(l.source); bump(l.target); }
+  for (const l of links) {
+    const cs = count.get(l.source.id), ct = count.get(l.target.id);
+    l.bias = cs / (cs + ct);
+    // d3's default: a link into a busy node pulls proportionally less.
+    l.strength = l.kind === "tether" ? 0.1 : 1 / Math.min(cs, ct);
+    // The gap between the two rings, so links agree with the radial force
+    // rather than fight it.
+    l.distance = l.kind === "tether" ? 230 : Math.abs(l.target.ring - l.source.ring);
   }
+}
 
-  g.append(agentLayer);
-
-  for (const t of svg.querySelectorAll("text[data-icon]")) {
-    if (!t.getComputedTextLength()) continue;
-    const p0 = t.getStartPositionOfChar(0);
-    const baseR = Math.hypot(p0.x, p0.y);
-    if (!baseR) continue;
-    const flip = !!t.dataset.iflip;
-    const size = +t.dataset.isize;
-    const gap = (4 + size / 2) / baseR;
-    const aStart = unpolar(p0.x, p0.y);
-    const ic = arcIcon(t.dataset.icon, baseR + (flip ? -4 : 4),
-      flip ? aStart + gap : aStart - gap, flip, size, t.dataset.icls);
-    if (ic) t.parentNode.append(ic);
+function tick(sim) {
+  sim.alpha += (sim.alphaTarget - sim.alpha) * sim.alphaDecay;
+  const a = sim.alpha;
+  forceLink(sim, a);
+  forceCharge(sim, a);
+  forceRadial(sim, a);
+  forceCollide(sim);
+  for (const n of sim.nodes) {
+    if (n.fx == null) n.x += (n.vx *= sim.velocityDecay);
+    else { n.x = n.fx; n.vx = 0; }
+    if (n.fy == null) n.y += (n.vy *= sim.velocityDecay);
+    else { n.y = n.fy; n.vy = 0; }
   }
+}
 
-  const hub = el("circle", { class: "hub", r: RW - 14 });
-  if (FOCUS.parent) {
-    hub.style.cursor = "zoom-out";
-    hub.addEventListener("click", () => setFocus(FOCUS.parent));
+function forceLink(sim, alpha) {
+  for (const l of sim.links) {
+    const s = l.source, t = l.target;
+    let x = t.x + t.vx - s.x - s.vx || JIGGLE();
+    let y = t.y + t.vy - s.y - s.vy || JIGGLE();
+    let d = Math.sqrt(x * x + y * y);
+    d = ((d - l.distance) / d) * alpha * l.strength;
+    x *= d; y *= d;
+    let b = l.bias;
+    t.vx -= x * b; t.vy -= y * b;
+    b = 1 - b;
+    s.vx += x * b; s.vy += y * b;
   }
-  g.append(hub);
-  g.append(el("text", { class: "hubtext", y: -2 }, shortName(FOCUS.name)));
-  g.append(el("text", { class: "hubsub", y: 13 },
-    FOCUS.parent ? "click to zoom out" : VIEW.total + " agents"));
+}
 
-  document.getElementById("sub").textContent =
-    `${VIEW.total} agents · ${agentsAt.size} zones · ${VIEW.openTotal} open · ` +
-    `home ${VIEW.home}${VIEW.homeExact ? "" : " (inferred)"}`;
+function forceCharge(sim, alpha) {
+  const nodes = sim.nodes;
+  for (let i = 0; i < nodes.length; i++) {
+    const n = nodes[i];
+    for (let j = 0; j < nodes.length; j++) {
+      if (i === j) continue;
+      const o = nodes[j];
+      const x = o.x - n.x || JIGGLE();
+      const y = o.y - n.y || JIGGLE();
+      let l = x * x + y * y;
+      if (l < 1) l = Math.sqrt(l);   // d3's distanceMin of 1, squared
+      const w = (o.charge * alpha) / l;
+      n.vx += x * w; n.vy += y * w;
+    }
+  }
+}
+
+// Each node is pulled onto the ring for its depth. This is what makes the
+// layout circular; the other forces only choose where on the ring it sits.
+function forceRadial(sim, alpha) {
+  for (const n of sim.nodes) {
+    if (!n.ring) continue;
+    const dx = n.x || 1e-6, dy = n.y || 1e-6;
+    const r = Math.sqrt(dx * dx + dy * dy);
+    const k = ((n.ring - r) * n.ringPull * alpha) / r;
+    n.vx += dx * k;
+    n.vy += dy * k;
+  }
+}
+
+function forceCollide(sim) {
+  const nodes = sim.nodes, strength = 0.9;
+  for (let pass = 0; pass < 3; pass++) {
+    for (let i = 0; i < nodes.length; i++) {
+      const n = nodes[i], ri = n.collide, ri2 = ri * ri;
+      for (let j = i + 1; j < nodes.length; j++) {
+        const o = nodes[j];
+        let rj = o.collide;
+        const r = ri + rj;
+        let x = n.x + n.vx - o.x - o.vx;
+        let y = n.y + n.vy - o.y - o.vy;
+        let l = x * x + y * y;
+        if (l >= r * r) continue;
+        if (x === 0) { x = JIGGLE(); l += x * x; }
+        if (y === 0) { y = JIGGLE(); l += y * y; }
+        l = ((r - (l = Math.sqrt(l))) / l) * strength;
+        rj *= rj;
+        let share = rj / (ri2 + rj);
+        n.vx += (x *= l) * share;
+        n.vy += (y *= l) * share;
+        share = 1 - share;
+        o.vx -= x * share;
+        o.vy -= y * share;
+      }
+    }
+  }
+}
+
+function reheat(target) {
+  if (!SIM) return;
+  SIM.alpha = Math.max(SIM.alpha, target);
+  run();
+}
+
+function run() {
+  if (RAF) return;
+  // A hidden tab gets no animation frames, so settle in one go instead.
+  if (document.hidden) { settle(); return; }
+  const step = () => {
+    RAF = 0;
+    if (!SIM) return;
+    tick(SIM);
+    fitView();
+    place();
+    if (SIM.alpha >= SIM.alphaMin || SIM.alphaTarget > 0) RAF = requestAnimationFrame(step);
+    else keepPositions();
+  };
+  RAF = requestAnimationFrame(step);
+}
+
+function settle() {
+  if (!SIM) return;
+  // alphaDecay is set so alpha reaches alphaMin in 300 ticks; the guard is
+  // only there so a future change to the decay cannot spin forever.
+  for (let i = 0; i < 400 && SIM.alpha >= SIM.alphaMin; i++) tick(SIM);
+  fitView();
+  place();
+  keepPositions();
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) run();
+});
+
+// The next poll rebuilds the nodes, so positions carry across by id;
+// otherwise the graph jumps whenever a token count ticks over.
+function keepPositions() {
+  if (!SIM) return;
+  KEEP.clear();
+  for (const n of SIM.nodes) KEEP.set(n.id, { x: n.x, y: n.y, vx: n.vx, vy: n.vy });
+}
+
+// ---- render ----
+
+function draw() {
+  keepPositions();
+  const cold = KEEP.size === 0;
+  buildGraph();
+  SIM = createSim(VIEW.nodes, VIEW.links);
+  scene();
+  place();
+  // A first paint settles from cold; a later one only has to absorb whatever
+  // just arrived or left.
+  SIM.alpha = cold ? 1 : 0.4;
+  run();
+  resetPanel();
+  header();
   renderRooms();
 }
 
-function vb(extent) {
-  return `${-extent} ${-extent} ${extent * 2} ${extent * 2}`;
+function scene() {
+  const svg = document.getElementById("svg");
+  svg.replaceChildren();
+
+  const root = el("g");
+  const guideLayer = el("g");
+  const linkLayer = el("g");
+  const nodeLayer = el("g");
+  root.append(guideLayer, linkLayer, nodeLayer);
+  svg.append(root);
+
+  for (const r of new Set(VIEW.nodes.map((n) => n.ring))) {
+    if (r) guideLayer.append(el("circle", { class: "guide", r }));
+  }
+
+  const linkEls = VIEW.links.map((l) => {
+    const line = el("line", { class: "link " + l.kind });
+    if (l.colour) line.setAttribute("stroke", l.colour);
+    line.dataset.source = l.source.id;
+    line.dataset.target = l.target.id;
+    linkLayer.append(line);
+    return line;
+  });
+
+  const nodeEls = VIEW.nodes.map(nodeElement);
+  for (const g of nodeEls) nodeLayer.append(g);
+
+  SCENE = { svg, root, linkEls, nodeEls };
+  fitView();
+  applyTransform();
 }
 
-// Collapsed names get long; the leaf segment carries the meaning.
+function nodeElement(n) {
+  const g = el("g", { class: "node" });
+  g.dataset.id = n.id;
+  g.dataset.zone = n.zone.path;
+  g.dataset.kind = n.kind;
+  if (n.key) g.dataset.key = n.key;
+
+  if (n.kind === "home") {
+    const dir = VIEW.home.split("/").filter(Boolean).pop() || VIEW.home;
+    g.append(el("circle", { class: "shape home", r: n.r }));
+    g.append(el("text", { class: "hubtext", y: 6 }, "~"));
+    // Sits alone in the middle, so it can carry a longer name than the rim.
+    g.append(el("text", { class: "nlabel", y: n.r + 15 }, fit(dir, 24)));
+    g.append(el("text", { class: "nsub", y: n.r + 26 },
+      VIEW.total + (VIEW.total === 1 ? " agent" : " agents")));
+    g.append(el("title", {}, n.path));
+    wire(g, n);
+    return g;
+  }
+
+  if (n.square) {
+    g.append(el("rect", {
+      class: "shape " + (n.kind === "folder" ? "folder" : "place"),
+      x: -n.r, y: -n.r, width: n.r * 2, height: n.r * 2, rx: n.rx,
+    }));
+  } else {
+    g.append(el("circle", { class: "shape agent", r: n.r, fill: n.colour }));
+    g.append(gauge(n));
+  }
+
+  const plain = n.kind === "folder" && !n.glyph;
+  const size = n.kind === "folder" ? 16 : n.kind === "agent" ? 13 : 15;
+  const cls = plain ? "folder" : n.kind === "agent" ? "agent" : "place";
+  g.append(glyph(n.glyph || n.icon, size, cls));
+
+  // Kept short: collide is circular, so a name wider than the node's own
+  // footprint is the one thing the layout cannot pull apart.
+  g.append(el("text", {
+    class: "nlabel" + (plain ? " folder" : ""), y: n.r + 14,
+  }, fit(n.label || shortName(n.name), 17)));
+
+  const sub = subtitle(n);
+  if (sub) g.append(el("text", { class: "nsub", y: n.r + 25 }, fit(sub, 19)));
+
+  g.append(el("title", {}, tooltip(n)));
+  wire(g, n);
+  return g;
+}
+
+// The ring is the context window and the arc is what has been spent - the same
+// reading the ring view gives an agent's band, wrapped around the node.
+function gauge(n) {
+  const u = n.sess.usage || {};
+  const known = u.context_window > 0 && u.context_used > 0;
+  const r = n.r + 4.6;
+  if (!known) return el("circle", { class: "gnone", r });
+  if (!SHOW_USAGE) return el("g");
+
+  const frac = Math.min(1, u.context_used / u.context_window);
+  const c = 2 * Math.PI * r;
+  const wrap = el("g", { transform: "rotate(-90)" });
+  wrap.append(el("circle", {
+    class: "gtrack", r,
+    stroke: "color-mix(in srgb, " + n.colour + " 34%, var(--window))",
+  }));
+  wrap.append(el("circle", {
+    class: "gfill", r, stroke: n.colour,
+    "stroke-dasharray": (c * frac).toFixed(2) + " " + c.toFixed(2),
+  }));
+  return wrap;
+}
+
+function subtitle(n) {
+  if (n.kind === "agent") {
+    const u = n.sess.usage || {};
+    const model = shortModel(u.model || (n.sess.meta && n.sess.meta.model) || n.sess.harness);
+    const known = u.context_window > 0 && u.context_used > 0;
+    if (!SHOW_USAGE || !known) return model;
+    return model + " · " + Math.round((u.context_used / u.context_window) * 100) + "%";
+  }
+  if (n.sub) return n.sub;
+  if (n.branch) return n.branch;
+  const here = (VIEW.agentsAt.get(n.path) || []).length;
+  return here ? here + (here === 1 ? " agent" : " agents") : "";
+}
+
+function tooltip(n) {
+  if (n.kind !== "agent") return n.path;
+  const u = n.sess.usage || {};
+  const model = u.model || (n.sess.meta && n.sess.meta.model) || n.sess.harness;
+  return n.name + " · " + model + "\n" + n.path;
+}
+
+function place() {
+  if (!SCENE) return;
+  for (let i = 0; i < SCENE.linkEls.length; i++) {
+    const l = VIEW.links[i], e = SCENE.linkEls[i];
+    e.setAttribute("x1", l.source.x); e.setAttribute("y1", l.source.y);
+    e.setAttribute("x2", l.target.x); e.setAttribute("y2", l.target.y);
+  }
+  for (let i = 0; i < SCENE.nodeEls.length; i++) {
+    const n = VIEW.nodes[i];
+    SCENE.nodeEls[i].setAttribute("transform", "translate(" + n.x + "," + n.y + ")");
+  }
+}
+
+function header() {
+  document.getElementById("sub").textContent =
+    VIEW.total + " agents · " + VIEW.agentsAt.size + " zones · " + VIEW.openTotal + " open · " +
+    "home " + VIEW.home + (VIEW.homeExact ? "" : " (inferred)");
+}
+
+function applyTransform() {
+  if (!SCENE) return;
+  SCENE.root.setAttribute("transform",
+    "translate(" + TX.x + "," + TX.y + ") scale(" + TX.k + ")");
+}
+
+// Home is pinned at the origin, so framing is just a square viewBox wide
+// enough for the outermost label. A pan or zoom freezes it.
+function fitView() {
+  if (USER_VIEW || DRAGGING || !VIEW || !VIEW.nodes.length || !SCENE) return;
+  let ext = MIN_EXTENT;
+  for (const n of VIEW.nodes) ext = Math.max(ext, Math.hypot(n.x, n.y) + n.r + 36);
+  SCENE.svg.setAttribute("viewBox", -ext + " " + -ext + " " + ext * 2 + " " + ext * 2);
+}
+
+// Collapsed folder names get long, so only the tail is shown - but a tail like
+// "6" names nothing on its own, so a short or numeric one keeps its parent.
 function shortName(name) {
-  return name.length > 16 ? name.slice(name.lastIndexOf("/") + 1) : name;
-}
-
-// Titles follow their own arc, so the name sits on the plate it names.
-// Text hangs off its path by dy, and dy's screen direction flips with the arc,
-// so the path radius is nudged to land the glyphs' centre on the band centre.
-function bandText(centreR, flip) {
-  return centreR + (flip ? 9 : 7);
-}
-
-function titleR(n, RW, leaf) {
-  return bandText((n.v.d + 0.5) * RW, flipped(n));
-}
-
-function flipped(n) {
-  return midFlipped((n.v.a0 + n.v.a1) / 2);
-}
-
-function midFlipped(mid) {
-  return mid > Math.PI / 2 && mid < 1.5 * Math.PI;
-}
-
-
-function arcPath(r, a0, a1, flip) {
-  const large = a1 - a0 > Math.PI ? 1 : 0;
-  const [x0, y0] = polar(r, flip ? a1 : a0);
-  const [x1, y1] = polar(r, flip ? a0 : a1);
-  return `M${x0},${y0}A${r},${r} 0 ${large} ${flip ? 0 : 1} ${x1},${y1}`;
+  if (name.length <= 16) return name;
+  const segs = name.split("/");
+  const last = segs[segs.length - 1];
+  if (segs.length > 1 && (last.length <= 3 || /^\d+$/.test(last))) {
+    return segs[segs.length - 2] + "/" + last;
+  }
+  return last;
 }
 
 function fit(text, chars) {
-  if (chars < 3) return "";
+  if (!text) return "";
   return text.length <= chars ? text : text.slice(0, chars - 1) + "…";
 }
 
-function arcText(defs, n, RW, leaf, count) {
-  const flip = flipped(n);
-  const id = "a" + n.depth + "-" + Math.round(n.a0 * 1000);
-  defs.append(el("path", { id, fill: "none", d: arcPath(titleR(n, RW, leaf), n.v.a0, n.v.a1, flip) }));
-  const text = el("text", { class: leaf ? "ztitle" : "btitle", dy: flip ? -5 : 11 });
-  const room = Math.floor(((n.v.a1 - n.v.a0) * titleR(n, RW, leaf) - 10) / (leaf ? 6.4 : 5.6));
-  const label = fit(leaf && count ? `${shortName(n.name)} · ${count}` : shortName(n.name), room);
-  const tp = el("textPath", { href: "#" + id, startOffset: "50%", "text-anchor": "middle" }, label);
-  text.append(tp);
-  if (room >= 5) {
-    const r = titleR(n, RW, leaf);
-    text.dataset.icon = leaf ? n.kind : "folder";
-    text.dataset.iflip = flip ? "1" : "";
-    text.dataset.isize = leaf ? "15" : "13";
-    text.dataset.icls = leaf ? "place" : "folder";
-  }
-  return text;
-}
-
-// The band is the context window; the radial fill is how much of it is spent.
-// Capacity itself is left for height once this becomes 3D.
-function agentSegment(sess, n, a0, a1, RW, defs) {
-  const u = sess.usage || {};
-  const known = u.context_window > 0 && u.context_used > 0;
-  const frac = known ? Math.min(1, u.context_used / u.context_window) : 0;
-  const cls = harnessClass(sess.harness);
-  const r0 = (n.v.d + 1) * RW + 2;
-  const r1 = (n.v.d + 2) * RW - 2;
-
-  const key = sess.harness + ":" + sess.id;
-  const grp = el("g", {
-    class: "aseg " + cls + (known ? "" : " nodata"),
-  });
-  const colour = colourOf(key);
-  // Mixing toward the page rather than going transparent keeps the unused part
-  // muted without dragging the whole band dark.
-  const muted = `color-mix(in srgb, ${colour} 42%, var(--window))`;
-  grp.append(el("path", { class: "track", fill: muted, d: sector(r0, r1, a0, a1) }));
-  if (known) {
-    if (SHOW_USAGE) {
-      grp.append(el("path", { class: "used", fill: colour, d: sector(r0, r0 + (r1 - r0) * frac, a0, a1) }));
-    }
-  }
-  grp.append(el("path", { class: "edge", d: sector(r0, r1, a0, a1) }));
-
-  const label = (sess.alias || sess.harness) + " · " + shortModel(u.model || (sess.meta && sess.meta.model));
-  // Outside the rim rather than inside it: the arc is longer out here, so
-  // names truncate less, and the segment stays a clean band of colour.
-  const flip = midFlipped((a0 + a1) / 2);
-  const rt = bandText(r1 + 13, flip);
-  const room = Math.floor(((a1 - a0) * rt - 8) / 6.2);
-  if (room >= 3) {
-    const id = "g" + Math.round(a0 * 1000) + "-" + Math.round(rt);
-    defs.append(el("path", { id, fill: "none", d: arcPath(rt, a0, a1, flip) }));
-    const text = el("text", { class: "alabel", dy: flip ? -4 : 10 });
-    text.append(el("textPath", { href: "#" + id, startOffset: "50%", "text-anchor": "middle" },
-      fit(label, room)));
-    if (room >= 6) {
-      text.dataset.icon = "agent";
-      text.dataset.iflip = flip ? "1" : "";
-      text.dataset.isize = "14";
-      text.dataset.icls = "agent " + cls;
-    }
-    grp.append(text);
-  }
-
-  // The band's own label says what the fill means, in the space the name used
-  // to occupy. Without it the gauge is a coloured bar with no units.
-  if (SHOW_USAGE) grp.append(gaugeLabel(defs, n, a0, a1, RW, known, frac));
-
-  grp.dataset.key = key;
-  grp.dataset.zone = n.path;
-  grp.addEventListener("mouseenter", () => highlight(n, key));
-  grp.addEventListener("mouseleave", resetPanel);
-  grp.addEventListener("click", (ev) => { ev.stopPropagation(); pick(n, key); });
-  if (PICK && PICK.sessionKey === key) grp.classList.add("picked");
-  return grp;
-}
-
-
-
-// A pool slot sits where it lives on disk; the tether shows what it belongs to.
-
-
-
-
-
-
 // ---- agent colour ----
 //
-// Identity is the hue. Assignment is hashed so an agent keeps its colour across
-// refreshes, then nudged so no two *live* agents ever share one.
-
-// d3.quantize(interpolateRainbow, n + 1): n evenly spaced samples across the
-// whole ramp, in order. Sampling at arbitrary points instead lands agents in
-// the dark middle of the rainbow and loses the palette's character.
-// d3.quantize(interpolateRainbow, n + 1): evenly spaced samples across the
-// ramp. Lightened, because the example gets its pastels from drawing at low
-// opacity on white; on a dark ground that same trick darkens instead.
+// Identity is the hue, assigned by stable order so it survives a refresh.
 function assignColours(sessions) {
   const ordered = [...sessions].sort((a, b) =>
     (a.harness + a.id).localeCompare(b.harness + b.id));
@@ -754,12 +925,11 @@ function lighten(colour, f) {
   if (!parts || f <= 0) return colour;
   const [r, g, b] = parts.map(Number);
   const up = (c) => Math.round(c + (255 - c) * f);
-  return `rgb(${up(r)},${up(g)},${up(b)})`;
+  return "rgb(" + up(r) + "," + up(g) + "," + up(b) + ")";
 }
 
-// d3.interpolateRainbow, reimplemented so the page stays dependency free.
-// Cubehelix rather than a plain hue sweep: lightness and saturation ride with
-// the hue, which is what gives that palette its character.
+// d3.interpolateRainbow, reimplemented. Cubehelix, not a plain hue sweep:
+// lightness and saturation ride with the hue.
 const CH = { A: -0.14861, B: 1.78277, C: -0.29227, D: -0.90649, E: 1.97294 };
 
 function cubehelix(h, s, l) {
@@ -767,9 +937,9 @@ function cubehelix(h, s, l) {
   const a = s * l * (1 - l);
   const cos = Math.cos(rad), sin = Math.sin(rad);
   const byte = (x) => Math.max(0, Math.min(255, Math.round(255 * x)));
-  return `rgb(${byte(l + a * (CH.A * cos + CH.B * sin))},` +
-         `${byte(l + a * (CH.C * cos + CH.D * sin))},` +
-         `${byte(l + a * (CH.E * cos))})`;
+  return "rgb(" + byte(l + a * (CH.A * cos + CH.B * sin)) + "," +
+                  byte(l + a * (CH.C * cos + CH.D * sin)) + "," +
+                  byte(l + a * (CH.E * cos)) + ")";
 }
 
 function rainbow(t) {
@@ -780,6 +950,281 @@ function rainbow(t) {
 
 function colourOf(key) {
   return (VIEW && VIEW.palette.get(key)) || "var(--gray)";
+}
+
+// ---- interaction ----
+
+// The example's drag, plus: a press that never moved is a click, so one
+// gesture both drags and selects.
+function wire(g, n) {
+  let moved = false, dragging = false;
+
+  g.addEventListener("pointerenter", () => {
+    HOVER = n;
+    highlight(n.zone, n.key || null);
+  });
+  g.addEventListener("pointerleave", () => {
+    if (HOVER === n) HOVER = null;
+    resetPanel();
+  });
+
+  // Home is the origin the rings are measured from; dragging it would move
+  // every ring with it.
+  if (n.kind === "home") {
+    g.addEventListener("click", () => pick(n, null));
+    return;
+  }
+
+  g.addEventListener("pointerdown", (ev) => {
+    if (ev.button !== 0) return;
+    ev.stopPropagation();
+    g.setPointerCapture(ev.pointerId);
+    dragging = true; moved = false; DRAGGING++;
+    const [x, y] = toGraph(ev);
+    n.fx = x; n.fy = y;
+    if (SIM) { SIM.alphaTarget = 0.3; reheat(0.3); }
+  });
+
+  g.addEventListener("pointermove", (ev) => {
+    if (!dragging) return;
+    moved = true;
+    const [x, y] = toGraph(ev);
+    n.fx = x; n.fy = y;
+  });
+
+  const release = (ev) => {
+    if (!dragging) return;
+    dragging = false; DRAGGING--;
+    g.releasePointerCapture(ev.pointerId);
+    if (SIM) SIM.alphaTarget = 0;
+    n.fx = null; n.fy = null;
+    if (!moved) pick(n.zone, n.key || null);
+  };
+  g.addEventListener("pointerup", release);
+  g.addEventListener("pointercancel", release);
+}
+
+function toGraph(ev) {
+  const m = SCENE.root.getScreenCTM();
+  if (!m) return [0, 0];
+  const p = new DOMPoint(ev.clientX, ev.clientY).matrixTransform(m.inverse());
+  return [p.x, p.y];
+}
+
+function initStage() {
+  const svg = document.getElementById("svg");
+
+  svg.addEventListener("wheel", (ev) => {
+    ev.preventDefault();
+    if (!SCENE) return;
+    const m = svg.getScreenCTM();
+    if (!m) return;
+    // Zoom about the cursor: take the pointer into viewBox units, then solve
+    // for the translation that leaves that point where it already was.
+    const p = new DOMPoint(ev.clientX, ev.clientY).matrixTransform(m.inverse());
+    const k = Math.max(0.25, Math.min(4, TX.k * Math.pow(2, -ev.deltaY * 0.002)));
+    TX.x = p.x - ((p.x - TX.x) / TX.k) * k;
+    TX.y = p.y - ((p.y - TX.y) / TX.k) * k;
+    TX.k = k;
+    USER_VIEW = true;
+    applyTransform();
+  }, { passive: false });
+
+  let panning = null;
+  svg.addEventListener("pointerdown", (ev) => {
+    if (ev.button !== 0) return;
+    panning = { x: ev.clientX, y: ev.clientY, tx: TX.x, ty: TX.y, moved: false };
+    svg.setPointerCapture(ev.pointerId);
+    svg.classList.add("panning");
+  });
+  svg.addEventListener("pointermove", (ev) => {
+    if (!panning) return;
+    // Both ends through the same inverse, so the drag tracks the cursor at
+    // whatever size the viewBox happens to be.
+    const m = svg.getScreenCTM();
+    if (!m) return;
+    const inv = m.inverse();
+    const a = new DOMPoint(panning.x, panning.y).matrixTransform(inv);
+    const b = new DOMPoint(ev.clientX, ev.clientY).matrixTransform(inv);
+    TX.x = panning.tx + (b.x - a.x);
+    TX.y = panning.ty + (b.y - a.y);
+    if (Math.abs(ev.clientX - panning.x) + Math.abs(ev.clientY - panning.y) > 3) {
+      panning.moved = true;
+      USER_VIEW = true;
+    }
+    applyTransform();
+  });
+  const stop = (ev) => {
+    if (!panning) return;
+    const clean = !panning.moved;
+    panning = null;
+    svg.releasePointerCapture(ev.pointerId);
+    svg.classList.remove("panning");
+    if (clean && PICK) { PICK = null; repaintPicks(); resetPanel(); }
+  };
+  svg.addEventListener("pointerup", stop);
+  svg.addEventListener("pointercancel", stop);
+}
+
+function recentre() {
+  USER_VIEW = false;
+  TX = { k: 1, x: 0, y: 0 };
+  applyTransform();
+  fitView();
+}
+
+// ---- hover detail ----
+
+function ancestors(n) {
+  const chain = [];
+  for (let cur = n; cur; cur = cur.parent) chain.unshift(cur);
+  return chain;
+}
+
+// Dimming everything off the ancestor chain is what makes ownership legible.
+function highlight(zone, sessionKey) {
+  if (!SCENE) return;
+  const chain = new Set(ancestors(zone).map((n) => n.path));
+  const owner = zone.owner ? VIEW.byPath.get(zone.owner) : null;
+
+  const lit = new Set();
+  for (const n of VIEW.nodes) {
+    const on = n.kind === "agent"
+      ? n.zone.path === zone.path && (!sessionKey || n.key === sessionKey)
+      : chain.has(n.path) || (!!owner && n.path === owner.path);
+    if (on) lit.add(n.id);
+  }
+
+  for (const g of SCENE.nodeEls) {
+    const id = g.dataset.id;
+    g.classList.toggle("dim", !lit.has(id));
+    g.classList.toggle("trail", id === "z:" + zone.path);
+    g.classList.toggle("owner", !!owner && id === "z:" + owner.path);
+  }
+  for (const e of SCENE.linkEls) {
+    e.classList.toggle("dim", !(lit.has(e.dataset.source) && lit.has(e.dataset.target)));
+  }
+  renderPanel(zone, sessionKey);
+}
+
+function pick(zone, sessionKey) {
+  const same = PICK && PICK.node === zone && PICK.sessionKey === sessionKey;
+  PICK = same ? null : { node: zone, sessionKey };
+  repaintPicks();
+  resetPanel();
+}
+
+function repaintPicks() {
+  if (!SCENE) return;
+  for (const g of SCENE.nodeEls) {
+    const isPick = !!PICK && (PICK.sessionKey
+      ? g.dataset.key === PICK.sessionKey
+      : g.dataset.id === "z:" + PICK.node.path);
+    g.classList.toggle("picked", isPick);
+  }
+}
+
+// An agent someone is waiting on is the one thing worth seeing without hovering.
+function markWaiting() {
+  if (!SCENE) return;
+  for (const g of SCENE.nodeEls) {
+    g.classList.toggle("waiting", !!g.dataset.key && VIEW.waiting.has(g.dataset.key));
+  }
+}
+
+function resetPanel() {
+  if (SCENE) {
+    for (const e of SCENE.nodeEls) e.classList.remove("dim", "trail", "owner");
+    for (const e of SCENE.linkEls) e.classList.remove("dim");
+  }
+  markWaiting();
+  if (PICK) { highlight(PICK.node, PICK.sessionKey); return; }
+  document.getElementById("panel").hidden = true;
+}
+
+function renderPanel(node, sessionKey) {
+  const panel = document.getElementById("panel");
+  panel.hidden = false;
+  const crumbs = tag("div", "crumbs");
+  const chain = ancestors(node);
+  chain.forEach((n, i) => {
+    const last = i === chain.length - 1;
+    const chip = tag("span", "crumb" + (last ? " last" : ""), elide(n.label || n.name));
+    chip.title = n.path;
+    crumbs.append(chip);
+    if (!last) crumbs.append(tag("span", "crumb sep", "›"));
+  });
+
+  const agents = VIEW.agentsAt.get(node.path) || [];
+  const roster = tag("div", "roster");
+  for (const s of agents) {
+    roster.append(agentRow(s, sessionKey === s.harness + ":" + s.id));
+  }
+  panel.replaceChildren(crumbs);
+  if (agents.length) panel.append(roster);
+  else panel.append(tag("div", "hint", "No agents here."));
+
+  if (node.owner) {
+    const own = VIEW.byPath.get(node.owner);
+    panel.append(tag("div", "openrow",
+      "Leased slot of " + (own ? own.name : node.owner.replace(VIEW.home, "~"))));
+  }
+  for (const s2 of agents) {
+    const asked = VIEW.waiting.get(s2.harness + ":" + s2.id);
+    if (!asked) continue;
+    const from = VIEW.sessions.find((x) => x.harness + ":" + x.id === asked.author);
+    panel.append(tag("div", "openrow",
+      s2.alias + " is awaiting a reply to " + (from ? from.alias : asked.author) +
+      ": " + asked.body));
+  }
+
+  const open = (VIEW.entriesAt.get(node.path) || []).filter((e) => isOpen(e) && !e.to);
+  if (open.length) {
+    const row = tag("div", "openrow");
+    row.append(tag("b", "", open.length + " open: "),
+      document.createTextNode(open.map((e) => e.body).join(" · ")));
+    panel.append(row);
+  }
+}
+
+// A crumb names a place; the full path is on the node's own tooltip.
+function elide(name, max = 13) {
+  if (name.length <= max) return name;
+  const parts = name.split("/");
+  if (parts.length > 1) {
+    const head = parts[0], tail = parts[parts.length - 1];
+    const joined = head + "/…/" + tail;
+    if (joined.length <= max + 4) return joined;
+    return "…/" + tail.slice(0, max - 2) + (tail.length > max - 2 ? "…" : "");
+  }
+  return name.slice(0, max - 1) + "…";
+}
+
+function agentRow(s, focused) {
+  const u = s.usage || {};
+  const known = u.context_window > 0 && u.context_used > 0;
+  const cls = harnessClass(s.harness);
+  const row = tag("div", "arow");
+  if (focused) row.style.outline = "1px solid var(--separator)";
+
+  const who = tag("div", "who " + cls);
+  who.append(tag("i", "", "●"), document.createTextNode(s.alias || s.harness));
+  who.style.color = colourOf(s.harness + ":" + s.id);
+  who.append(tag("span", "model", " " + (u.model || (s.meta && s.meta.model) || s.harness)));
+  row.append(who);
+
+  if (known) {
+    const bar = tag("div", "bar " + cls);
+    const fillEl = document.createElement("span");
+    fillEl.style.width = Math.min(100, (u.context_used / u.context_window) * 100) + "%";
+    bar.append(fillEl);
+    row.append(bar, tag("div", "num",
+      Math.round((u.context_used / u.context_window) * 100) + "% of " + fmt(u.context_window) +
+      " · " + fmt(Number(u.input_tokens || 0) + Number(u.output_tokens || 0)) + " tok"));
+  } else {
+    row.append(tag("div", "bar"), tag("div", "num unknown", "usage unknown"));
+  }
+  return row;
 }
 
 // ---- room panel ----
@@ -844,13 +1289,13 @@ function renderRooms() {
 
     const head = document.createElement("summary");
     head.append(
-      tag("span", "caret", "\u203a"),
+      tag("span", "caret", "›"),
       tag("span", "rname", roomName(key, home)),
       tag("span", "rscope", scope),
       tag("span", "rcount"),
     );
     const count = head.querySelector(".rcount");
-    if (open) count.append(tag("b", "", open + " open"), document.createTextNode(" \u00b7 "));
+    if (open) count.append(tag("b", "", open + " open"), document.createTextNode(" · "));
     count.append(document.createTextNode(posts.length + (posts.length === 1 ? " post" : " posts")));
     box.append(head);
 
@@ -886,17 +1331,17 @@ function postRow(e, byId) {
 
   const meta = tag("div", "pmeta");
   meta.append(document.createTextNode("#" + e.id + " "), named(e.author));
-  if (e.to) meta.append(document.createTextNode(" \u2192 "), named(e.to));
-  meta.append(document.createTextNode(" \u00b7 " + age(e.created_at)));
+  if (e.to) meta.append(document.createTextNode(" → "), named(e.to));
+  meta.append(document.createTextNode(" · " + age(e.created_at)));
   row.append(meta);
   return row;
 }
 
 // An author keeps its hue wherever it is named.
 function named(key) {
-  const el2 = tag("span", "who-name", VIEW.authors.get(key) || key.split(":")[0]);
-  if (VIEW.palette.has(key)) el2.style.color = colourOf(key);
-  return el2;
+  const e = tag("span", "who-name", VIEW.authors.get(key) || key.split(":")[0]);
+  if (VIEW.palette.has(key)) e.style.color = colourOf(key);
+  return e;
 }
 
 function age(ts) {
@@ -909,192 +1354,13 @@ function age(ts) {
   return Math.floor(secs / 86400) + "d ago";
 }
 
-// ---- interaction ----
-
-function initInteractions(svg) {
-  svg.addEventListener("click", () => {
-    if (SKIP_CLICK) { SKIP_CLICK = false; return; }
-    if (PICK) { PICK = null; paint(); resetPanel(); }
-  });
-}
-
-// ---- hover detail ----
-
-function ancestors(n) {
-  const chain = [];
-  for (let cur = n; cur; cur = cur.parent) chain.unshift(cur);
-  return chain;
-}
-
-// Dimming everything off the ancestor chain is what makes ownership legible.
-function highlight(node, sessionKey) {
-  const chain = new Set(ancestors(node).map((n) => n.path));
-  for (const p of document.querySelectorAll(".zone")) {
-    const inChain = chain.has(p.dataset.path);
-    p.classList.toggle("dim", !inChain);
-    p.classList.toggle("trail", p.dataset.path === node.path);
-  }
-  // The pooled slot's owning repo is lit rather than wired to it.
-  const owner = node.owner && VIEW.byPath.get(node.owner);
-  for (const p of document.querySelectorAll(".zone")) {
-    const isOwner = owner && p.dataset.path === owner.path;
-    if (isOwner) p.classList.remove("dim");
-    p.classList.toggle("owner", !!isOwner);
-  }
-
-  for (const a of document.querySelectorAll(".aseg")) {
-    a.classList.toggle("dim", a.dataset.zone !== node.path);
-  }
-  renderPanel(node, sessionKey);
-}
-
-function pick(node, sessionKey) {
-  const same = PICK && PICK.node === node && PICK.sessionKey === sessionKey;
-  PICK = same ? null : { node, sessionKey };
-  paint();
-  resetPanel();
-}
-
-function resetPanel() {
-  for (const e of document.querySelectorAll(".dim, .trail, .owner")) {
-    e.classList.remove("dim", "trail", "owner");
-  }
-  if (PICK) { highlight(PICK.node, PICK.sessionKey); return; }
-  document.getElementById("panel").hidden = true;
-}
-
-function renderPanel(node, sessionKey) {
-  const panel = document.getElementById("panel");
-  panel.hidden = false;
-  const crumbs = tag("div", "crumbs");
-  const chain = ancestors(node);
-  chain.forEach((n, i) => {
-    const last = i === chain.length - 1;
-    const chip = tag("span", "crumb" + (last ? " last" : ""), elide(n.name));
-    if (chip.textContent !== n.name) chip.title = n.name;
-    crumbs.append(chip);
-    if (!last) crumbs.append(tag("span", "crumb sep", "›"));
-  });
-  crumbs.append(copyPath(node.path));
-
-  const agents = (VIEW.agentsAt.get(node.path) || []);
-  const roster = tag("div", "roster");
-  for (const s of agents) {
-    roster.append(agentRow(s, sessionKey === s.harness + ":" + s.id));
-  }
-  panel.replaceChildren(crumbs);
-  if (agents.length) panel.append(roster);
-  else panel.append(tag("div", "hint", "No agents here."));
-
-  if (node.owner) {
-    const own = VIEW.byPath.get(node.owner);
-    panel.append(tag("div", "openrow", `Leased slot of ${own ? own.name : node.owner.replace(VIEW.home, "~")}`));
-  }
-  for (const s2 of agents) {
-    const asked = VIEW.waiting.get(s2.harness + ":" + s2.id);
-    if (!asked) continue;
-    const from = VIEW.sessions.find((x) => x.harness + ":" + x.id === asked.author);
-    panel.append(tag("div", "openrow", `${s2.alias} is awaiting a reply to ${from ? from.alias : asked.author}: ${asked.body}`));
-  }
-
-  const open = (VIEW.entriesAt.get(node.path) || []).filter((e) => isOpen(e) && !e.to);
-  if (open.length) {
-    const row = tag("div", "openrow");
-    row.append(tag("b", "", open.length + " open: "), document.createTextNode(open.map((e) => e.body).join(" · ")));
-    panel.append(row);
-  }
-}
-
-// A crumb names a place; the full path belongs on the clipboard, not on screen.
-function elide(name, max = 13) {
-  if (name.length <= max) return name;
-  const parts = name.split("/");
-  if (parts.length > 1) {
-    const head = parts[0], tail = parts[parts.length - 1];
-    const joined = head + "/…/" + tail;
-    if (joined.length <= max + 4) return joined;
-    return "…/" + tail.slice(0, max - 2) + (tail.length > max - 2 ? "…" : "");
-  }
-  return name.slice(0, max - 1) + "…";
-}
-
-function copyPath(path) {
-  const btn = document.createElement("button");
-  btn.className = "crumb copy";
-  btn.title = path;
-  btn.textContent = "copy";
-  btn.addEventListener("click", async (ev) => {
-    ev.stopPropagation();
-    try {
-      await navigator.clipboard.writeText(path);
-      btn.textContent = "copied";
-    } catch {
-      btn.textContent = "failed";
-    }
-    setTimeout(() => { btn.textContent = "copy"; }, 1400);
-  });
-  return btn;
-}
-
-function agentRow(s, focused) {
-  const u = s.usage || {};
-  const known = u.context_window > 0 && u.context_used > 0;
-  const cls = harnessClass(s.harness);
-  const row = tag("div", "arow");
-  if (focused) row.style.outline = "1px solid var(--separator)";
-
-  const who = tag("div", "who " + cls);
-  const dot = tag("i", "", "●");
-  who.append(dot, document.createTextNode(s.alias || s.harness));
-  who.style.color = colourOf(s.harness + ":" + s.id);
-  who.append(tag("span", "model", " " + (u.model || (s.meta && s.meta.model) || s.harness)));
-  row.append(who);
-
-  if (known) {
-    const bar = tag("div", "bar " + cls);
-    const fillEl = document.createElement("span");
-    fillEl.style.width = Math.min(100, (u.context_used / u.context_window) * 100) + "%";
-    bar.append(fillEl);
-    row.append(bar, tag("div", "num",
-      `${Math.round((u.context_used / u.context_window) * 100)}% of ${fmt(u.context_window)} · ${fmt(Number(u.input_tokens || 0) + Number(u.output_tokens || 0))} tok`));
-  } else {
-    row.append(tag("div", "bar"), tag("div", "num unknown", "usage unknown"));
-  }
-  return row;
-}
-
-function tag(name, cls, text) {
-  const e = document.createElement(name);
-  if (cls) e.className = cls;
-  if (text !== undefined) e.textContent = text;
-  return e;
-}
-
 // ---- helpers ----
 
 function isOpen(e) {
   return e.mode === "request" && !e.resolves && !e.resolved_by;
 }
 
-// gaugeLabel rides the centre of the agent band, over the fill, so it needs a
-// halo the way the name no longer does.
-function gaugeLabel(defs, n, a0, a1, RW, known, frac) {
-  const flip = midFlipped((a0 + a1) / 2);
-  const r = bandText((n.v.d + 1.5) * RW, flip);
-  const room = Math.floor(((a1 - a0) * r - 8) / 5.9);
-  const pct = Math.round(frac * 100) + "%";
-  const full = "context " + pct;
-  const text = known ? (room >= full.length ? full : pct) : "no usage";
-  if (room < text.length) return el("g");
-
-  const id = "c" + Math.round(a0 * 1000) + "-" + Math.round(r);
-  defs.append(el("path", { id, fill: "none", d: arcPath(r, a0, a1, flip) }));
-  const label = el("text", { class: "clabel" + (known ? "" : " unknown"), dy: flip ? -4 : 10 });
-  label.append(el("textPath", { href: "#" + id, startOffset: "50%", "text-anchor": "middle" }, text));
-  return label;
-}
-
-// The harness colour already says claude or codex, so the vendor prefix is noise.
+// The agent's own colour already says which agent; the vendor prefix is noise.
 function shortModel(model) {
   if (!model) return "?";
   return model.split("[")[0].replace(/^claude-/, "");
@@ -1105,7 +1371,14 @@ function harnessClass(h) {
 }
 
 function fmt(n) {
-  return n >= 1e6 ? n / 1e6 + "M" : Math.round(n / 1000) + "k";
+  return n >= 1e6 ? +(n / 1e6).toFixed(1) + "M" : Math.round(n / 1000) + "k";
+}
+
+function tag(name, cls, text) {
+  const e = document.createElement(name);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
 }
 
 function el(name, attrs = {}, text) {
@@ -1118,46 +1391,60 @@ function el(name, attrs = {}, text) {
 // ---- legend ----
 
 function buildLegend() {
-  const swatch = (colour) => {
-    const e = tag("span", "swatch");
-    e.style.background = colour;
-    return e;
-  };
-  const glyph = (kind, extra) => {
+  const mark = (kind, extra) => {
     const svg = el("svg", { viewBox: "0 0 16 16", class: "licon" + (extra ? " " + extra : "") });
     for (const [t, a] of ICONS[kind]) svg.append(el(t, a));
     return svg;
   };
-  const item = (mark, text) => {
+  const item = (glyph2, text) => {
     const s = tag("span", "litem");
-    s.append(mark, tag("b", "", text));
+    s.append(glyph2, tag("b", "", text));
     return s;
   };
   document.getElementById("legend").replaceChildren(
-    item(glyph("agent", "claude"), "claude"),
-    item(glyph("agent", "codex"), "codex"),
-    item(glyph("folder"), "folder · no repo"),
-    item(glyph("repo"), "repository"),
-    item(glyph("worktree"), "worktree"),
-    item(glyph("pool"), "pool slot"),
-    item(glyph("agent"), "agent"),
-    tag("span", "lnote", "each agent has its own colour · fill = context used · click to inspect"),
+    item(mark("agent", "claude"), "claude"),
+    item(mark("agent", "codex"), "codex"),
+    item(mark("folder"), "folder · no repo"),
+    item(mark("repo"), "repository"),
+    item(mark("worktree"), "worktree"),
+    item(mark("pool"), "pool slot"),
+    tag("span", "lnote",
+      "home at the centre, one ring per depth · squares are places, circles are agents · " +
+      "arc = context used · drag a node, scroll to zoom"),
   );
 }
 
 // ---- controls ----
 
-
 const usageBox = document.getElementById("opt-usage");
 usageBox.checked = SHOW_USAGE;
 usageBox.addEventListener("change", () => {
   SHOW_USAGE = usageBox.checked;
-  try { localStorage.setItem("crew.usage", SHOW_USAGE ? "1" : "0"); } catch { /* private mode */ }
-  paint();
+  remember("crew.usage", SHOW_USAGE ? "1" : "0");
+  // Only the gauges and subtitles change, so the scene is rebuilt where it
+  // stands rather than reheated.
+  if (VIEW) { scene(); place(); resetPanel(); }
 });
 
+const labelBox = document.getElementById("opt-labels");
+labelBox.checked = SHOW_LABELS;
+document.body.classList.toggle("no-labels", !SHOW_LABELS);
+labelBox.addEventListener("change", () => {
+  SHOW_LABELS = labelBox.checked;
+  remember("crew.labels", SHOW_LABELS ? "1" : "0");
+  document.body.classList.toggle("no-labels", !SHOW_LABELS);
+});
+
+document.getElementById("reheat").addEventListener("click", () => {
+  if (!SIM) return;
+  KEEP.clear();
+  placeNodes(SIM.nodes);
+  reheat(1);
+});
+document.getElementById("recentre").addEventListener("click", recentre);
+
 buildLegend();
-initInteractions(document.getElementById("svg"));
+initStage();
 load().catch((err) => {
   document.getElementById("sub").textContent = "Failed to load: " + err.message;
 });
