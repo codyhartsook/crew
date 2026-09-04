@@ -223,6 +223,18 @@ func TestResolveAuthorIgnoresAncestorOutsideRoom(t *testing.T) {
 	}
 }
 
+func TestResolveAuthorRejectsEnvironmentOutsideRoom(t *testing.T) {
+	clearEnv(t)
+	elsewhere := agent(session.HarnessCodex, "elsewhere", 0)
+	elsewhere.Repo = &session.Repo{Name: "other", Root: "/src/other", MainRoot: "/src/other"}
+	st := seeded(t, elsewhere)
+	t.Setenv("CODEX_THREAD_ID", elsewhere.ID)
+
+	if _, err := ResolveAuthor(context.Background(), st, []string{testRoom}); err == nil || !strings.Contains(err.Error(), "not in this room") {
+		t.Fatalf("ResolveAuthor outside room error = %v, want room error", err)
+	}
+}
+
 func TestResolveAgentByAlias(t *testing.T) {
 	want := agent(session.HarnessClaude, "target", 0)
 	st := seeded(t, want)

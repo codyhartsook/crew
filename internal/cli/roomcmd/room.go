@@ -28,13 +28,19 @@ func New(opts *cmdutil.Options) *cobra.Command {
 				return err
 			}
 			defer rc.Close()
-			entries, err := rc.Rooms.Entries(cmd.Context(), room.Filter{Rooms: rc.Keys()})
+			self, err := rc.Author(cmd.Context(), "")
 			if err != nil {
 				return err
 			}
-			// Listing the caller as "also here" is noise; failing to identify
-			// it is not a reason to refuse the briefing.
-			self, _ := rc.Author(cmd.Context(), "")
+			keys, err := rc.Accessible(cmd.Context(), self)
+			if err != nil {
+				return err
+			}
+			entries, err := rc.Rooms.Entries(cmd.Context(), room.Filter{Rooms: keys})
+			if err != nil {
+				return err
+			}
+			// Listing the caller as "also here" is noise.
 			ack := func() error {
 				if self == "" || len(entries) == 0 {
 					return nil

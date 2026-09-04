@@ -18,7 +18,6 @@ const searchLimit = 15
 
 func New(opts *cmdutil.Options) *cobra.Command {
 	var (
-		all    bool
 		asJSON bool
 	)
 
@@ -37,10 +36,15 @@ why the obvious approach does not work.`,
 			}
 			defer rc.Close()
 
-			q := room.Query{Text: strings.Join(args, " "), Limit: searchLimit}
-			if !all {
-				q.Rooms = rc.Keys()
+			author, err := rc.Author(cmd.Context(), "")
+			if err != nil {
+				return err
 			}
+			keys, err := rc.Accessible(cmd.Context(), author)
+			if err != nil {
+				return err
+			}
+			q := room.Query{Text: strings.Join(args, " "), Rooms: keys, Limit: searchLimit}
 			entries, err := rc.Rooms.Search(cmd.Context(), q)
 			if err != nil {
 				return err
@@ -63,7 +67,6 @@ why the obvious approach does not work.`,
 		},
 	}
 
-	cmd.Flags().BoolVarP(&all, "all", "a", false, "every room, not only this one")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON")
 	return cmd
 }

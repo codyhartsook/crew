@@ -18,7 +18,7 @@ import (
 
 func TestPublicCommands(t *testing.T) {
 	root := New()
-	for _, name := range []string{"init", "uninstall", "ls", "dashboard", "room", "post", "resolve", "search"} {
+	for _, name := range []string{"init", "uninstall", "ls", "dashboard", "room", "post", "resolve", "search", "docs", "publish", "open"} {
 		cmd, _, err := root.Find([]string{name})
 		if err != nil || cmd.Name() != name || cmd.Hidden {
 			t.Errorf("public command %q = (%v, %v)", name, cmd, err)
@@ -87,6 +87,69 @@ func TestRoomAcknowledgesRequests(t *testing.T) {
 	}
 	if err := run(t, "resolve", strconv.FormatInt(note.ID, 10), "done"); err == nil || !strings.Contains(err.Error(), "not an open request") {
 		t.Fatalf("resolve note error = %v, want open-request error", err)
+	}
+}
+
+func TestRoomCommandsRepairMembership(t *testing.T) {
+	ctx := context.Background()
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	loc, err := detect.New().Detect(ctx, cwd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "sessions.db")
+	t.Setenv("MULTIPLAYER_DB", path)
+	t.Setenv("CODEX_THREAD_ID", "reader")
+
+	st, err := sqlitestore.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess := &session.Session{ID: "reader", Harness: session.HarnessCodex, Status: session.StatusActive, CWD: cwd, Repo: loc.Repo, StartedAt: time.Now(), LastSeen: time.Now()}
+	if err := st.Upsert(ctx, sess); err != nil {
+		t.Fatal(err)
+	}
+	here := room.For(loc.Repo, loc.Pool, cwd)
+	if err := st.Join(ctx, &room.Membership{SessionKey: sess.Key(), Room: here[0].Key, Scope: here[0].Scope, JoinedAt: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	foreign := &room.Entry{Room: "/somewhere-else", Scope: room.ScopeWorktree, Mode: room.ModeRequest, Author: "claude:writer", Body: "private request", CreatedAt: time.Now()}
+	if err := st.Post(ctx, foreign); err != nil {
+		t.Fatal(err)
+	}
+	st.Close()
+
+	if err := run(t, "search", "--all", "private"); err == nil || !strings.Contains(err.Error(), "unknown flag") {
+		t.Fatalf("search --all error = %v, want unknown flag", err)
+	}
+	if err := run(t, "resolve", strconv.FormatInt(foreign.ID, 10), "done"); err == nil || !strings.Contains(err.Error(), "not in this room") {
+		t.Fatalf("resolve foreign entry error = %v, want room error", err)
+	}
+	if err := run(t, "room"); err != nil {
+		t.Fatalf("room for joined agent = %v", err)
+	}
+
+	st, err = sqlitestore.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Leave(ctx, sess.Key(), here[0].Key); err != nil {
+		t.Fatal(err)
+	}
+	st.Close()
+	if err := run(t, "room"); err != nil {
+		t.Fatalf("room repairs missing membership = %v", err)
+	}
+	st, err = sqlitestore.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if memberships, err := st.Rooms(ctx, sess.Key()); err != nil || len(memberships) == 0 {
+		t.Fatalf("room membership after repair = (%v, %v), want current room", memberships, err)
 	}
 }
 

@@ -15,6 +15,8 @@ crew post note "<body>"                 # durable information for the room
 crew post request "<body>"              # ask every agent here
 crew post request --to <agent> "<body>" # ask one agent named in the room
 crew resolve <id> "<answer>"            # answer and close a request
+crew docs --path                        # locate this room's document store
+crew publish <file>                     # publish and announce a document
 ```
 
 Post only information that changes another agent's work. Notes capture durable
@@ -28,3 +30,8 @@ facts already clear from the code or tests, or restatements of the user request.
 
 Use `--repo` on `post` only when the information applies to every worktree of
 the repository. Otherwise the current worktree is the right room.
+
+Use a document instead of a long post when the content should be opened,
+edited, or reviewed as a file. Write it under the path from `crew docs --path`,
+then run `crew publish <file>` so the room knows it is ready. Published posts
+name documents but do not copy their contents into agent context.

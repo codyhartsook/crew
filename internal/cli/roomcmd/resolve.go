@@ -2,6 +2,7 @@ package roomcmd
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -31,6 +32,14 @@ func NewResolve(opts *cmdutil.Options) *cobra.Command {
 			}
 			defer rc.Close()
 
+			author, err := rc.Author(cmd.Context(), as)
+			if err != nil {
+				return err
+			}
+			keys, err := rc.Accessible(cmd.Context(), author)
+			if err != nil {
+				return err
+			}
 			target, err := rc.Entry(cmd.Context(), id)
 			if err != nil {
 				return err
@@ -38,9 +47,8 @@ func NewResolve(opts *cmdutil.Options) *cobra.Command {
 			if !target.Open() {
 				return fmt.Errorf("entry [%d] is not an open request", target.ID)
 			}
-			author, err := rc.Author(cmd.Context(), as)
-			if err != nil {
-				return err
+			if !slices.Contains(keys, target.Room) {
+				return fmt.Errorf("entry [%d] is not in this room", id)
 			}
 
 			// A resolution inherits the room and mode of what it closes so the

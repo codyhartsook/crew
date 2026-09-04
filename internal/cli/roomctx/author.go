@@ -38,6 +38,11 @@ func sessionKeysFromEnv() []string {
 	return keys
 }
 
+// AgentEnvironment reports whether a harness identified the current process.
+// Human-facing commands use this to avoid attributing a person's shell to the
+// sole agent that happens to be active in the same worktree.
+func AgentEnvironment() bool { return len(sessionKeysFromEnv()) > 0 }
+
 // ResolveAuthor works out which registered session is running this command,
 // trying the cheapest and most certain source first.
 func ResolveAuthor(ctx context.Context, st store.Store, roomKeys []string) (string, error) {
@@ -66,11 +71,11 @@ func ResolveAuthor(ctx context.Context, st store.Store, roomKeys []string) (stri
 	//    identities, keep the ones the registry recognises and, if that is
 	//    still ambiguous, the one in this room.
 	if matches := filterKnown(sessionKeysFromEnv(), known); len(matches) > 0 {
-		if len(matches) == 1 {
-			return matches[0], nil
-		}
 		if narrowed := filterHere(matches, here); len(narrowed) == 1 {
 			return narrowed[0], nil
+		}
+		if len(filterHere(matches, here)) == 0 {
+			return "", fmt.Errorf("the active agent is not in this room")
 		}
 	}
 	// 2. An ancestor process is a registered harness. Unavailable behind a

@@ -103,9 +103,40 @@ func (c *Context) Target(toRepo bool) room.Room {
 // Author names the session posting this, taking an explicit --as over inference.
 func (c *Context) Author(ctx context.Context, as string) (string, error) {
 	if as != "" {
+		s, err := c.Store.Get(ctx, as)
+		if err != nil {
+			return "", err
+		}
+		if !s.Active() || !c.Contains(s) {
+			return "", errors.New("the active agent is not in this room")
+		}
 		return as, nil
 	}
 	return ResolveAuthor(ctx, c.Store, c.Keys())
+}
+
+// Accessible ensures the identified local agent is joined, then returns its
+// rooms. A missed start hook should not make an agent unable to use its own
+// room, while Author still rejects an identity from another location.
+func (c *Context) Accessible(ctx context.Context, sessionKey string) ([]string, error) {
+	if err := Join(ctx, c.Rooms, sessionKey, c.Here); err != nil {
+		return nil, err
+	}
+	memberships, err := c.Rooms.Rooms(ctx, sessionKey)
+	if err != nil {
+		return nil, err
+	}
+	joined := make(map[string]bool, len(memberships))
+	for _, m := range memberships {
+		joined[m.Room] = true
+	}
+	var keys []string
+	for _, key := range c.Keys() {
+		if joined[key] {
+			keys = append(keys, key)
+		}
+	}
+	return keys, nil
 }
 
 // Authors maps session keys to the friendly names entries are rendered with.
