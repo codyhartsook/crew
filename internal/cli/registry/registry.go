@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -20,6 +21,7 @@ import (
 	"github.com/codyhartsook/multiplayer/internal/notify"
 	"github.com/codyhartsook/multiplayer/internal/store/sqlitestore"
 	"github.com/codyhartsook/multiplayer/internal/ui"
+	"github.com/codyhartsook/multiplayer/internal/version"
 )
 
 // shutdownGrace is how long in-flight requests get to finish on shutdown.
@@ -31,6 +33,8 @@ const DefaultAddr = "127.0.0.1:8790"
 
 // probeTimeout bounds the check for a registry already listening on the address.
 const probeTimeout = 750 * time.Millisecond
+
+const stopTimeout = 5 * time.Second
 
 // Config is how a caller wants the registry run.
 type Config struct {
@@ -57,10 +61,19 @@ func Serve(ctx context.Context, opts *cmdutil.Options, cfg Config) error {
 		return err
 	}
 	defer st.Close()
+	lifecycleFile, err := os.OpenFile(filepath.Join(filepath.Dir(path), "broker.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		return fmt.Errorf("open broker log: %w", err)
+	}
+	defer lifecycleFile.Close()
+	lifecycle := slog.New(slog.NewTextHandler(lifecycleFile, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
 	level := slog.LevelWarn
 	if cfg.Verbose {
 		level = slog.LevelDebug
+	}
+	if cfg.Log == nil {
+		cfg.Log = io.Discard
 	}
 	log := slog.New(slog.NewTextHandler(cfg.Log, &slog.HandlerOptions{Level: level}))
 
@@ -69,24 +82,71 @@ func Serve(ctx context.Context, opts *cmdutil.Options, cfg Config) error {
 		return fmt.Errorf("listen on %s: %w", cfg.Addr, err)
 	}
 
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	srv := &http.Server{
-		Handler:           api.New(st, log, api.WithUI(ui.Handler()), api.WithTableUI(ui.Table())).Handler(),
+		Handler: api.New(st, log, api.WithUI(ui.Handler()), api.WithTableUI(ui.Table()), api.WithShutdown(func() {
+			lifecycle.Info("broker stop requested")
+			cancel()
+		})).Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
 	log.Info("registry listening", "addr", ln.Addr().String(), "db", path)
+	lifecycle.Info("broker started", "version", version.String(), "addr", ln.Addr().String())
 	if cfg.OnReady != nil {
 		cfg.OnReady("http://" + ln.Addr().String())
 	}
 
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
 	broker := notify.NewBroker(st, log, notify.DefaultInterval)
 	if err := notify.ListenSignals(ctx, notify.SocketPath(path), broker.Trigger); err != nil {
 		log.Warn("notification signals unavailable; using polling", "err", err)
 	}
 	go broker.Run(ctx)
-	return run(ctx, srv, ln, log)
+	err = run(ctx, srv, ln, lifecycle)
+	if err == nil {
+		lifecycle.Info("broker stopped")
+	}
+	return err
+}
+
+// Stop asks a running broker to drain and waits until it releases its address.
+func Stop(ctx context.Context, baseURL string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/v1/shutdown", nil)
+	if err != nil {
+		return err
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("stop broker: %w", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		return errors.New("running broker predates graceful shutdown; stop its original crew init once, then restart with the new binary")
+	}
+	if resp.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("stop broker: unexpected HTTP status %s", resp.Status)
+	}
+
+	deadline := time.Now().Add(stopTimeout)
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if !IsUp(ctx, baseURL) {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return errors.New("broker did not stop within 5s")
+		}
+		timer := time.NewTimer(25 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
 }
 
 // IsUp reports whether a healthy registry already answers at baseURL.
@@ -125,7 +185,7 @@ func run(ctx context.Context, srv *http.Server, ln net.Listener, log *slog.Logge
 	case err := <-errc:
 		return err
 	case <-ctx.Done():
-		log.Info("shutting down")
+		log.Info("broker shutting down")
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownGrace)
 		defer cancel()
 		if err := srv.Shutdown(shutdownCtx); err != nil {
