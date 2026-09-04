@@ -14,7 +14,8 @@ var indexHTML []byte
 //go:embed crew.html
 var crewHTML []byte
 
-// Handler serves the dashboard: agents laid out by where they are working.
+// Handler serves the dashboard: a force-directed graph of where agents are
+// working, home at the centre and one ring per depth.
 func Handler() http.Handler {
 	return page(crewHTML)
 }

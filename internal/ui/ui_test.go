@@ -13,29 +13,37 @@ import (
 	"github.com/codyhartsook/multiplayer/internal/ui"
 )
 
-func TestHandlerServesPage(t *testing.T) {
-	rec := httptest.NewRecorder()
-	ui.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+func TestHandlersServePages(t *testing.T) {
+	pages := map[string]http.Handler{
+		"dashboard": ui.Handler(),
+		"table":     ui.Table(),
+	}
+	for name, h := range pages {
+		t.Run(name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", rec.Code)
-	}
-	if got := rec.Header().Get("Content-Type"); !strings.HasPrefix(got, "text/html") {
-		t.Errorf("Content-Type = %q, want text/html", got)
-	}
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d, want 200", rec.Code)
+			}
+			if got := rec.Header().Get("Content-Type"); !strings.HasPrefix(got, "text/html") {
+				t.Errorf("Content-Type = %q, want text/html", got)
+			}
 
-	body := rec.Body.String()
-	// The page must carry its own styles and script: nothing is fetched from a
-	// CDN, so the dashboard works with no network at all.
-	for _, want := range []string{"<title>crew</title>", "<style>", "/v1/sessions"} {
-		if !strings.Contains(body, want) {
-			t.Errorf("page is missing %q", want)
-		}
-	}
-	for _, unwanted := range []string{"src=\"http", "href=\"http"} {
-		if strings.Contains(body, unwanted) {
-			t.Errorf("page loads an external resource (%q); it must be self-contained", unwanted)
-		}
+			body := rec.Body.String()
+			// The page must carry its own styles and script: nothing is fetched
+			// from a CDN, so the dashboard works with no network at all.
+			for _, want := range []string{"<title>crew</title>", "<style>", "/v1/sessions"} {
+				if !strings.Contains(body, want) {
+					t.Errorf("page is missing %q", want)
+				}
+			}
+			for _, unwanted := range []string{"src=\"http", "href=\"http"} {
+				if strings.Contains(body, unwanted) {
+					t.Errorf("page loads an external resource (%q); it must be self-contained", unwanted)
+				}
+			}
+		})
 	}
 }
 
@@ -48,7 +56,10 @@ func TestUIDoesNotShadowAPI(t *testing.T) {
 	}
 	t.Cleanup(func() { st.Close() })
 
-	srv := httptest.NewServer(api.New(st, nil, api.WithUI(ui.Handler())).Handler())
+	srv := httptest.NewServer(api.New(st, nil,
+		api.WithUI(ui.Handler()),
+		api.WithTableUI(ui.Table()),
+	).Handler())
 	t.Cleanup(srv.Close)
 
 	cases := []struct {
@@ -57,6 +68,7 @@ func TestUIDoesNotShadowAPI(t *testing.T) {
 		html bool
 	}{
 		{"/", http.StatusOK, true},
+		{"/table", http.StatusOK, true},
 		{"/v1/sessions", http.StatusOK, false},
 		{"/healthz", http.StatusOK, false},
 		{"/nonsense", http.StatusNotFound, false},
