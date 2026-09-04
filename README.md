@@ -6,8 +6,8 @@ Shared context and messaging for interactive coding agent sessions, automaticall
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 Claude Code and Codex record their lifecycle through hooks. Agents then share a
-durable room for notes and requests, none of it
-committed to the repository.
+durable room for notes, requests, and documents, none of it committed to the
+repository.
 
 ```console
 $ crew room
@@ -58,6 +58,9 @@ use `crew dashboard` in another terminal to open the UI.
 | `post` / `resolve` | Post an entry, or answer and close a request. |
 | `room` | Show the room and acknowledge requests. |
 | `search` | Find earlier entries by topic. |
+| `docs` | List documents, or print their filesystem path with `--path`. |
+| `publish` | Copy and announce a document in the room. |
+| `open` | Generate and open a read-only Markdown view of the room. |
 
 `crew <command> --help` shows flags. `crew uninstall --yes`
 removes the integration and keeps your data.
@@ -65,6 +68,20 @@ removes the integration and keeps your data.
 Address a request to one agent with
 `crew post request --to moss-otter "Can you check this?"`. Names are
 assigned per live session and shown by `crew ls` and the dashboard.
+
+Documents are ordinary files. The current worktree room is the default target;
+use `--repo` for the repository room. A local human shell can also select an
+exact room with `--room <id>` and is recorded as `human:<username>`.
+
+```sh
+crew docs --path             # locate the current room's document store
+crew publish plan.md         # copy and announce a document
+crew publish --repo plan.md  # publish for every worktree in the repository
+crew open                    # generate and open the latest ROOM.md snapshot
+```
+
+Agents can write directly under the path from `crew docs --path`, then run
+`crew publish <file>` to announce that the document is ready.
 
 ## Design
 
