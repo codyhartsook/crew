@@ -345,7 +345,7 @@ func TestDetectBoundsTotalTime(t *testing.T) {
 	}
 }
 
-func mustDetect(t *testing.T, dir string) *detect.Location {
+func mustDetect(t *testing.T, dir string) *session.Place {
 	t.Helper()
 	loc, err := detect.New().Detect(context.Background(), dir)
 	if err != nil {

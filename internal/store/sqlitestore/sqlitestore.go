@@ -30,7 +30,7 @@ const timeFormat = time.RFC3339Nano
 
 // SchemaVersion is the store layout this binary understands. Raise it whenever
 // a migration changes what older binaries can safely assume.
-const SchemaVersion = 5
+const SchemaVersion = 6
 
 const schema = `
 CREATE TABLE IF NOT EXISTS sessions (
@@ -63,6 +63,10 @@ CREATE TABLE IF NOT EXISTS sessions (
     pool_lease_id    TEXT NOT NULL DEFAULT '',
     pool_lease_holder TEXT NOT NULL DEFAULT '',
 
+    has_folder       INTEGER NOT NULL DEFAULT 0,
+    folder_name      TEXT NOT NULL DEFAULT '',
+    folder_root      TEXT NOT NULL DEFAULT '',
+
     started_at       TEXT NOT NULL,
     last_seen        TEXT NOT NULL,
     ended_at         TEXT,
@@ -82,6 +86,7 @@ CREATE INDEX IF NOT EXISTS sessions_last_seen ON sessions(last_seen DESC);
 const columns = `key, id, harness, alias, status, pid, host, username, cwd,
     has_repo, repo_name, repo_root, repo_main_root, repo_remote, repo_branch, repo_head, repo_detached, repo_is_worktree,
     has_pool, pool_manager, pool_name, pool_slot, pool_root, pool_leased, pool_lease_id, pool_lease_holder,
+    has_folder, folder_name, folder_root,
     started_at, last_seen, ended_at, end_reason, meta, usage`
 
 const aliasIndex = `CREATE UNIQUE INDEX IF NOT EXISTS sessions_active_alias
@@ -119,6 +124,50 @@ func Open(path string) (*Store, error) {
 	return &Store{db: db}, nil
 }
 
+// additive lists the statements that carry a database up to each version.
+// SQLite adds a column in place, so a version reachable this way keeps every
+// row; a version that needs more than this still demands a fresh database.
+var additive = map[int][]string{
+	6: {
+		`ALTER TABLE sessions ADD COLUMN has_folder INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE sessions ADD COLUMN folder_name TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE sessions ADD COLUMN folder_root TEXT NOT NULL DEFAULT ''`,
+	},
+}
+
+// upgrade walks a database forward one version at a time and reports the
+// version it reached, stopping short at the first one with no additive path.
+// All of it commits or none does, so a failure never leaves a half-migrated
+// layout behind a stale user_version.
+func upgrade(ctx context.Context, db *sql.DB, from int) (int, error) {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return from, fmt.Errorf("begin migration: %w", err)
+	}
+	defer tx.Rollback()
+
+	reached := from
+	for v := from + 1; v <= SchemaVersion; v++ {
+		steps, ok := additive[v]
+		if !ok {
+			break
+		}
+		for _, step := range steps {
+			if _, err := tx.ExecContext(ctx, step); err != nil {
+				return from, fmt.Errorf("migrate to schema version %d: %w", v, err)
+			}
+		}
+		reached = v
+	}
+	if reached == from {
+		return from, nil
+	}
+	if err := tx.Commit(); err != nil {
+		return from, fmt.Errorf("commit migration: %w", err)
+	}
+	return reached, nil
+}
+
 // migrate creates a fresh schema or verifies that an existing one matches it.
 func migrate(db *sql.DB) error {
 	ctx := context.Background()
@@ -134,7 +183,13 @@ func migrate(db *sql.DB) error {
 		return fmt.Errorf("database is schema version %d, this crew understands %d: upgrade the binary", found, SchemaVersion)
 	}
 	if found > 0 && found < SchemaVersion {
-		return fmt.Errorf("database is schema version %d, crew now requires a fresh version %d database: move the old database aside and restart", found, SchemaVersion)
+		reached, err := upgrade(ctx, db, found)
+		if err != nil {
+			return err
+		}
+		if reached < SchemaVersion {
+			return fmt.Errorf("database is schema version %d, crew now requires a fresh version %d database: move the old database aside and restart", found, SchemaVersion)
+		}
 	}
 	var legacy int
 	if found == 0 && db.QueryRowContext(ctx, `SELECT 1 FROM sqlite_master WHERE type = 'table' AND name IN ('sessions', 'entries') LIMIT 1`).Scan(&legacy) == nil {
@@ -230,12 +285,17 @@ func (s *Store) upsert(ctx context.Context, sess *session.Session) error {
 	if pool == nil {
 		pool = &session.Pool{}
 	}
+	folder := sess.Folder
+	if folder == nil {
+		folder = &session.Folder{}
+	}
 
 	const q = `
 INSERT INTO sessions (` + columns + `)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?, ?, ?, ?, ?,
+        ?, ?, ?,
         ?, ?, ?, ?, ?, ?)
 ON CONFLICT(key) DO UPDATE SET
     status = excluded.status,
@@ -261,6 +321,9 @@ ON CONFLICT(key) DO UPDATE SET
     pool_leased = excluded.pool_leased,
     pool_lease_id = excluded.pool_lease_id,
     pool_lease_holder = excluded.pool_lease_holder,
+    has_folder = excluded.has_folder,
+    folder_name = excluded.folder_name,
+    folder_root = excluded.folder_root,
     last_seen = excluded.last_seen,
     ended_at = excluded.ended_at,
     end_reason = excluded.end_reason,
@@ -271,6 +334,7 @@ ON CONFLICT(key) DO UPDATE SET
 		sess.Key(), sess.ID, string(sess.Harness), sess.Alias, string(sess.Status), sess.PID, sess.Host, sess.User, sess.CWD,
 		sess.Repo != nil, repo.Name, repo.Root, repo.MainRoot, repo.Remote, repo.Branch, repo.Head, repo.Detached, repo.IsWorktree,
 		sess.Pool != nil, pool.Manager, pool.Name, pool.Slot, pool.Root, pool.Leased, pool.LeaseID, pool.LeaseHolder,
+		sess.Folder != nil, folder.Name, folder.Root,
 		formatTime(sess.StartedAt), formatTime(sess.LastSeen), formatTimePtr(sess.EndedAt), sess.EndReason, string(meta), usageJSON,
 	)
 	if err != nil {
@@ -521,6 +585,8 @@ func scanSession(sc scanner) (*session.Session, error) {
 		repo      session.Repo
 		hasPool   bool
 		pool      session.Pool
+		hasFolder bool
+		folder    session.Folder
 		startedAt string
 		lastSeen  string
 		endedAt   sql.NullString
@@ -532,6 +598,7 @@ func scanSession(sc scanner) (*session.Session, error) {
 		&key, &sess.ID, &harness, &sess.Alias, &status, &sess.PID, &sess.Host, &sess.User, &sess.CWD,
 		&hasRepo, &repo.Name, &repo.Root, &repo.MainRoot, &repo.Remote, &repo.Branch, &repo.Head, &repo.Detached, &repo.IsWorktree,
 		&hasPool, &pool.Manager, &pool.Name, &pool.Slot, &pool.Root, &pool.Leased, &pool.LeaseID, &pool.LeaseHolder,
+		&hasFolder, &folder.Name, &folder.Root,
 		&startedAt, &lastSeen, &endedAt, &sess.EndReason, &metaJSON, &usageJSON,
 	)
 	if err != nil {
@@ -545,6 +612,9 @@ func scanSession(sc scanner) (*session.Session, error) {
 	}
 	if hasPool {
 		sess.Pool = &pool
+	}
+	if hasFolder {
+		sess.Folder = &folder
 	}
 	if sess.StartedAt, err = parseTime(startedAt); err != nil {
 		return nil, fmt.Errorf("parse started_at: %w", err)

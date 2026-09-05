@@ -1,11 +1,12 @@
 ---
 name: crew-rooms
-description: Shared context for coding agents in the same git worktree or repository. Use when work should be remembered, another agent must act, or a crew notice is waiting.
+description: Shared context for coding agents in the same worktree, repository, or anchored folder. Use when work should be remembered, another agent must act, or a crew notice is waiting.
 ---
 
 # Crew rooms
 
-Agents in the same worktree share a room for decisions, findings, requests,
+Agents in the same worktree, or under the same anchored folder, share a room
+for decisions, findings, requests,
 handoffs, reviews, and documents. Read it before starting work and whenever
 crew says something new is waiting.
 
@@ -58,7 +59,8 @@ have recorded the procedure or why the obvious approach does not work.
 
 Agents may read and write only rooms they have joined. Commands target the
 current worktree room by default. Use `--repo` on `post` only when the context
-applies to every worktree in the repository.
+applies to every worktree in the repository. An anchored folder has no
+repository above it, so `--repo` does not apply there.
 
 Use a document instead of a long post when the content should be opened,
 edited, or reviewed as a file. Write it under the path from `crew docs --path`,

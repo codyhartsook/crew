@@ -74,6 +74,63 @@ VALUES ('/src/widget', 'worktree', 'decision', 'codex:a', 'chose sqlite', '2026-
 	}
 }
 
+// Adding columns is additive, so a version 5 database must come forward in
+// place. Room entries are the durable data here; making people throw them away
+// for a column add is the wrong trade.
+func TestOpenMigratesAdditively(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "v5.db")
+	ctx := context.Background()
+
+	s, err := sqlitestore.Open(path)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	now := time.Now().UTC().Truncate(time.Second)
+	seeded := &session.Session{
+		ID: "old-1", Harness: session.HarnessCodex, Status: session.StatusActive,
+		Place:     session.Place{CWD: "/src/widget", Repo: &session.Repo{Name: "widget", Root: "/src/widget", MainRoot: "/src/widget"}},
+		StartedAt: now, LastSeen: now,
+	}
+	if err := s.Upsert(ctx, seeded); err != nil {
+		t.Fatalf("seed session: %v", err)
+	}
+	s.Close()
+
+	// Rewind to the layout before folders existed.
+	db, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatalf("open raw: %v", err)
+	}
+	for _, stmt := range []string{
+		`ALTER TABLE sessions DROP COLUMN has_folder`,
+		`ALTER TABLE sessions DROP COLUMN folder_name`,
+		`ALTER TABLE sessions DROP COLUMN folder_root`,
+		`PRAGMA user_version = 5`,
+	} {
+		if _, err := db.Exec(stmt); err != nil {
+			t.Fatalf("rewind (%s): %v", stmt, err)
+		}
+	}
+	db.Close()
+
+	s, err = sqlitestore.Open(path)
+	if err != nil {
+		t.Fatalf("Open on a version 5 database: %v", err)
+	}
+	defer s.Close()
+
+	got, err := s.Get(ctx, seeded.Key())
+	if err != nil {
+		t.Fatalf("Get after migration: %v", err)
+	}
+	if got.Repo == nil || got.Repo.Name != "widget" {
+		t.Errorf("Repo = %+v, want the seeded row to survive", got.Repo)
+	}
+	if got.Folder != nil {
+		t.Errorf("Folder = %+v, want nil on a row written before folders", got.Folder)
+	}
+}
+
 // Opening the current schema repeatedly is safe.
 func TestOpenIsIdempotent(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "twice.db")

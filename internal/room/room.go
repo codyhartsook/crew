@@ -50,7 +50,18 @@ const (
 	// outlive any single worktree and any single lease of one, which is where
 	// anything durable belongs.
 	ScopeRepo Scope = "repo"
+	// ScopeFolder is a plain directory outside any checkout. Nothing owns it,
+	// so it is the only room its sessions have.
+	ScopeFolder Scope = "folder"
 )
+
+// Local reports whether this is the room of the exact place a session sits in,
+// rather than the durable room its workspace owns.
+func (s Scope) Local() bool { return s != ScopeRepo }
+
+// Parented reports whether a location of this scope can have a repository room
+// above it.
+func (s Scope) Parented() bool { return s == ScopeWorktree }
 
 type Room struct {
 	Key   string `json:"key"`
@@ -106,23 +117,25 @@ type Query struct {
 	Limit int
 }
 
-// For returns the rooms a location belongs to: its working tree and the
-// repository that owns it. In a primary checkout the two are one path, so a
-// single room comes back and nothing is said twice. Outside a checkout the
-// working directory is its own room.
-func For(repo *session.Repo, pool *session.Pool, cwd string) []Room {
-	if repo == nil {
-		if cwd == "" {
-			return nil
+// For returns the rooms a place belongs to: its working tree and the repository
+// that owns it. In a primary checkout the two are one path, so a single room
+// comes back and nothing is said twice. An anchored folder is one room keyed on
+// its anchor, which is what lets a subdirectory share it. Anchored by nothing,
+// the working directory is its own room.
+func For(p session.Place) []Room {
+	switch {
+	case p.Repo != nil:
+		rooms := []Room{{Key: worktreeKey(p.Repo, p.Pool), Scope: ScopeWorktree, Name: worktreeName(p.Repo, p.Pool)}}
+		if p.Repo.MainRoot != "" && p.Repo.MainRoot != p.Repo.Root {
+			rooms = append(rooms, Room{Key: p.Repo.MainRoot, Scope: ScopeRepo, Name: p.Repo.Name})
 		}
-		return []Room{{Key: cwd, Scope: ScopeWorktree, Name: baseName(cwd)}}
+		return rooms
+	case p.Folder != nil:
+		return []Room{{Key: p.Folder.Root, Scope: ScopeFolder, Name: p.Folder.Name}}
+	case p.CWD != "":
+		return []Room{{Key: p.CWD, Scope: ScopeFolder, Name: baseName(p.CWD)}}
 	}
-
-	rooms := []Room{{Key: worktreeKey(repo, pool), Scope: ScopeWorktree, Name: worktreeName(repo, pool)}}
-	if repo.MainRoot != "" && repo.MainRoot != repo.Root {
-		rooms = append(rooms, Room{Key: repo.MainRoot, Scope: ScopeRepo, Name: repo.Name})
-	}
-	return rooms
+	return nil
 }
 
 // Keys is what the store indexes on.

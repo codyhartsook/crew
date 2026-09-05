@@ -35,7 +35,7 @@ func TestPublishAndOpen(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Now().UTC()
-	sess := &session.Session{ID: "docs", Harness: session.HarnessCodex, Status: session.StatusActive, CWD: cwd, Repo: loc.Repo, StartedAt: now, LastSeen: now}
+	sess := &session.Session{ID: "docs", Harness: session.HarnessCodex, Status: session.StatusActive, Place: session.Place{CWD: cwd, Repo: loc.Repo}, StartedAt: now, LastSeen: now}
 	if err := st.Upsert(ctx, sess); err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +54,7 @@ func TestPublishAndOpen(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	here := room.For(loc.Repo, loc.Pool, cwd)[0]
+	here := room.For(*loc)[0]
 	dir, err := documents.Dir(root, here.Key)
 	if err != nil {
 		t.Fatal(err)

@@ -21,7 +21,7 @@ func Briefing(rooms []Room, entries []*Entry, others []string, authors Authors) 
 			continue
 		}
 		fmt.Fprintf(&b, "## crew room: %s (%s)\n\n", r.Name, r.Scope)
-		if len(others) > 0 && r.Scope == ScopeWorktree {
+		if len(others) > 0 && r.Scope.Local() {
 			fmt.Fprintf(&b, "Also here: %s\n\n", strings.Join(others, ", "))
 		}
 		writeSection(&b, "Notes", live, ModeNote, authors)

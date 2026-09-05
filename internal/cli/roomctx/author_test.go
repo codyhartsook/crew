@@ -35,8 +35,10 @@ func agent(harness session.Harness, id string, pid int) *session.Session {
 	now := time.Now().UTC()
 	return &session.Session{
 		ID: id, Harness: harness, Status: session.StatusActive, PID: pid,
-		CWD:       testRoom,
-		Repo:      &session.Repo{Name: "widget", Root: testRoom, MainRoot: testRoom},
+		Place: session.Place{
+			CWD:  testRoom,
+			Repo: &session.Repo{Name: "widget", Root: testRoom, MainRoot: testRoom},
+		},
 		StartedAt: now, LastSeen: now,
 	}
 }

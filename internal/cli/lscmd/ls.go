@@ -119,6 +119,9 @@ func writeTable(w io.Writer, human bool, sessions []*session.Session) error {
 // know what someone is working on.
 func where(s *session.Session) string {
 	if s.Repo == nil {
+		if s.Folder != nil {
+			return s.Folder.Name
+		}
 		return "-"
 	}
 	name := dash(s.Repo.Name)
@@ -169,6 +172,9 @@ func worktreeOf(s *session.Session) string {
 		return s.Pool.Name + "/" + s.Pool.Slot
 	}
 	if s.Repo == nil {
+		if s.Folder != nil {
+			return "folder"
+		}
 		return "-"
 	}
 	if !s.Repo.IsWorktree {

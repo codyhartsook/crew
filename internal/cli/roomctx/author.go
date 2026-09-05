@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"slices"
 	"strings"
 
 	"github.com/codyhartsook/multiplayer/internal/harness"
@@ -58,7 +57,7 @@ func ResolveAuthor(ctx context.Context, st store.Store, roomKeys []string) (stri
 		if s.PID != 0 {
 			byPID[s.PID] = append(byPID[s.PID], s)
 		}
-		if s.Repo != nil && slices.Contains(roomKeys, s.Repo.Root) {
+		if inRooms(s, roomKeys) {
 			here = append(here, s)
 		}
 	}

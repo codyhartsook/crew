@@ -57,6 +57,7 @@ version. Lifecycle events are appended to `~/.multiplayer/broker.log`.
 | --- | --- |
 | `init` / `uninstall` | Set up or remove the automatic integration. |
 | `ls` / `whoami` | List active agents, or print your friendly name. |
+| `anchor` | Mark a plain folder as a room root. |
 | `dashboard` (`fleet`) | Open the dashboard for the running local broker. |
 | `post` / `resolve` | Post an entry, or answer and close a request. |
 | `room` | Show the room and acknowledge requests. |
@@ -71,6 +72,20 @@ removes the integration and keeps your data.
 Address a request to one agent with
 `crew post request --to moss-otter "Can you check this?"`. Names are
 assigned per live session and shown by `crew ls` and the dashboard.
+
+## Folders
+
+A checkout anchors its own rooms. Anywhere else, run `crew anchor` once at the
+top of the folder and every agent started underneath shares one room:
+
+```sh
+crew anchor ~/work/notes                 # room named after the directory
+crew anchor ~/work/notes --name atlas    # or named explicitly
+```
+
+Without an anchor each directory is its own room, so two agents in the same
+project would not see each other. A marker inside a checkout is ignored: the
+repository already decides those rooms.
 
 Documents are ordinary files. The current worktree room is the default target;
 use `--repo` for the repository room. A local human shell can also select an

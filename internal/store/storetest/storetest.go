@@ -24,6 +24,7 @@ func Run(t *testing.T, newStore Factory) {
 	t.Helper()
 	tests := map[string]func(*testing.T, Factory){
 		"RoundTrip":            testRoundTrip,
+		"FolderRoundTrip":      testFolderRoundTrip,
 		"Aliases":              testAliases,
 		"UpsertPreservesStart": testUpsertPreservesStart,
 		"GetUnknown":           testGetUnknown,
@@ -50,24 +51,26 @@ func base() *session.Session {
 		PID:     4242,
 		Host:    "laptop",
 		User:    "cody",
-		CWD:     "/pool/kagent-9f7087/2/kagent",
-		Repo: &session.Repo{
-			Name:       "kagent",
-			Root:       "/pool/kagent-9f7087/2/kagent",
-			MainRoot:   "/src/kagent",
-			Remote:     "ssh://git@github.com/kagent-dev/kagent.git",
-			Head:       "abc123",
-			Detached:   true,
-			IsWorktree: true,
-		},
-		Pool: &session.Pool{
-			Manager:     "treehouse",
-			Name:        "kagent-9f7087",
-			Slot:        "2",
-			Root:        "/pool/kagent-9f7087/2/kagent",
-			Leased:      true,
-			LeaseID:     "70b6d0fd",
-			LeaseHolder: "agent:agenttemplate-create-apply",
+		Place: session.Place{
+			CWD: "/pool/kagent-9f7087/2/kagent",
+			Repo: &session.Repo{
+				Name:       "kagent",
+				Root:       "/pool/kagent-9f7087/2/kagent",
+				MainRoot:   "/src/kagent",
+				Remote:     "ssh://git@github.com/kagent-dev/kagent.git",
+				Head:       "abc123",
+				Detached:   true,
+				IsWorktree: true,
+			},
+			Pool: &session.Pool{
+				Manager:     "treehouse",
+				Name:        "kagent-9f7087",
+				Slot:        "2",
+				Root:        "/pool/kagent-9f7087/2/kagent",
+				Leased:      true,
+				LeaseID:     "70b6d0fd",
+				LeaseHolder: "agent:agenttemplate-create-apply",
+			},
 		},
 		StartedAt: start,
 		LastSeen:  start,
@@ -441,6 +444,37 @@ func assertKeys(t *testing.T, got []*session.Session, want []string) {
 		if keys[i] != want[i] {
 			t.Fatalf("keys = %v, want %v", keys, want)
 		}
+	}
+}
+
+// A folder session carries no repo, and its anchor must survive the store: the
+// anchor is what later commands match a session's room on.
+func testFolderRoundTrip(t *testing.T, newStore Factory) {
+	st := newStore(t)
+	ctx := context.Background()
+
+	want := base()
+	want.ID = "folder-1"
+	want.Place = session.Place{
+		CWD:    "/work/notes/deep",
+		Folder: &session.Folder{Name: "notes", Root: "/work/notes"},
+	}
+	if err := st.Upsert(ctx, want); err != nil {
+		t.Fatalf("Upsert: %v", err)
+	}
+
+	got, err := st.Get(ctx, want.Key())
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.Folder == nil || *got.Folder != *want.Folder {
+		t.Errorf("Folder = %+v, want %+v", got.Folder, want.Folder)
+	}
+	if got.CWD != want.CWD {
+		t.Errorf("CWD = %q, want %q", got.CWD, want.CWD)
+	}
+	if got.Repo != nil {
+		t.Errorf("Repo = %+v, want nil for a folder session", got.Repo)
 	}
 }
 
