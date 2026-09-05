@@ -18,13 +18,13 @@ import (
 
 func TestPublicCommands(t *testing.T) {
 	root := New()
-	for _, name := range []string{"init", "uninstall", "ls", "dashboard", "stop", "room", "post", "resolve", "search", "docs", "publish", "open"} {
+	for _, name := range []string{"init", "uninstall", "ls", "whoami", "dashboard", "room", "post", "resolve", "search", "docs", "publish", "open"} {
 		cmd, _, err := root.Find([]string{name})
 		if err != nil || cmd.Name() != name || cmd.Hidden {
 			t.Errorf("public command %q = (%v, %v)", name, cmd, err)
 		}
 	}
-	for _, name := range []string{"get", "inbox", "install", "join", "leave", "me", "pick", "promote", "rm", "review", "state", "version", "whoami"} {
+	for _, name := range []string{"get", "inbox", "install", "join", "leave", "pick", "promote", "rm", "review", "state", "stop", "version"} {
 		if cmd, _, err := root.Find([]string{name}); err == nil && cmd.Name() == name {
 			t.Errorf("removed command %q is still available", name)
 		}
@@ -169,10 +169,13 @@ func TestDashboardAliasesAndInitBrokerFlags(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"addr", "verbose", "restart"} {
+	for _, name := range []string{"addr", "verbose"} {
 		if f := init.Flags().Lookup(name); f == nil || f.Hidden {
 			t.Errorf("init --%s = %v, want public flag", name, f)
 		}
+	}
+	if f := init.Flags().Lookup("restart"); f != nil {
+		t.Errorf("init --restart = %v, want removed", f)
 	}
 }
 

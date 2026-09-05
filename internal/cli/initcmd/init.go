@@ -30,7 +30,6 @@ func New(opts *cmdutil.Options) *cobra.Command {
 		noSandbox  bool
 		addr       string
 		verbose    bool
-		restart    bool
 	)
 
 	cmd := &cobra.Command{
@@ -44,9 +43,6 @@ It is safe to run again: our entries are reconciled, others are untouched, and
 the broker wakes live sessions when they have addressed entries.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if dryRun && restart {
-				return fmt.Errorf("--dry-run and --restart cannot be used together")
-			}
 			if opts.Server != "" {
 				return fmt.Errorf("init starts a local broker; unset --server")
 			}
@@ -128,19 +124,13 @@ the broker wakes live sessions when they have addressed entries.`,
 			}
 			if !dryRun {
 				baseURL := "http://" + addr
-				if restart && registry.IsUp(cmd.Context(), baseURL) {
-					fmt.Fprintf(out, "  %s stopping broker at %s\n", view.success("✓"), baseURL)
-					if err := registry.Stop(cmd.Context(), baseURL); err != nil {
-						return err
-					}
-				}
 				// Someone else is already serving, so this command has nothing
 				// left to do. Say that plainly: the same tick that means "now
 				// serving" below would otherwise read as if init stayed up.
 				if registry.IsUp(cmd.Context(), baseURL) {
 					fmt.Fprintf(out, "  %s broker already running at %s\n", view.success("✓"), baseURL)
 					fmt.Fprintln(out, "  "+view.muted("started by another process, so init is exiting rather than serving"))
-					fmt.Fprintln(out, "  "+view.muted("run `crew init --restart` to replace it with this binary"))
+					fmt.Fprintln(out, "  "+view.muted("stop the foreground `crew init` with Ctrl-C before starting another"))
 					printInitNextSteps(out, view)
 					return nil
 				}
@@ -166,7 +156,6 @@ the broker wakes live sessions when they have addressed entries.`,
 	cmd.Flags().BoolVar(&noSandbox, "no-sandbox-config", false, "skip the Codex sandbox grant")
 	cmd.Flags().StringVar(&addr, "addr", registry.DefaultAddr, "address for the local broker")
 	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "log every broker request")
-	cmd.Flags().BoolVar(&restart, "restart", false, "gracefully replace a running broker")
 	return cmd
 }
 

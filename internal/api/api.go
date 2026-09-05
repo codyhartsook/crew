@@ -28,11 +28,11 @@ type backend interface {
 }
 
 type Server struct {
-	store backend
-	log   *slog.Logger
-	ui    http.Handler
-	table http.Handler
-	stop  func()
+	store    backend
+	log      *slog.Logger
+	ui       http.Handler
+	table    http.Handler
+	openRoom func(string) error
 }
 
 type Option func(*Server)
@@ -48,9 +48,9 @@ func WithTableUI(h http.Handler) Option {
 	return func(s *Server) { s.table = h }
 }
 
-// WithShutdown enables the local broker's graceful shutdown endpoint.
-func WithShutdown(stop func()) Option {
-	return func(s *Server) { s.stop = stop }
+// WithRoomOpener lets the local dashboard reveal a room's document directory.
+func WithRoomOpener(open func(string) error) Option {
+	return func(s *Server) { s.openRoom = open }
 }
 
 // New returns a Server backed by st. A nil logger discards request logs.
@@ -77,8 +77,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/sessions/{key}/usage", s.setSessionUsage)
 	mux.HandleFunc("GET /v1/entries", s.listEntries)
 	mux.HandleFunc("GET /v1/meta", s.meta)
-	if s.stop != nil {
-		mux.HandleFunc("POST /v1/shutdown", s.shutdown)
+	if s.openRoom != nil {
+		mux.HandleFunc("POST /v1/rooms/open", s.openRoomDocuments)
 	}
 	if s.table != nil {
 		mux.Handle("GET /table", s.table)
@@ -91,14 +91,40 @@ func (s *Server) Handler() http.Handler {
 	return s.logRequests(mux)
 }
 
-func (s *Server) shutdown(w http.ResponseWriter, r *http.Request) {
+func (s *Server) openRoomDocuments(w http.ResponseWriter, r *http.Request) {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil || !net.ParseIP(host).IsLoopback() || r.Header.Get("Origin") != "" {
-		writeError(w, http.StatusForbidden, errors.New("shutdown is local CLI access only"))
+	origin := r.Header.Get("Origin")
+	if err != nil || !net.ParseIP(host).IsLoopback() ||
+		(origin != "" && origin != "http://"+r.Host && origin != "https://"+r.Host) {
+		writeError(w, http.StatusForbidden, errors.New("opening room documents is local dashboard access only"))
+		return
+	}
+	key := r.URL.Query().Get("room")
+	if key == "" {
+		writeError(w, http.StatusBadRequest, errors.New("room is required"))
+		return
+	}
+	members, err := s.store.Members(r.Context(), key)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	if len(members) == 0 {
+		entries, err := s.store.Entries(r.Context(), room.Filter{Rooms: []string{key}, Limit: 1})
+		if err != nil {
+			s.fail(w, err)
+			return
+		}
+		if len(entries) == 0 {
+			writeError(w, http.StatusNotFound, errors.New("room not found"))
+			return
+		}
+	}
+	if err := s.openRoom(key); err != nil {
+		s.fail(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
-	go s.stop()
 }
 
 // EndRequest is the body of POST /v1/sessions/{key}/end. An omitted EndedAt

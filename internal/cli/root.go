@@ -19,8 +19,8 @@ import (
 	"github.com/codyhartsook/multiplayer/internal/cli/roomcmd"
 	"github.com/codyhartsook/multiplayer/internal/cli/searchcmd"
 	"github.com/codyhartsook/multiplayer/internal/cli/servecmd"
-	"github.com/codyhartsook/multiplayer/internal/cli/stopcmd"
 	"github.com/codyhartsook/multiplayer/internal/cli/uninstallcmd"
+	"github.com/codyhartsook/multiplayer/internal/cli/whoamicmd"
 	"github.com/codyhartsook/multiplayer/internal/version"
 )
 
@@ -50,9 +50,9 @@ call records the git checkout, and the pool slot if there is one.`,
 	root.AddCommand(
 		hookcmd.New(opts),
 		lscmd.New(opts),
+		whoamicmd.New(opts),
 		servecmd.New(opts),
 		dashboardcmd.New(opts),
-		stopcmd.New(opts),
 		documentcmd.NewDocs(opts),
 		documentcmd.NewPublish(opts),
 		documentcmd.NewOpen(opts),
