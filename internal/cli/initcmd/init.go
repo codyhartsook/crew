@@ -235,7 +235,7 @@ func printInitNextSteps(out io.Writer, view initView, headless bool) {
 	fmt.Fprintln(out, "\n"+view.muted("Codex asks to trust a newly added hook the first time it runs."))
 }
 
-var openDashboard = dashboardcmd.OpenBrowser
+var openDashboard = dashboardcmd.OpenDashboard
 
 func maybeOpenDashboard(ctx context.Context, url string, headless bool) error {
 	if headless {
