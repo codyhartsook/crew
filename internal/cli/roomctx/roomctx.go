@@ -48,19 +48,14 @@ func Open(ctx context.Context, opts *cmdutil.Options, cwd string) (*Context, err
 		return nil, errors.New("this store does not support rooms")
 	}
 
-	loc, _ := detect.New().Detect(ctx, cwd)
-	var (
-		repo *session.Repo
-		pool *session.Pool
-	)
-	resolved := cwd
-	if loc != nil {
-		repo, pool = loc.Repo, loc.Pool
-		if loc.CWD != "" {
-			resolved = loc.CWD
+	place := session.Place{CWD: cwd}
+	if found, _ := detect.New().Detect(ctx, cwd); found != nil {
+		place = *found
+		if place.CWD == "" {
+			place.CWD = cwd
 		}
 	}
-	here := room.For(repo, pool, resolved)
+	here := room.For(place)
 	if len(here) == 0 {
 		st.Close()
 		return nil, errors.New("no room here")
@@ -84,20 +79,25 @@ func (c *Context) Has(key string) bool { return slices.Contains(c.Keys(), key) }
 // Contains reports whether a session is working in one of these rooms.
 func (c *Context) Contains(s *session.Session) bool { return inRooms(s, c.Keys()) }
 
-// Target picks the worktree room, or the repository room when asked.
-func (c *Context) Target(toRepo bool) room.Room {
+// Target picks the local room, or the repository room when asked. A folder has
+// no repository above it, so asking for one there fails rather than filing a
+// folder entry under a repo label.
+func (c *Context) Target(toRepo bool) (room.Room, error) {
+	target := c.Here[0]
 	if !toRepo {
-		return c.Here[0]
+		return target, nil
 	}
 	for _, r := range c.Here {
 		if r.Scope == room.ScopeRepo {
-			return r
+			return r, nil
 		}
 	}
+	if !target.Scope.Parented() {
+		return room.Room{}, errors.New("this location has no repository room")
+	}
 	// A primary checkout is one place, so the two rooms are the same.
-	target := c.Here[0]
 	target.Scope = room.ScopeRepo
-	return target
+	return target, nil
 }
 
 // Author names the session posting this, taking an explicit --as over inference.
@@ -204,7 +204,7 @@ func Cwd() string {
 }
 
 func inRooms(s *session.Session, keys []string) bool {
-	for _, key := range room.Keys(room.For(s.Repo, s.Pool, s.CWD)) {
+	for _, key := range room.Keys(room.For(s.Place)) {
 		if slices.Contains(keys, key) {
 			return true
 		}

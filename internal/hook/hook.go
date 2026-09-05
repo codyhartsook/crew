@@ -213,19 +213,17 @@ func newSession(harness session.Harness, p Payload, at time.Time) *session.Sessi
 	}
 }
 
-func applyLocation(sess *session.Session, loc *detect.Location) {
-	if loc == nil {
+func applyLocation(sess *session.Session, place *session.Place) {
+	if place == nil {
 		return
 	}
-	sess.CWD = loc.CWD
-	sess.Repo = loc.Repo
-	sess.Pool = loc.Pool
+	sess.Place = *place
 }
 
 // detect resolves the session's location, preferring the cwd the harness
 // reported and falling back to the hook process's own working directory, which
 // the harness sets to the session root.
-func (r *Recorder) detect(ctx context.Context, payloadCWD string) (*detect.Location, error) {
+func (r *Recorder) detect(ctx context.Context, payloadCWD string) (*session.Place, error) {
 	cwd := payloadCWD
 	if cwd == "" {
 		wd, err := os.Getwd()

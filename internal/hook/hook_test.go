@@ -84,18 +84,18 @@ func TestPayloadEvent(t *testing.T) {
 // do not need a real checkout on disk. It counts calls, which is how the tests
 // assert that the end path avoids git work it does not need.
 type fixedDetector struct {
-	loc   *detect.Location
+	loc   *session.Place
 	err   error
 	calls atomic.Int32
 }
 
-func (f *fixedDetector) Detect(context.Context, string) (*detect.Location, error) {
+func (f *fixedDetector) Detect(context.Context, string) (*session.Place, error) {
 	f.calls.Add(1)
 	return f.loc, f.err
 }
 
-func poolLocation() *detect.Location {
-	return &detect.Location{
+func poolLocation() *session.Place {
+	return &session.Place{
 		CWD: "/pool/widget-abc/3/widget",
 		Repo: &session.Repo{
 			Name: "widget", Root: "/pool/widget-abc/3/widget",
@@ -248,7 +248,7 @@ func TestRecordSurvivesDetectionFailure(t *testing.T) {
 	ctx := context.Background()
 	at := time.Date(2026, 8, 31, 9, 0, 0, 0, time.UTC)
 	rec, st := newRecorder(t, &fixedDetector{
-		loc: &detect.Location{CWD: "/somewhere"},
+		loc: &session.Place{CWD: "/somewhere"},
 		err: errors.New("git exploded"),
 	}, at)
 

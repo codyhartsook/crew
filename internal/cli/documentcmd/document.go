@@ -136,8 +136,8 @@ func resolve(ctx context.Context, rc *roomctx.Context, human bool, flags targetF
 		if err != nil {
 			return room.Room{}, "", err
 		}
-	} else {
-		target = rc.Target(flags.repo)
+	} else if target, err = rc.Target(flags.repo); err != nil {
+		return room.Room{}, "", err
 	}
 
 	if human {

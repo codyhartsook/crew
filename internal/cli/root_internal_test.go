@@ -55,11 +55,11 @@ func TestRoomAcknowledgesRequests(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sess := &session.Session{ID: "reader", Harness: session.HarnessCodex, Status: session.StatusActive, CWD: cwd, Repo: loc.Repo, StartedAt: time.Now(), LastSeen: time.Now()}
+	sess := &session.Session{ID: "reader", Harness: session.HarnessCodex, Status: session.StatusActive, Place: session.Place{CWD: cwd, Repo: loc.Repo}, StartedAt: time.Now(), LastSeen: time.Now()}
 	if err := st.Upsert(ctx, sess); err != nil {
 		t.Fatal(err)
 	}
-	here := room.For(loc.Repo, loc.Pool, cwd)
+	here := room.For(*loc)
 	for _, r := range here {
 		if err := st.Join(ctx, &room.Membership{SessionKey: sess.Key(), Room: r.Key, Scope: r.Scope, JoinedAt: time.Now()}); err != nil {
 			t.Fatal(err)
@@ -108,11 +108,11 @@ func TestRoomCommandsRepairMembership(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sess := &session.Session{ID: "reader", Harness: session.HarnessCodex, Status: session.StatusActive, CWD: cwd, Repo: loc.Repo, StartedAt: time.Now(), LastSeen: time.Now()}
+	sess := &session.Session{ID: "reader", Harness: session.HarnessCodex, Status: session.StatusActive, Place: session.Place{CWD: cwd, Repo: loc.Repo}, StartedAt: time.Now(), LastSeen: time.Now()}
 	if err := st.Upsert(ctx, sess); err != nil {
 		t.Fatal(err)
 	}
-	here := room.For(loc.Repo, loc.Pool, cwd)
+	here := room.For(*loc)
 	if err := st.Join(ctx, &room.Membership{SessionKey: sess.Key(), Room: here[0].Key, Scope: here[0].Scope, JoinedAt: time.Now()}); err != nil {
 		t.Fatal(err)
 	}
@@ -183,6 +183,76 @@ func TestDashboardRequiresInit(t *testing.T) {
 	err := run(t, "dashboard", "--addr", "127.0.0.1:0", "--no-open")
 	if err == nil || !strings.Contains(err.Error(), "crew init") {
 		t.Errorf("dashboard error = %v, want init guidance", err)
+	}
+}
+
+// An anchored folder is one room. Without the anchor every directory would be
+// its own, so agents working the same project would never see each other.
+func TestFolderRoomSpansSubdirectories(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	sub := filepath.Join(root, "a", "b")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	path := filepath.Join(t.TempDir(), "sessions.db")
+	t.Setenv("MULTIPLAYER_DB", path)
+	t.Setenv("CODEX_THREAD_ID", "folder-agent")
+
+	t.Chdir(root)
+	if err := run(t, "anchor"); err != nil {
+		t.Fatalf("anchor: %v", err)
+	}
+
+	// The agent starts in the subdirectory, as an agent usually would.
+	t.Chdir(sub)
+	loc, err := detect.New().Detect(ctx, sub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loc.Folder == nil {
+		t.Fatal("Folder = nil, want the anchor from the subdirectory")
+	}
+
+	st, err := sqlitestore.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess := &session.Session{
+		ID: "folder-agent", Harness: session.HarnessCodex, Status: session.StatusActive,
+		Place: *loc, StartedAt: time.Now(), LastSeen: time.Now(),
+	}
+	if err := st.Upsert(ctx, sess); err != nil {
+		t.Fatal(err)
+	}
+	st.Close()
+
+	if err := run(t, "post", "note", "shared context"); err != nil {
+		t.Fatalf("post from a subdirectory: %v", err)
+	}
+	// Nothing sits above a folder, so there is no repository room to post to.
+	if err := run(t, "post", "--repo", "note", "durable"); err == nil {
+		t.Error("post --repo in a folder should fail, there is no repository room")
+	}
+
+	st, err = sqlitestore.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	entries, err := st.Entries(ctx, room.Filter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("got %d entries, want 1: %+v", len(entries), entries)
+	}
+	if entries[0].Room != loc.Folder.Root {
+		t.Errorf("entry filed in %q, want the anchor %q", entries[0].Room, loc.Folder.Root)
+	}
+	if entries[0].Scope != room.ScopeFolder {
+		t.Errorf("scope = %q, want %q", entries[0].Scope, room.ScopeFolder)
 	}
 }
 

@@ -61,6 +61,28 @@ func runGit(ctx context.Context, dir string, args ...string) (string, bool, erro
 	return "", false, err
 }
 
+// gitAnchor recognizes a git checkout.
+type gitAnchor struct{}
+
+func (gitAnchor) Name() string { return "git" }
+
+func (gitAnchor) Lookup(ctx context.Context, dir string) (*session.Place, error) {
+	repo, err := gitRepo(ctx, dir)
+	if err != nil {
+		// No git binary is a definite answer everywhere on this machine, so
+		// the next anchor gets its turn. Any other failure is local and
+		// unresolved, and must not let a later anchor claim this directory.
+		if errors.Is(err, ErrGitMissing) {
+			return nil, fmt.Errorf("%w: %w", ErrAnchorUnavailable, err)
+		}
+		return nil, err
+	}
+	if repo == nil {
+		return nil, nil
+	}
+	return &session.Place{Repo: repo}, nil
+}
+
 // gitRepo describes the checkout containing dir. It returns (nil, nil) when dir
 // is not inside a git working tree, which is an ordinary outcome: agents are
 // often started somewhere that is not a repo.

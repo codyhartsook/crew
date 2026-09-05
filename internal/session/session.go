@@ -52,12 +52,10 @@ type Session struct {
 	PID  int    `json:"pid,omitempty"`
 	Host string `json:"host,omitempty"`
 	User string `json:"user,omitempty"`
-	CWD  string `json:"cwd"`
 
-	// Repo is nil when the session opened outside any git checkout.
-	Repo *Repo `json:"repo,omitempty"`
-	// Pool is nil unless Repo points at a worktree lent out by a pool manager.
-	Pool *Pool `json:"pool,omitempty"`
+	// Embedded, so the location fields stay flat in JSON and are read
+	// directly off a Session.
+	Place
 
 	StartedAt time.Time  `json:"started_at"`
 	LastSeen  time.Time  `json:"last_seen"`
@@ -100,6 +98,28 @@ func RandomAlias(used map[string]bool) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// Place is where a session is working: the directory it started in, and
+// whatever owns that directory. At most one owner is set - a session sits in a
+// git checkout or in an anchored folder, never both.
+type Place struct {
+	CWD string `json:"cwd"`
+	// Repo is nil when the session opened outside any git checkout.
+	Repo *Repo `json:"repo,omitempty"`
+	// Pool is nil unless Repo points at a worktree lent out by a pool manager.
+	Pool *Pool `json:"pool,omitempty"`
+	// Folder is nil unless the session sits in an anchored plain folder.
+	Folder *Folder `json:"folder,omitempty"`
+}
+
+// Folder is a plain directory a session works in, outside any git checkout.
+//
+// Root is the anchor: every session under it shares one room, so an agent
+// started in a subdirectory joins the room of one started at the top.
+type Folder struct {
+	Name string `json:"name"`
+	Root string `json:"root"`
 }
 
 // Repo is the git checkout a session is working in.

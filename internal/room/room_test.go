@@ -30,9 +30,7 @@ func TestKindAddressed(t *testing.T) {
 func TestForRooms(t *testing.T) {
 	cases := []struct {
 		name  string
-		repo  *session.Repo
-		pool  *session.Pool
-		cwd   string
+		place session.Place
 		want  []room.Scope
 		first string
 		label string
@@ -41,17 +39,19 @@ func TestForRooms(t *testing.T) {
 			// A primary checkout is one place, so it must not be two rooms and
 			// have everything said in it twice.
 			name:  "primary checkout collapses to one room",
-			repo:  &session.Repo{Name: "widget", Root: "/src/widget", MainRoot: "/src/widget"},
+			place: session.Place{Repo: &session.Repo{Name: "widget", Root: "/src/widget", MainRoot: "/src/widget"}},
 			want:  []room.Scope{room.ScopeWorktree},
 			first: "/src/widget",
 		},
 		{
 			name: "linked worktree also joins its repository",
-			repo: &session.Repo{
-				Name: "widget", Root: "/pool/widget-abc/3/widget",
-				MainRoot: "/src/widget", IsWorktree: true,
+			place: session.Place{
+				Repo: &session.Repo{
+					Name: "widget", Root: "/pool/widget-abc/3/widget",
+					MainRoot: "/src/widget", IsWorktree: true,
+				},
+				Pool: &session.Pool{Manager: "treehouse", Name: "widget-abc", Slot: "3"},
 			},
-			pool:  &session.Pool{Manager: "treehouse", Name: "widget-abc", Slot: "3"},
 			want:  []room.Scope{room.ScopeWorktree, room.ScopeRepo},
 			first: "/pool/widget-abc/3/widget",
 			label: "widget/3",
@@ -60,25 +60,38 @@ func TestForRooms(t *testing.T) {
 			// A pooled worktree is a directory named after the repo, so its own
 			// leaf would label it "widget/widget".
 			name: "linked worktree without pool metadata falls back to its parent",
-			repo: &session.Repo{
-				Name: "widget", Root: "/elsewhere/feature-x/widget",
-				MainRoot: "/src/widget", IsWorktree: true,
+			place: session.Place{
+				Repo: &session.Repo{
+					Name: "widget", Root: "/elsewhere/feature-x/widget",
+					MainRoot: "/src/widget", IsWorktree: true,
+				},
 			},
 			want:  []room.Scope{room.ScopeWorktree, room.ScopeRepo},
 			first: "/elsewhere/feature-x/widget",
 			label: "widget/feature-x",
 		},
 		{
-			name:  "outside a checkout the directory is the room",
-			repo:  nil,
-			cwd:   "/tmp/scratch",
-			want:  []room.Scope{room.ScopeWorktree},
+			name:  "unanchored, the directory is its own room",
+			place: session.Place{CWD: "/tmp/scratch"},
+			want:  []room.Scope{room.ScopeFolder},
 			first: "/tmp/scratch",
+		},
+		{
+			// The anchor, not the cwd, is the key: that is what lets a session
+			// started in a subdirectory share the folder's room.
+			name: "an anchored folder is keyed on its anchor",
+			place: session.Place{
+				CWD:    "/work/notes/deep/inside",
+				Folder: &session.Folder{Name: "notes", Root: "/work/notes"},
+			},
+			want:  []room.Scope{room.ScopeFolder},
+			first: "/work/notes",
+			label: "notes",
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := room.For(tc.repo, tc.pool, tc.cwd)
+			got := room.For(tc.place)
 			if len(got) != len(tc.want) {
 				t.Fatalf("got %d rooms, want %d: %+v", len(got), len(tc.want), got)
 			}
@@ -161,9 +174,9 @@ func TestForSeparatesWorktreeRoomsByLease(t *testing.T) {
 		return &session.Pool{Manager: "treehouse", Name: "widget-abc", Slot: "3", LeaseID: lease}
 	}
 
-	first := room.For(repo, slot("aaa"), "")
-	second := room.For(repo, slot("bbb"), "")
-	again := room.For(repo, slot("aaa"), "")
+	first := room.For(session.Place{Repo: repo, Pool: slot("aaa")})
+	second := room.For(session.Place{Repo: repo, Pool: slot("bbb")})
+	again := room.For(session.Place{Repo: repo, Pool: slot("aaa")})
 
 	if first[0].Key == second[0].Key {
 		t.Errorf("two leases of one slot share room key %q", first[0].Key)
@@ -184,7 +197,7 @@ func TestForKeysUnleasedWorktreeOnPathAlone(t *testing.T) {
 		MainRoot: "/src/widget", IsWorktree: true,
 	}
 	for _, pool := range []*session.Pool{nil, {Manager: "treehouse", Name: "widget-abc", Slot: "3"}} {
-		got := room.For(repo, pool, "")
+		got := room.For(session.Place{Repo: repo, Pool: pool})
 		if got[0].Key != repo.Root {
 			t.Errorf("Key = %q, want the path %q", got[0].Key, repo.Root)
 		}

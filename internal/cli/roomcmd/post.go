@@ -50,18 +50,9 @@ func post(cmd *cobra.Command, opts *cmdutil.Options, mode room.Mode, body string
 	}
 	defer rc.Close()
 
-	target := rc.Here[0]
-	if toRepo {
-		found := false
-		for _, r := range rc.Here {
-			if r.Scope == room.ScopeRepo {
-				target, found = r, true
-			}
-		}
-		// In a primary checkout the worktree and the repository are one room.
-		if !found && rc.Here[0].Scope != room.ScopeRepo {
-			target.Scope = room.ScopeRepo
-		}
+	target, err := rc.Target(toRepo)
+	if err != nil {
+		return err
 	}
 
 	author, err := rc.Author(cmd.Context(), as)

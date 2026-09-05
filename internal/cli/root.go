@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/codyhartsook/multiplayer/internal/cli/anchorcmd"
 	"github.com/codyhartsook/multiplayer/internal/cli/clearcmd"
 	"github.com/codyhartsook/multiplayer/internal/cli/cmdutil"
 	"github.com/codyhartsook/multiplayer/internal/cli/dashboardcmd"
@@ -51,6 +52,7 @@ call records the git checkout, and the pool slot if there is one.`,
 		hookcmd.New(opts),
 		lscmd.New(opts),
 		whoamicmd.New(opts),
+		anchorcmd.New(opts),
 		servecmd.New(opts),
 		dashboardcmd.New(opts),
 		documentcmd.NewDocs(opts),

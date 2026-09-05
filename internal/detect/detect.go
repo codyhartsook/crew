@@ -1,9 +1,10 @@
-// Package detect resolves a working directory into the git checkout, and the
-// worktree pool, that own it.
+// Package detect resolves a working directory into the workspace that owns it:
+// a git checkout and the worktree pool that lent it, or an anchored folder.
 package detect
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"time"
@@ -11,20 +12,11 @@ import (
 	"github.com/codyhartsook/multiplayer/internal/session"
 )
 
-// Location is everything the registry can learn about where a session runs.
-// Repo is nil outside a git checkout; Pool is nil unless that checkout is a
-// worktree lent out by a pool manager.
-type Location struct {
-	CWD  string
-	Repo *session.Repo
-	Pool *session.Pool
-}
-
-// Detector resolves a working directory into a Location. The hook depends on
-// this interface rather than the concrete implementation so tests can supply a
-// fixed location without a git binary or a real pool on disk.
+// Detector resolves a working directory into a place. The hook depends on this
+// interface rather than the concrete implementation so tests can supply a fixed
+// place without a git binary or a real pool on disk.
 type Detector interface {
-	Detect(ctx context.Context, cwd string) (*Location, error)
+	Detect(ctx context.Context, cwd string) (*session.Place, error)
 }
 
 // detectBudget caps detection as a whole rather than each git call, so a wedged
@@ -32,32 +24,40 @@ type Detector interface {
 const detectBudget = 4 * time.Second
 
 // Local detects against the real filesystem and the git binary on PATH.
-// Providers defaults to every worktree manager this package knows.
+// Anchors and Providers default to everything this package knows.
 type Local struct {
+	Anchors   []Anchor
 	Providers []Provider
 }
 
-func New() *Local { return &Local{Providers: providers} }
+func New() *Local { return &Local{Anchors: anchors, Providers: providers} }
 
-// Detect resolves cwd. Not being a git checkout is not an error, and unreadable
-// pool state is swallowed: a session is worth recording either way.
-func (l *Local) Detect(ctx context.Context, cwd string) (*Location, error) {
+// Detect resolves cwd. Belonging to no workspace is not an error, and
+// unreadable pool state is swallowed: a session is worth recording either way.
+func (l *Local) Detect(ctx context.Context, cwd string) (*session.Place, error) {
 	ctx, cancel := context.WithTimeout(ctx, detectBudget)
 	defer cancel()
 
-	loc := &Location{CWD: normalize(cwd)}
+	place := &session.Place{CWD: normalize(cwd)}
 
-	repo, err := gitRepo(ctx, cwd)
-	if err != nil {
-		return loc, err
+	for _, a := range l.Anchors {
+		found, err := a.Lookup(ctx, cwd)
+		switch {
+		case errors.Is(err, ErrAnchorUnavailable):
+			continue
+		case err != nil:
+			return place, err
+		case found == nil:
+			continue
+		}
+		found.CWD = place.CWD
+		// A pool lends out checkouts, so it decorates a repo, never a folder.
+		if found.Repo != nil {
+			found.Pool = l.pool(found.Repo.Root)
+		}
+		return found, nil
 	}
-	if repo == nil {
-		return loc, nil
-	}
-	loc.Repo = repo
-
-	loc.Pool = l.pool(repo.Root)
-	return loc, nil
+	return place, nil
 }
 
 // normalize makes a path absolute and resolves symlinks so that paths coming

@@ -83,7 +83,7 @@ func briefingFor(ctx context.Context, st store.Store, rs store.RoomStore, sess *
 	if sess == nil {
 		return "", nil
 	}
-	here := room.For(sess.Repo, sess.Pool, sess.CWD)
+	here := room.For(sess.Place)
 	if len(here) == 0 {
 		return "", nil
 	}
