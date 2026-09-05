@@ -72,6 +72,7 @@ func TestSpecsAreComplete(t *testing.T) {
 				t.Errorf("Harness = %q, want a real harness", s.Harness)
 			}
 			for name, got := range map[string]string{
+				"Label":      s.Label,
 				"Binary":     s.Binary,
 				"ConfigPath": s.ConfigPath,
 				"ConfigRoot": s.ConfigRoot,

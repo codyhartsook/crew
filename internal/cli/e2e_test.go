@@ -26,7 +26,7 @@ func runInit(t *testing.T, home string, args ...string) string {
 	root.SetContext(ctx)
 	root.SetOut(&out)
 	root.SetErr(&out)
-	root.SetArgs(append([]string{"init", "--binary", "/opt/bin/crew", "--addr", "127.0.0.1:0"}, args...))
+	root.SetArgs(append([]string{"init", "--binary", "/opt/bin/crew", "--addr", "127.0.0.1:0", "--headless"}, args...))
 	if err := root.Execute(); err != nil {
 		t.Fatalf("init %v: %v\n%s", args, err, out.String())
 	}
@@ -222,6 +222,15 @@ func TestInitIsIdempotent(t *testing.T) {
 
 	if !strings.Contains(out, "✓ codex integration ready") {
 		t.Errorf("second init output = %q, want it to report no change", out)
+	}
+	// Each hook is reported by name, and a reinstall reports it unchanged.
+	for _, event := range []string{"SessionStart", "UserPromptSubmit", "SessionEnd"} {
+		if !strings.Contains(out, event+" hook") {
+			t.Errorf("output does not name the %s hook:\n%s", event, out)
+		}
+	}
+	if !strings.Contains(out, "already current") {
+		t.Errorf("reinstall does not report hooks as current:\n%s", out)
 	}
 	hooks := readHooks(t, filepath.Join(home, ".codex", "hooks.json"))
 	for _, event := range []string{"SessionStart", "SessionEnd"} {

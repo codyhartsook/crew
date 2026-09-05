@@ -2,6 +2,7 @@ package hookconfig
 
 import (
 	"encoding/json"
+	"slices"
 	"testing"
 )
 
@@ -104,5 +105,61 @@ func TestMergeHooksEmptiesCleanly(t *testing.T) {
 	}
 	if _, ok := got["PreToolUse"]; !ok {
 		t.Error("the unrelated event was removed")
+	}
+}
+
+// Installed must recognize the entry we would write, read back through JSON,
+// and nothing else.
+func TestInstalledRecognizesOnlyACurrentEntry(t *testing.T) {
+	hooks := Merge(map[string]any{}, map[string]int{"SessionStart": 10}, "/bin/mp", "codex")
+	// Round-trip as init sees a config: timeouts come back as float64.
+	raw, err := json.Marshal(hooks)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	hooks = hookMap(t, string(raw))
+
+	if !Installed(hooks, "SessionStart", "/bin/mp", "codex", 10) {
+		t.Error("the entry Merge just wrote is not reported as installed")
+	}
+	for _, tc := range []struct {
+		name    string
+		exe     string
+		harness string
+		timeout int
+	}{
+		{"moved binary", "/usr/local/bin/mp", "codex", 10},
+		{"other harness", "/bin/mp", "claude", 10},
+		{"retimed hook", "/bin/mp", "codex", 5},
+	} {
+		if Installed(hooks, "SessionStart", tc.exe, tc.harness, tc.timeout) {
+			t.Errorf("%s: reported as installed, want a rewrite", tc.name)
+		}
+	}
+	if Installed(hooks, "SessionEnd", "/bin/mp", "codex", 3) {
+		t.Error("an event with no entry is reported as installed")
+	}
+}
+
+// A foreign hook on a managed event is not ours, however it is shaped.
+func TestInstalledIgnoresForeignEntries(t *testing.T) {
+	hooks := hookMap(t, `{"SessionStart": [
+	  {"hooks": [{"type":"command","command":"someone-else --watch","timeout":10}]}
+	]}`)
+	if Installed(hooks, "SessionStart", "/bin/mp", "codex", 10) {
+		t.Error("someone else's hook was read as ours")
+	}
+}
+
+// init walks Events to report a hook per line, so order matters.
+func TestEventsIsAnOrderedCopy(t *testing.T) {
+	got := Events()
+	want := []string{"SessionStart", "UserPromptSubmit", "SessionEnd"}
+	if !slices.Equal(got, want) {
+		t.Errorf("Events() = %v, want %v", got, want)
+	}
+	got[0] = "mutated"
+	if Events()[0] != "SessionStart" {
+		t.Error("mutating the result changed the managed list")
 	}
 }

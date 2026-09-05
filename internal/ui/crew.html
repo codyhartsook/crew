@@ -28,15 +28,21 @@
   }
   header { max-width:1560px; margin:0 auto 12px; }
   h1 { margin:0; font-size:20px; font-weight:700; letter-spacing:-0.022em; }
-  .sub { margin-top:2px; font-size:12.5px; color:var(--label-2); }
+  .subrow { display:flex; gap:26px; align-items:baseline; margin-top:2px; }
+  .sub { flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis;
+         white-space:nowrap; font-size:12.5px; color:var(--label-2); }
+  .room-title { flex:0 0 320px; margin:0 2px; font-size:11.5px; font-weight:600; }
   .cols { display:flex; gap:26px; max-width:1560px; margin:0 auto; align-items:flex-start; }
   .stage { flex:1 1 auto; min-width:0; }
   .graph { position:relative; }
-  .rooms { flex:0 0 320px; }
-  .rooms h2 { margin:9px 2px; font-size:11.5px; line-height:17px; font-weight:600; }
+  .rooms { flex:0 0 320px; height:calc(100vh - 135px); min-height:0;
+           display:flex; flex-direction:column; }
+  #rooms { min-height:0; overflow-y:auto; overscroll-behavior:contain; padding:0 1px 2px; }
   @media (max-width:1100px) {
+    .subrow { gap:12px; }
+    .room-title { flex-basis:auto; }
     .cols { flex-direction:column; }
-    .rooms { flex:none; width:100%; }
+    .rooms { flex:none; width:100%; height:70vh; }
   }
 
   .room { background:var(--card); border-radius:10px; margin-bottom:7px; overflow:hidden;
@@ -181,7 +187,10 @@
 <body>
 <header>
   <h1>crew</h1>
-  <div class="sub" id="sub">Loading…</div>
+  <div class="subrow">
+    <div class="sub" id="sub">Loading…</div>
+    <h2 class="room-title">Room activity</h2>
+  </div>
   <div class="legend" id="legend"></div>
 </header>
 <div class="cols">
@@ -194,7 +203,7 @@
     </div>
     <div class="graph"><div class="panel" id="panel" hidden></div><svg id="svg"></svg></div>
   </div>
-  <aside class="rooms"><h2>Room activity</h2><div id="rooms"></div></aside>
+  <aside class="rooms"><div id="rooms"></div></aside>
 </div>
 
 <script>

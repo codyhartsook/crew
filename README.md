@@ -45,8 +45,8 @@ make build && sudo make install-built PREFIX=/usr/local   # or system-wide
 crew init
 ```
 
-Safe to run again. It configures the agent CLIs and starts the local broker;
-use `crew dashboard` in another terminal to open the UI.
+Safe to run again. It configures the agent CLIs, starts the local broker, and
+opens the dashboard. Use `crew init --headless` to skip opening the UI.
 
 `crew init` stays in the foreground. Stop it with Ctrl-C before starting a new
 version. Lifecycle events are appended to `~/.multiplayer/broker.log`.

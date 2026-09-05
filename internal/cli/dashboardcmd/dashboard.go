@@ -31,7 +31,7 @@ func New(opts *cmdutil.Options) *cobra.Command {
 			// Already pointed at a remote registry: there is nothing to start.
 			if opts.Server != "" {
 				fmt.Fprintf(out, "dashboard  %s\n", opts.Server)
-				return openBrowser(cmd.Context(), opts.Server, noOpen)
+				return OpenBrowser(cmd.Context(), opts.Server, noOpen)
 			}
 
 			baseURL := "http://" + addr
@@ -39,7 +39,7 @@ func New(opts *cmdutil.Options) *cobra.Command {
 				return fmt.Errorf("dashboard is not running; start it with crew init")
 			}
 			fmt.Fprintf(out, "dashboard  %s\n", baseURL)
-			return openBrowser(cmd.Context(), baseURL, noOpen)
+			return OpenBrowser(cmd.Context(), baseURL, noOpen)
 		},
 	}
 
@@ -48,9 +48,9 @@ func New(opts *cmdutil.Options) *cobra.Command {
 	return cmd
 }
 
-// openBrowser asks the desktop to open url. Failing to open a browser is worth
+// OpenBrowser asks the desktop to open url. Failing to open a browser is worth
 // reporting but never worth failing the command over, since the URL is printed.
-func openBrowser(ctx context.Context, url string, skip bool) error {
+func OpenBrowser(ctx context.Context, url string, skip bool) error {
 	if skip {
 		return nil
 	}

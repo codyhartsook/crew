@@ -169,7 +169,7 @@ func TestDashboardAliasesAndInitBrokerFlags(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"addr", "verbose"} {
+	for _, name := range []string{"addr", "verbose", "headless"} {
 		if f := init.Flags().Lookup(name); f == nil || f.Hidden {
 			t.Errorf("init --%s = %v, want public flag", name, f)
 		}

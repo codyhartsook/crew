@@ -3,6 +3,7 @@
 package initcmd
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/codyhartsook/multiplayer/internal/backup"
 	"github.com/codyhartsook/multiplayer/internal/cli/cmdutil"
+	"github.com/codyhartsook/multiplayer/internal/cli/dashboardcmd"
 	"github.com/codyhartsook/multiplayer/internal/cli/hookconfig"
 	"github.com/codyhartsook/multiplayer/internal/cli/registry"
 	"github.com/codyhartsook/multiplayer/internal/cli/skill"
@@ -30,6 +32,7 @@ func New(opts *cmdutil.Options) *cobra.Command {
 		noSandbox  bool
 		addr       string
 		verbose    bool
+		headless   bool
 	)
 
 	cmd := &cobra.Command{
@@ -62,6 +65,10 @@ the broker wakes live sessions when they have addressed entries.`,
 			if err != nil {
 				return fmt.Errorf("resolve home directory: %w", err)
 			}
+			storeDir, err := opts.StoreDir()
+			if err != nil {
+				return err
+			}
 
 			selected := harness.Specs()
 			if claudeOnly != codexOnly {
@@ -73,79 +80,60 @@ the broker wakes live sessions when they have addressed entries.`,
 			}
 
 			out := cmd.OutOrStdout()
-			view := newInitView(out)
-			fmt.Fprintln(out, view.heading("Setup"))
-			for _, t := range selected {
-				name := string(t.Harness)
-				var granted bool
-				path := filepath.Join(home, t.ConfigPath)
-				changed, err := initInto(path, t, exe, dryRun)
+			rep := newReport(out)
+			showDashboard := func(url string) {
+				err := maybeOpenDashboard(cmd.Context(), url, headless)
+				if headless {
+					return
+				}
 				if err != nil {
-					return fmt.Errorf("%s: %w", name, err)
+					fmt.Fprintf(cmd.ErrOrStderr(), "crew: open dashboard: %v\n", err)
+					return
 				}
-				if t.Harness == session.HarnessClaude {
-					removed, err := hookconfig.UnregisterLegacyChannel(filepath.Join(home, ".claude.json"), dryRun)
-					if err != nil {
-						return fmt.Errorf("%s channel cleanup: %w", name, err)
-					}
-					changed = changed || removed
-				}
-				if t.SandboxTOML != "" && !noSandbox {
-					storeDir, err := opts.StoreDir()
-					if err != nil {
-						return err
-					}
-					sandboxPath := filepath.Join(home, t.SandboxTOML)
-					granted, err = codex.EnsureWritableRoot(sandboxPath, storeDir, dryRun)
-					if err != nil {
-						return fmt.Errorf("%s sandbox: %w", name, err)
-					}
-				}
-				skillPath := filepath.Join(home, t.SkillsDir, skill.Name, "SKILL.md")
-				outcome, err := skill.Install(skillPath, dryRun)
-				if err != nil {
-					return fmt.Errorf("%s skill: %w", name, err)
-				}
-				sweptLegacy, err := skill.RemoveLegacy(filepath.Join(home, t.SkillsDir), dryRun)
-				if err != nil {
-					return fmt.Errorf("%s skill: %w", name, err)
-				}
-				if outcome == skill.Preserved {
-					fmt.Fprintf(out, "  %s %s room skill has local edits; new version at %s.new\n", view.warning("!"), name, skillPath)
-				}
-				state := "ready"
-				if changed || outcome == skill.Written || granted || sweptLegacy {
-					state = "configured"
-					if dryRun {
-						state = "would be configured"
-					}
-				}
-				fmt.Fprintf(out, "  %s %s integration %s\n", view.success("✓"), name, state)
+				fmt.Fprintln(out, "  "+rep.view.muted("dashboard opened"))
 			}
-			if !dryRun {
-				baseURL := "http://" + addr
-				// Someone else is already serving, so this command has nothing
-				// left to do. Say that plainly: the same tick that means "now
-				// serving" below would otherwise read as if init stayed up.
-				if registry.IsUp(cmd.Context(), baseURL) {
-					fmt.Fprintf(out, "  %s broker already running at %s\n", view.success("✓"), baseURL)
-					fmt.Fprintln(out, "  "+view.muted("started by another process, so init is exiting rather than serving"))
-					fmt.Fprintln(out, "  "+view.muted("stop the foreground `crew init` with Ctrl-C before starting another"))
-					printInitNextSteps(out, view)
-					return nil
+
+			fmt.Fprintln(out, rep.view.heading("Setup"))
+			for _, spec := range selected {
+				if err := rep.install(cmd.Context(), install{
+					spec:     spec,
+					home:     home,
+					exe:      exe,
+					storeDir: storeDir,
+					dryRun:   dryRun,
+					sandbox:  !noSandbox,
+				}); err != nil {
+					return err
 				}
-				return registry.Serve(cmd.Context(), opts, registry.Config{
-					Addr:    addr,
-					Verbose: verbose,
-					Log:     cmd.ErrOrStderr(),
-					OnReady: func(url string) {
-						fmt.Fprintf(out, "  %s broker running at %s (notifications enabled)\n", view.success("✓"), url)
-						fmt.Fprintln(out, "  "+view.muted("serving here; this command stays running until you stop it"))
-						printInitNextSteps(out, view)
-					},
-				})
 			}
-			return nil
+			if dryRun {
+				return nil
+			}
+
+			fmt.Fprintln(out)
+			baseURL := "http://" + addr
+			// Someone else is already serving, so this command has nothing
+			// left to do. Say that plainly: the same tick that means "now
+			// serving" below would otherwise read as if init stayed up.
+			if registry.IsUp(cmd.Context(), baseURL) {
+				fmt.Fprintf(out, "  %s broker already running at %s\n", rep.view.success("✓"), baseURL)
+				fmt.Fprintln(out, "  "+rep.view.muted("started by another process, so init is exiting rather than serving"))
+				fmt.Fprintln(out, "  "+rep.view.muted("stop the foreground `crew init` with Ctrl-C before starting another"))
+				showDashboard(baseURL)
+				printInitNextSteps(out, rep.view, headless)
+				return nil
+			}
+			return registry.Serve(cmd.Context(), opts, registry.Config{
+				Addr:    addr,
+				Verbose: verbose,
+				Log:     cmd.ErrOrStderr(),
+				OnReady: func(url string) {
+					fmt.Fprintf(out, "  %s broker running at %s (notifications enabled)\n", rep.view.success("✓"), url)
+					fmt.Fprintln(out, "  "+rep.view.muted("serving here; this command stays running until you stop it"))
+					showDashboard(url)
+					printInitNextSteps(out, rep.view, headless)
+				},
+			})
 		},
 	}
 
@@ -156,40 +144,104 @@ the broker wakes live sessions when they have addressed entries.`,
 	cmd.Flags().BoolVar(&noSandbox, "no-sandbox-config", false, "skip the Codex sandbox grant")
 	cmd.Flags().StringVar(&addr, "addr", registry.DefaultAddr, "address for the local broker")
 	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "log every broker request")
+	cmd.Flags().BoolVar(&headless, "headless", false, "do not open the dashboard")
 	return cmd
 }
 
-func printInitNextSteps(out io.Writer, view initView) {
+// install is one harness's setup.
+type install struct {
+	spec     harness.Spec
+	home     string
+	exe      string
+	storeDir string
+	dryRun   bool
+	sandbox  bool
+}
+
+// install writes one harness's hooks, skill, and sandbox grant, reporting
+// each as it lands.
+func (r report) install(ctx context.Context, in install) error {
+	spec := in.spec
+	name := string(spec.Harness)
+	configPath := filepath.Join(in.home, spec.ConfigPath)
+	r.section(spec.Label, tilde(in.home, configPath))
+
+	hooks, changed, err := applyHooks(configPath, spec, in.exe, in.dryRun)
+	if err != nil {
+		return fmt.Errorf("%s: %w", name, err)
+	}
+	for _, hook := range hooks {
+		r.step(ctx, hook.Event+" hook", state(in.dryRun, !hook.Current),
+			fmt.Sprintf("%ds timeout", hook.Timeout))
+	}
+
+	if spec.Harness == session.HarnessClaude {
+		removed, err := hookconfig.UnregisterLegacyChannel(filepath.Join(in.home, ".claude.json"), in.dryRun)
+		if err != nil {
+			return fmt.Errorf("%s channel cleanup: %w", name, err)
+		}
+		if removed {
+			r.step(ctx, "legacy channel entry", state(in.dryRun, true), tilde(in.home, filepath.Join(in.home, ".claude.json")))
+			changed = true
+		}
+	}
+
+	var granted bool
+	if spec.SandboxTOML != "" && in.sandbox {
+		sandboxPath := filepath.Join(in.home, spec.SandboxTOML)
+		granted, err = codex.EnsureWritableRoot(sandboxPath, in.storeDir, in.dryRun)
+		if err != nil {
+			return fmt.Errorf("%s sandbox: %w", name, err)
+		}
+		r.step(ctx, "sandbox write access", state(in.dryRun, granted), tilde(in.home, in.storeDir))
+	}
+
+	skillPath := filepath.Join(in.home, spec.SkillsDir, skill.Name, "SKILL.md")
+	outcome, err := skill.Install(skillPath, in.dryRun)
+	if err != nil {
+		return fmt.Errorf("%s skill: %w", name, err)
+	}
+	if outcome == skill.Preserved {
+		r.step(ctx, "room skill", stepWarn, "local edits kept; new version at "+tilde(in.home, skillPath)+".new")
+	} else {
+		r.step(ctx, "room skill", state(in.dryRun, outcome == skill.Written), tilde(in.home, filepath.Dir(skillPath)))
+	}
+
+	sweptLegacy, err := skill.RemoveLegacy(filepath.Join(in.home, spec.SkillsDir), in.dryRun)
+	if err != nil {
+		return fmt.Errorf("%s skill: %w", name, err)
+	}
+	if sweptLegacy {
+		r.step(ctx, "legacy room skill", state(in.dryRun, true), "swept")
+	}
+
+	summary := "ready"
+	if changed || outcome == skill.Written || granted || sweptLegacy {
+		summary = "configured"
+		if in.dryRun {
+			summary = "would be configured"
+		}
+	}
+	fmt.Fprintf(r.out, "  %s %s integration %s\n", r.view.success("✓"), name, summary)
+	return nil
+}
+
+func printInitNextSteps(out io.Writer, view initView, headless bool) {
 	fmt.Fprintln(out, "\n"+view.heading("Next"))
 	fmt.Fprintln(out, "  1. Start new agent sessions so they pick up the hooks.")
-	fmt.Fprintln(out, "  2. Open the dashboard: crew dashboard")
+	if headless {
+		fmt.Fprintln(out, "  2. Open the dashboard: crew dashboard")
+	}
 	fmt.Fprintln(out, "\n"+view.muted("Codex asks to trust a newly added hook the first time it runs."))
 }
 
-type initView struct{ color bool }
+var openDashboard = dashboardcmd.OpenBrowser
 
-func newInitView(out io.Writer) initView {
-	if os.Getenv("NO_COLOR") != "" || os.Getenv("TERM") == "dumb" {
-		return initView{}
+func maybeOpenDashboard(ctx context.Context, url string, headless bool) error {
+	if headless {
+		return nil
 	}
-	file, ok := out.(*os.File)
-	if !ok {
-		return initView{}
-	}
-	info, err := file.Stat()
-	return initView{color: err == nil && info.Mode()&os.ModeCharDevice != 0}
-}
-
-func (v initView) heading(text string) string { return v.style("1;36", text) }
-func (v initView) success(text string) string { return v.style("32", text) }
-func (v initView) warning(text string) string { return v.style("33", text) }
-func (v initView) muted(text string) string   { return v.style("2", text) }
-
-func (v initView) style(code, text string) string {
-	if !v.color {
-		return text
-	}
-	return "\x1b[" + code + "m" + text + "\x1b[0m"
+	return openDashboard(ctx, url, false)
 }
 
 // transient reports whether a binary path will not exist later. Running
@@ -208,35 +260,63 @@ func filterSpecs(only session.Harness) []harness.Spec {
 	return nil
 }
 
-// initInto merges the registry's hook entries into path, reporting whether
-// the file needed changing.
-func initInto(path string, t harness.Spec, exe string, dryRun bool) (bool, error) {
+// hookStatus is one lifecycle hook as init found it, before writing.
+type hookStatus struct {
+	Event   string
+	Timeout int
+	Current bool
+}
+
+// applyHooks merges our hook entries into path, reporting every hook the
+// harness prices, in firing order, and whether the file needed changing.
+func applyHooks(path string, t harness.Spec, exe string, dryRun bool) ([]hookStatus, bool, error) {
 	original, config, err := hookconfig.Read(path)
 	if err != nil {
-		return false, err
+		return nil, false, err
+	}
+	hooks := hookconfig.MapAt(config, t.ConfigRoot)
+
+	var installed []hookStatus
+	for _, event := range hookconfig.Events() {
+		timeout, priced := t.Timeouts[event]
+		if !priced {
+			continue
+		}
+		installed = append(installed, hookStatus{
+			Event:   event,
+			Timeout: timeout,
+			Current: hookconfig.Installed(hooks, event, exe, string(t.Harness), timeout),
+		})
 	}
 
-	config[t.ConfigRoot] = hookconfig.Merge(hookconfig.MapAt(config, t.ConfigRoot), t.Timeouts, exe, string(t.Harness))
-
+	config[t.ConfigRoot] = hookconfig.Merge(hooks, t.Timeouts, exe, string(t.Harness))
 	updated, err := hookconfig.Encode(config)
 	if err != nil {
-		return false, err
+		return nil, false, err
 	}
 
 	if string(original) == string(updated) {
-		return false, nil
+		return installed, false, nil
 	}
 	if dryRun {
-		return true, nil
+		return installed, true, nil
 	}
 	if err := backup.Save(path, original); err != nil {
-		return false, err
+		return nil, false, err
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return false, fmt.Errorf("create config directory: %w", err)
+		return nil, false, fmt.Errorf("create config directory: %w", err)
 	}
 	if err := os.WriteFile(path, updated, 0o644); err != nil {
-		return false, fmt.Errorf("write %s: %w", path, err)
+		return nil, false, fmt.Errorf("write %s: %w", path, err)
 	}
-	return true, nil
+	return installed, true, nil
+}
+
+// tilde shortens a path under home so report lines stay narrow.
+func tilde(home, path string) string {
+	if rest, ok := strings.CutPrefix(path, home+string(os.PathSeparator)); ok {
+		return "~" + string(os.PathSeparator) + rest
+	}
+	return path
 }
