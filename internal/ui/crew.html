@@ -414,13 +414,13 @@ function glyph(kind, size, cls) {
 //
 // Radius is the drawn size; collide adds room for the label.
 const KIND = {
-  home:     { r: 38, collide: 62, icon: null,       square: false, rx: 0 },
-  folder:   { r: 18, collide: 46, icon: "folder",   square: true,  rx: 9 },
-  repo:     { r: 15, collide: 42, icon: "repo",     square: true,  rx: 7 },
-  worktree: { r: 15, collide: 42, icon: "worktree", square: true,  rx: 7 },
-  pool:     { r: 15, collide: 42, icon: "pool",     square: true,  rx: 7 },
-  dir:      { r: 15, collide: 42, icon: "dir",      square: true,  rx: 7 },
-  agent:    { r: 13, collide: 38, icon: "agent",    square: false, rx: 0 },
+  home:     { r: 42, collide: 66, icon: null,       square: false, rx: 0 },
+  folder:   { r: 21, collide: 49, icon: "folder",   square: true,  rx: 10 },
+  repo:     { r: 18, collide: 45, icon: "repo",     square: true,  rx: 8 },
+  worktree: { r: 18, collide: 45, icon: "worktree", square: true,  rx: 8 },
+  pool:     { r: 18, collide: 45, icon: "pool",     square: true,  rx: 8 },
+  dir:      { r: 18, collide: 45, icon: "dir",      square: true,  rx: 8 },
+  agent:    { r: 16, collide: 41, icon: "agent",    square: false, rx: 0 },
 };
 
 // Collide radius of whatever sits on each ring, for sizing it.
@@ -810,7 +810,7 @@ function nodeElement(n) {
   }
 
   const plain = n.kind === "folder" && !n.glyph;
-  const size = n.kind === "folder" ? 16 : n.kind === "agent" ? 13 : 15;
+  const size = n.kind === "folder" ? 19 : n.kind === "agent" ? 16 : 18;
   const cls = plain ? "folder" : n.kind === "agent" ? "agent" : "place";
   g.append(glyph(n.glyph || n.icon, size, cls));
 
@@ -887,7 +887,8 @@ function place() {
 
 function header() {
   document.getElementById("sub").textContent =
-    VIEW.total + " agents · " + VIEW.agentsAt.size + " zones · " + VIEW.openTotal + " open · " +
+    VIEW.total + " agents · " + VIEW.agentsAt.size + " zones · " +
+    (VIEW.openTotal ? VIEW.openTotal + " open · " : "") +
     "home " + VIEW.home + (VIEW.homeExact ? "" : " (inferred)");
 }
 

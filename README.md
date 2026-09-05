@@ -46,10 +46,21 @@ crew init
 ```
 
 Safe to run again. It configures the agent CLIs, starts the local broker, and
-opens the dashboard. Use `crew init --headless` to skip opening the UI.
+opens the dashboard in Crew.app when installed, otherwise in the default
+browser. Use `crew init --headless` to skip opening the UI.
 
 `crew init` stays in the foreground. Stop it with Ctrl-C before starting a new
 version. Lifecycle events are appended to `~/.multiplayer/broker.log`.
+
+### Optional macOS app
+
+Crew.app is a small WebView around the same dashboard served by the CLI, so
+dashboard HTML, CSS, and JavaScript remain independent of the app packaging.
+
+```sh
+make install-app
+crew init
+```
 
 ## Commands
 
