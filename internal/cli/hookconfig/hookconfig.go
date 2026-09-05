@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 )
 
@@ -19,6 +20,33 @@ const marker = "hook --harness "
 // no longer prices in its Timeouts is swept on init, so dropping one removes
 // it rather than leaving an orphan hook firing with no way to uninstall it.
 var managedEvents = []string{"SessionStart", "UserPromptSubmit", "SessionEnd"}
+
+// Events lists the managed events, in firing order.
+func Events() []string { return slices.Clone(managedEvents) }
+
+// Installed reports whether hooks already carries our entry for event, exactly
+// as Merge would write it, so init can say per hook whether it changed anything.
+func Installed(hooks map[string]any, event, exe, harness string, timeout int) bool {
+	entries, ok := hooks[event].([]any)
+	if !ok {
+		return false
+	}
+	want, err := json.Marshal(hookEntry(exe, harness, timeout))
+	if err != nil {
+		return false
+	}
+	for _, entry := range entries {
+		if !isOurs(entry) {
+			continue
+		}
+		// Both sides go through encoding/json, which sorts keys, so an entry
+		// read from disk compares equal to the one we would write.
+		if got, err := json.Marshal(entry); err == nil && string(got) == string(want) {
+			return true
+		}
+	}
+	return false
+}
 
 // Merge applies this tool's entries to a hook map. Every managed event is
 // visited, not just the tracked ones, so an event this tool has stopped

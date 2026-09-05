@@ -43,6 +43,13 @@ func TestHandlersServePages(t *testing.T) {
 					t.Errorf("page loads an external resource (%q); it must be self-contained", unwanted)
 				}
 			}
+			if name == "dashboard" {
+				for _, want := range []string{"Open room documents in VS Code", "/v1/rooms/open"} {
+					if !strings.Contains(body, want) {
+						t.Errorf("dashboard is missing %q", want)
+					}
+				}
+			}
 		})
 	}
 }

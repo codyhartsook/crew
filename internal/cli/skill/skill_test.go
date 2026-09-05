@@ -7,6 +7,20 @@ import (
 	"testing"
 )
 
+func TestSkillKeepsAgentOperatingContext(t *testing.T) {
+	for _, want := range []string{
+		"crew whoami",
+		"crew ls",
+		"always use `--to`",
+		"Search before anything multi-step",
+		"Write for an agent with no context",
+	} {
+		if !strings.Contains(string(doc), want) {
+			t.Errorf("skill is missing %q", want)
+		}
+	}
+}
+
 // The skill is meant to be tuned once you see what agents write, so a re-init
 // must not overwrite an edit.
 func TestInstallPreservesLocalEdits(t *testing.T) {

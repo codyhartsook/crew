@@ -1,7 +1,6 @@
 package api_test
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -11,11 +10,55 @@ import (
 	"time"
 
 	"github.com/codyhartsook/multiplayer/internal/api"
+	"github.com/codyhartsook/multiplayer/internal/room"
 	"github.com/codyhartsook/multiplayer/internal/store"
 	"github.com/codyhartsook/multiplayer/internal/store/httpstore"
 	"github.com/codyhartsook/multiplayer/internal/store/sqlitestore"
 	"github.com/codyhartsook/multiplayer/internal/store/storetest"
 )
+
+func TestOpenRoomDocuments(t *testing.T) {
+	st, err := sqlitestore.Open(filepath.Join(t.TempDir(), "sessions.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if err := st.Join(t.Context(), &room.Membership{SessionKey: "codex:one", Room: "/repo", Scope: room.ScopeWorktree, JoinedAt: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+
+	opened := ""
+	handler := api.New(st, nil, api.WithRoomOpener(func(key string) error {
+		opened = key
+		return nil
+	})).Handler()
+	req := httptest.NewRequest(http.MethodPost, "http://localhost/v1/rooms/open?room=%2Frepo", nil)
+	req.RemoteAddr = "127.0.0.1:1234"
+	req.Header.Set("Origin", "http://localhost")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, req)
+	if response.Code != http.StatusNoContent || opened != "/repo" {
+		t.Fatalf("open room = (%d, %q), want (204, /repo)", response.Code, opened)
+	}
+
+	opened = ""
+	req = httptest.NewRequest(http.MethodPost, "http://localhost/v1/rooms/open?room=%2Frepo", nil)
+	req.RemoteAddr = "127.0.0.1:1234"
+	req.Header.Set("Origin", "https://example.com")
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, req)
+	if response.Code != http.StatusForbidden || opened != "" {
+		t.Fatalf("cross-origin open = (%d, %q), want (403, empty)", response.Code, opened)
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "http://localhost/v1/rooms/open?room=%2Fmissing", nil)
+	req.RemoteAddr = "127.0.0.1:1234"
+	response = httptest.NewRecorder()
+	handler.ServeHTTP(response, req)
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("unknown room status = %d, want 404", response.Code)
+	}
+}
 
 // TestAPIConformance runs the store conformance suite through the HTTP API, so
 // the server and its client are held to exactly the semantics the local store
@@ -33,54 +76,6 @@ func TestAPIConformance(t *testing.T) {
 
 		return httpstore.New(srv.URL, httpstore.WithHTTPClient(srv.Client()))
 	})
-}
-
-func TestShutdown(t *testing.T) {
-	st, err := sqlitestore.Open(filepath.Join(t.TempDir(), "sessions.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { st.Close() })
-	called := make(chan struct{})
-	srv := httptest.NewServer(api.New(st, nil, api.WithShutdown(func() { close(called) })).Handler())
-	t.Cleanup(srv.Close)
-
-	req, err := http.NewRequest(http.MethodPost, srv.URL+"/v1/shutdown", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	resp, err := srv.Client().Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusNoContent {
-		t.Fatalf("shutdown status = %d, want 204", resp.StatusCode)
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-	select {
-	case <-called:
-	case <-ctx.Done():
-		t.Fatal("shutdown callback was not called")
-	}
-}
-
-func TestShutdownRejectsNonLocalRequest(t *testing.T) {
-	st, err := sqlitestore.Open(filepath.Join(t.TempDir(), "sessions.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer st.Close()
-	called := false
-	handler := api.New(st, nil, api.WithShutdown(func() { called = true })).Handler()
-	req := httptest.NewRequest(http.MethodPost, "http://localhost/v1/shutdown", nil)
-	req.RemoteAddr = "192.0.2.1:1234"
-	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, req)
-	if response.Code != http.StatusForbidden || called {
-		t.Fatalf("non-local shutdown = (%d, %v), want (403, false)", response.Code, called)
-	}
 }
 
 // The dashboard renders paths relative to home, which only the registry's own

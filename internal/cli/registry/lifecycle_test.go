@@ -3,34 +3,14 @@ package registry_test
 import (
 	"context"
 	"io"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/codyhartsook/multiplayer/internal/api"
 	"github.com/codyhartsook/multiplayer/internal/cli/cmdutil"
 	"github.com/codyhartsook/multiplayer/internal/cli/registry"
-	"github.com/codyhartsook/multiplayer/internal/store/sqlitestore"
 )
-
-func TestStopWaitsForBroker(t *testing.T) {
-	st, err := sqlitestore.Open(filepath.Join(t.TempDir(), "sessions.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer st.Close()
-	var srv *httptest.Server
-	srv = httptest.NewServer(api.New(st, nil, api.WithShutdown(func() { srv.Close() })).Handler())
-
-	if err := registry.Stop(context.Background(), srv.URL); err != nil {
-		t.Fatal(err)
-	}
-	if registry.IsUp(context.Background(), srv.URL) {
-		t.Fatal("broker is still running after Stop returned")
-	}
-}
 
 func TestServeLogsLifecycle(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())

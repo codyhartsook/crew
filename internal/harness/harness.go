@@ -17,6 +17,8 @@ import (
 // Spec is everything that varies between coding-agent CLIs.
 type Spec struct {
 	Harness session.Harness
+	// Label is the harness's own name, for output a person reads.
+	Label string
 	// Binary is the process name a running session is recognized by. It is not
 	// required to match the registry key.
 	Binary string
@@ -46,6 +48,7 @@ type Spec struct {
 var specs = []Spec{
 	{
 		Harness:    session.HarnessClaude,
+		Label:      "Claude Code",
 		Binary:     "claude",
 		EnvMarkers: []string{"CLAUDECODE", "CLAUDE_PROJECT_DIR", "CLAUDE_CODE_SESSION_ID"},
 		SessionEnv: []string{"CLAUDE_CODE_SESSION_ID"},
@@ -60,6 +63,7 @@ var specs = []Spec{
 	},
 	{
 		Harness:     session.HarnessCodex,
+		Label:       "Codex",
 		Binary:      "codex",
 		EnvMarkers:  []string{"CODEX_HOME", "CODEX_SANDBOX", "CODEX_THREAD_ID"},
 		SessionEnv:  []string{"CODEX_THREAD_ID", "CODEX_SESSION_ID"},

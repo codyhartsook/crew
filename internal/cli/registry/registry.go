@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"syscall"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/codyhartsook/multiplayer/internal/api"
 	"github.com/codyhartsook/multiplayer/internal/cli/cmdutil"
+	"github.com/codyhartsook/multiplayer/internal/documents"
 	"github.com/codyhartsook/multiplayer/internal/notify"
 	"github.com/codyhartsook/multiplayer/internal/store/sqlitestore"
 	"github.com/codyhartsook/multiplayer/internal/ui"
@@ -33,8 +35,6 @@ const DefaultAddr = "127.0.0.1:8790"
 
 // probeTimeout bounds the check for a registry already listening on the address.
 const probeTimeout = 750 * time.Millisecond
-
-const stopTimeout = 5 * time.Second
 
 // Config is how a caller wants the registry run.
 type Config struct {
@@ -85,9 +85,12 @@ func Serve(ctx context.Context, opts *cmdutil.Options, cfg Config) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	srv := &http.Server{
-		Handler: api.New(st, log, api.WithUI(ui.Handler()), api.WithTableUI(ui.Table()), api.WithShutdown(func() {
-			lifecycle.Info("broker stop requested")
-			cancel()
+		Handler: api.New(st, log, api.WithUI(ui.Handler()), api.WithTableUI(ui.Table()), api.WithRoomOpener(func(key string) error {
+			dir, err := documents.Dir(filepath.Dir(path), key)
+			if err != nil {
+				return err
+			}
+			return openDirectory(dir)
 		})).Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
@@ -110,43 +113,12 @@ func Serve(ctx context.Context, opts *cmdutil.Options, cfg Config) error {
 	return err
 }
 
-// Stop asks a running broker to drain and waits until it releases its address.
-func Stop(ctx context.Context, baseURL string) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/v1/shutdown", nil)
-	if err != nil {
+func openDirectory(path string) error {
+	cmd := exec.Command("code", path)
+	if err := cmd.Start(); err != nil {
 		return err
 	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("stop broker: %w", err)
-	}
-	resp.Body.Close()
-	if resp.StatusCode == http.StatusNotFound {
-		return errors.New("running broker predates graceful shutdown; stop its original crew init once, then restart with the new binary")
-	}
-	if resp.StatusCode != http.StatusNoContent {
-		return fmt.Errorf("stop broker: unexpected HTTP status %s", resp.Status)
-	}
-
-	deadline := time.Now().Add(stopTimeout)
-	for {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		if !IsUp(ctx, baseURL) {
-			return nil
-		}
-		if time.Now().After(deadline) {
-			return errors.New("broker did not stop within 5s")
-		}
-		timer := time.NewTimer(25 * time.Millisecond)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-			return ctx.Err()
-		case <-timer.C:
-		}
-	}
+	return cmd.Process.Release()
 }
 
 // IsUp reports whether a healthy registry already answers at baseURL.
