@@ -53,12 +53,12 @@ func NewOpen(opts *cmdutil.Options) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			names, err := documents.List(dir)
+			docs, err := documents.List(dir)
 			if err != nil {
 				return err
 			}
 			path := filepath.Join(filepath.Dir(dir), "ROOM.md")
-			if err := writeSnapshot(path, snapshot(r, entries, participants, names, authors)); err != nil {
+			if err := writeSnapshot(path, snapshot(r, entries, participants, documents.Names(docs), authors)); err != nil {
 				return err
 			}
 			fmt.Fprintln(cmd.OutOrStdout(), path)

@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/user"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -60,17 +59,17 @@ func NewDocs(opts *cmdutil.Options) *cobra.Command {
 				fmt.Fprintln(cmd.OutOrStdout(), dir)
 				return nil
 			}
-			names, err := documents.List(dir)
+			docs, err := documents.List(dir)
 			if err != nil {
 				return err
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "%s (%s)  %s\n", r.Name, r.Scope, dir)
-			if len(names) == 0 {
+			if len(docs) == 0 {
 				fmt.Fprintln(cmd.OutOrStdout(), "No documents yet.")
 				return nil
 			}
-			for _, name := range names {
-				fmt.Fprintln(cmd.OutOrStdout(), name)
+			for _, doc := range docs {
+				fmt.Fprintln(cmd.OutOrStdout(), doc.Name)
 			}
 			return nil
 		},
@@ -107,7 +106,7 @@ func NewPublish(opts *cmdutil.Options) *cobra.Command {
 			}
 			e := &room.Entry{
 				Room: r.Key, Scope: r.Scope, Mode: room.ModeNote, Author: author,
-				Body: "Published document: " + name, CreatedAt: time.Now().UTC(),
+				Body: documents.PublishedNote + name, CreatedAt: time.Now().UTC(),
 			}
 			if err := rc.Rooms.Post(cmd.Context(), e); err != nil {
 				return fmt.Errorf("document was copied to %s but its room announcement failed: %w", filepath.Join(dir, name), err)
@@ -141,7 +140,7 @@ func resolve(ctx context.Context, rc *roomctx.Context, human bool, flags targetF
 	}
 
 	if human {
-		return target, humanAuthor(), nil
+		return target, room.HumanAuthor(), nil
 	}
 	author, err := rc.Author(ctx, "")
 	if err != nil {
@@ -184,13 +183,6 @@ func roomName(key string) string {
 		return key
 	}
 	return name
-}
-
-func humanAuthor() string {
-	if current, err := user.Current(); err == nil && current.Username != "" {
-		return "human:" + current.Username
-	}
-	return "human:local"
 }
 
 func isHuman() bool {

@@ -14,11 +14,15 @@ import (
 )
 
 func TestHandlersServePages(t *testing.T) {
-	pages := map[string]http.Handler{
-		"dashboard": ui.Handler(),
-		"table":     ui.Table(),
+	pages := map[string]struct {
+		handler http.Handler
+		title   string
+	}{
+		"dashboard": {ui.Handler(), "crew context"},
+		"table":     {ui.Table(), "crew"},
 	}
-	for name, h := range pages {
+	for name, page := range pages {
+		h, title := page.handler, page.title
 		t.Run(name, func(t *testing.T) {
 			rec := httptest.NewRecorder()
 			h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
@@ -33,7 +37,7 @@ func TestHandlersServePages(t *testing.T) {
 			body := rec.Body.String()
 			// The page must carry its own styles and script: nothing is fetched
 			// from a CDN, so the dashboard works with no network at all.
-			for _, want := range []string{"<title>crew</title>", "<style>", "/v1/sessions"} {
+			for _, want := range []string{"<title>" + title + "</title>", "<style>", "/v1/sessions"} {
 				if !strings.Contains(body, want) {
 					t.Errorf("page is missing %q", want)
 				}
@@ -44,7 +48,12 @@ func TestHandlersServePages(t *testing.T) {
 				}
 			}
 			if name == "dashboard" {
-				for _, want := range []string{"Open room documents in VS Code", "/v1/rooms/open"} {
+				// The room half of the page: the index and inspector, the
+				// document endpoints they drive, and the reveal action.
+				for _, want := range []string{
+					"/v1/rooms/open", "/v1/rooms/documents",
+					`id="index"`, `id="inspector"`, "roomState",
+				} {
 					if !strings.Contains(body, want) {
 						t.Errorf("dashboard is missing %q", want)
 					}

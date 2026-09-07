@@ -7,6 +7,7 @@
 package room
 
 import (
+	"os/user"
 	"time"
 
 	"github.com/codyhartsook/multiplayer/internal/session"
@@ -91,6 +92,15 @@ type Entry struct {
 // can be open, and only while nothing has resolved them.
 func (e *Entry) Open() bool {
 	return e.Mode.Addressed() && e.Resolves == 0 && e.ResolvedBy == 0
+}
+
+// HumanAuthor is the author key for a command the person ran themselves,
+// rather than an agent working on their behalf.
+func HumanAuthor() string {
+	if current, err := user.Current(); err == nil && current.Username != "" {
+		return "human:" + current.Username
+	}
+	return "human:local"
 }
 
 // Membership records that a session is listening to a room.

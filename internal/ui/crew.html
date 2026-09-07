@@ -3,13 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>crew</title>
+<title>crew context</title>
 <style>
   :root {
     --window: #f2f2f7; --card: #fff; --fill: rgba(116,116,128,0.08);
     --label: rgba(0,0,0,0.88); --label-2: rgba(60,60,67,0.6); --label-3: rgba(60,60,67,0.35);
     --separator: rgba(60,60,67,0.14); --edge: rgba(60,60,67,0.3);
     --orange:#ff9500; --teal:#0fa3b1; --gray:#8e8e93; --violet:#8b5cf6;
+    --raised: rgba(120,120,128,0.12); --accent-soft: rgba(255,149,0,0.13);
+    --green:#34c759;
     --mono: ui-monospace,"SF Mono",SFMono-Regular,Menlo,monospace;
     --sans: -apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",sans-serif;
   }
@@ -19,73 +21,147 @@
       --label:rgba(255,255,255,0.92); --label-2:rgba(235,235,245,0.58); --label-3:rgba(235,235,245,0.32);
       --separator:rgba(84,84,88,0.6); --edge:rgba(235,235,245,0.3);
       --orange:#ff9f0a; --teal:#40c8e0; --gray:#98989d; --violet:#c4b5fd;
+      --raised: rgba(120,120,128,0.24); --accent-soft: rgba(255,159,10,0.16);
+      --green:#30d158;
     }
   }
   * { box-sizing: border-box; }
+  html { height:100%; }
   body {
     margin:0; padding:24px; background:var(--window); color:var(--label);
     font:13px/1.45 var(--sans); -webkit-font-smoothing:antialiased;
+    height:100%; display:flex; flex-direction:column; overflow:auto;
   }
-  header { max-width:1560px; margin:0 auto 12px; }
+  header { flex:none; width:100%; max-width:1700px; margin:0 auto 12px; }
   h1 { margin:0; font-size:20px; font-weight:700; letter-spacing:-0.022em; }
   .subrow { display:flex; gap:26px; align-items:baseline; margin-top:2px; }
   .sub { flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis;
          white-space:nowrap; font-size:12.5px; color:var(--label-2); }
-  .room-title { flex:0 0 320px; margin:0 2px; font-size:11.5px; font-weight:600; }
-  .cols { display:flex; gap:26px; max-width:1560px; margin:0 auto; align-items:flex-start; }
-  .stage { flex:1 1 auto; min-width:0; }
-  .graph { position:relative; }
-  .rooms { flex:0 0 320px; height:calc(100vh - 135px); min-height:0;
-           display:flex; flex-direction:column; }
-  #rooms { min-height:0; overflow-y:auto; overscroll-behavior:contain; padding:0 1px 2px; }
+  .cols { display:flex; gap:26px; width:100%; max-width:1700px; margin:0 auto;
+          flex:1 1 auto; min-height:0; align-items:stretch; }
+  .stage { flex:1 1 auto; min-width:0; display:flex; flex-direction:column; min-height:0; }
+  .graph { position:relative; flex:1 1 auto; min-height:0; }
+  .rooms { flex:0 0 400px; min-height:0;
+           display:grid; grid-template-rows:auto auto minmax(0,1fr); gap:8px; }
+  .rooms h2 { margin:0 2px; font-size:10px; font-weight:600; color:var(--label-3);
+              text-transform:uppercase; letter-spacing:0.07em; }
+  /* Capped against the window, not the sidebar: this row is content-sized, so
+     a percentage here depends on the very height it is meant to decide. */
+  #index { min-height:0; max-height:32vh; overflow-y:auto; overscroll-behavior:contain; }
+  #inspector { min-height:0; overflow-y:auto; overscroll-behavior:contain;
+               background:var(--card); border-radius:10px; padding:0 12px 12px;
+               box-shadow:0 0 0 0.5px rgba(0,0,0,0.08); }
+  #inspector.empty { background:none; box-shadow:none; padding:8px 2px; }
   @media (max-width:1100px) {
     .subrow { gap:12px; }
-    .room-title { flex-basis:auto; }
+    body { height:auto; display:block; overflow:visible; }
     .cols { flex-direction:column; }
-    .rooms { flex:none; width:100%; height:70vh; }
+    .stage { display:block; }
+    .graph { min-height:0; }
+    svg { height:auto; max-height:70vh; }
+    .rooms { flex:none; width:100%; grid-template-rows:auto auto auto; }
+    #index { max-height:none; }
+    #inspector { max-height:70vh; }
   }
 
-  .room { background:var(--card); border-radius:10px; margin-bottom:7px; overflow:hidden;
+  /* ---- room index ----
+     One line per room, ordered by what wants attention. */
+  .rrow { display:grid; grid-template-columns:auto auto 1fr auto; align-items:center; gap:8px;
+          width:100%; border:0; border-radius:8px; padding:7px 9px; margin-bottom:2px;
+          background:none; color:var(--label); font:inherit; text-align:left; cursor:pointer;
+          border-left:2px solid transparent; }
+  .rrow:hover { background:var(--fill); }
+  .rrow.on { background:var(--card); border-left-color:var(--label);
+             box-shadow:0 0 0 0.5px rgba(0,0,0,0.08); }
+  .rrow.quiet { opacity:0.5; }
+  .rrow .licon { width:14px; height:14px; stroke:var(--label-3); }
+  .rrow.on .licon { stroke:var(--label-2); }
+  .rname { font-family:var(--mono); font-size:12px; font-weight:600; min-width:0;
+           overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .rname .qual { margin-left:5px; font-size:10px; font-weight:400; color:var(--label-3); }
+  .rmeta { display:flex; align-items:center; gap:6px; font-size:10px; color:var(--label-3);
+           font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .pill { border-radius:20px; padding:1px 7px; font-size:10px; font-weight:600;
+          background:var(--accent-soft); color:var(--orange); }
+  .indexempty { font-size:12px; color:var(--label-3); padding:6px 2px; }
+
+  /* ---- room inspector ---- */
+  .card { background:var(--card); border-radius:10px; padding:12px 13px;
           box-shadow:0 0 0 0.5px rgba(0,0,0,0.08); }
-  .room > summary {
-    cursor:pointer; padding:9px 12px; display:flex; align-items:baseline; gap:7px;
-    list-style:none; font-size:12px;
-  }
-  .room > summary::-webkit-details-marker { display:none; }
-  .room .caret { color:var(--label-3); font-size:10px; display:inline-block;
-                 transition:transform 0.15s ease; }
-  .room[open] .caret { transform:rotate(90deg); }
-  .room .rname { font-weight:600; font-family:var(--mono); font-size:11px;
-                 white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .room .rscope { font-size:9.5px; color:var(--label-3); text-transform:uppercase;
-                  letter-spacing:0.04em; }
-  .room .rcount { margin-left:auto; font-size:10.5px; color:var(--label-3);
-                  white-space:nowrap; font-variant-numeric:tabular-nums; }
-  .room .rcount b { color:var(--label-2); font-weight:600; }
-  .room .ropen { flex:none; border:0; padding:2px; background:none; color:var(--label-3);
-                 cursor:pointer; line-height:0; }
-  .room .ropen:hover { color:var(--label); }
-  .room .ropen:disabled { cursor:wait; opacity:0.45; }
-  .room .ropen.failed { color:var(--orange); }
-  .room .ropen .licon { stroke:currentColor; }
-  .room .rwho { padding:0 12px 8px 27px; font-size:10.5px; color:var(--label-3);
-                font-family:var(--mono); }
-  .who-name { font-weight:600; }
+  .ihead { position:sticky; top:0; z-index:2; background:var(--card);
+           padding:12px 0 8px; box-shadow:0 6px 6px -6px var(--card); }
+  .iname { display:flex; align-items:center; gap:7px; }
+  .iname .dot { margin-right:-1px; }
+  .iname .licon { width:16px; height:16px; stroke:var(--label-2); }
+  .iname h3 { margin:0; font:600 14px/1.2 var(--mono); min-width:0;
+              overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .ipath { margin-top:3px; font-size:10px; color:var(--label-3); font-family:var(--mono);
+           overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .iacts { display:flex; gap:6px; margin-left:auto; flex:none; }
+  .sec { margin-top:13px; }
+  .sec:first-of-type { margin-top:2px; }
+  .sec > h4 { margin:0 0 6px 2px; font-size:10px; font-weight:600; color:var(--label-3);
+              text-transform:uppercase; letter-spacing:0.07em;
+              display:flex; align-items:center; gap:6px; }
+  .sec > h4 b { color:var(--orange); font-weight:600; }
+  .none { font-size:11.5px; color:var(--label-3); padding:1px 2px; }
 
-  .post { padding:7px 12px 7px 27px; font-size:11.5px; box-shadow:inset 0 0.5px 0 var(--separator); }
-  .post .pmode { font-size:9.5px; font-weight:600; text-transform:uppercase; letter-spacing:0.03em;
-                 color:var(--label-3); margin-right:6px; }
-  .post.open .pmode { color:var(--label); }
-  .post .pbody { color:var(--label-2); }
-  .post.open .pbody { color:var(--label); }
-  .post .pmeta { margin-top:2px; font-size:10px; color:var(--label-3); font-family:var(--mono); }
-  .post .answer { margin-top:4px; padding-left:9px; border-left:2px solid var(--separator);
-                  color:var(--label-2); }
-  .roomsempty { font-size:12px; color:var(--label-3); padding:4px 2px; }
+  /* documents */
+  .drop { border:1px dashed var(--separator); border-radius:9px; padding:9px 11px;
+          font-size:11.5px; color:var(--label-3); text-align:center; cursor:pointer;
+          transition:border-color 0.12s ease, color 0.12s ease; }
+  .drop:hover, .drop.over { border-color:var(--label-2); color:var(--label-2); }
+  .drop.over { background:var(--fill); }
+  .doc { display:grid; grid-template-columns:auto 1fr auto auto; align-items:center;
+         gap:8px; padding:6px 4px 6px 6px; border-radius:7px; }
+  .doc:hover { background:var(--fill); }
+  .doc + .doc { box-shadow:inset 0 0.5px 0 var(--separator); }
+  .doc .licon { width:14px; height:14px; stroke:var(--label-2); }
+  .doc .dname { font-family:var(--mono); font-size:11.5px; min-width:0;
+                overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .doc .dmeta { font-size:10px; color:var(--label-3); font-variant-numeric:tabular-nums; }
+  .doc .x { border:0; background:none; padding:2px 4px; line-height:1; cursor:pointer;
+            color:var(--label-3); font-size:13px; border-radius:5px; visibility:hidden; }
+  .doc:hover .x, .doc .x.armed { visibility:visible; }
+  .doc .x:hover { color:var(--orange); background:var(--fill); }
+  .doc .x.armed { color:var(--orange); font-size:10px; font-weight:600; padding:2px 7px;
+                  background:var(--accent-soft); }
+  .err { font-size:11px; color:var(--orange); padding:3px 2px; }
+
+  /* timeline */
+  .post { padding:8px 0 8px 11px; border-left:2px solid var(--separator); }
+  .post + .post { margin-top:9px; }
+  .post.open { border-left-color:var(--orange); }
+  .post .pwho { display:flex; align-items:baseline; gap:6px; font-size:11px; }
+  .post .pwho .who-name { font-weight:600; font-family:var(--mono); }
+  .post .pwho .pmode { font-size:9.5px; font-weight:600; text-transform:uppercase;
+                       letter-spacing:0.04em; color:var(--orange); }
+  .post .pwho .pat { margin-left:auto; color:var(--label-3); font-size:10px;
+                     font-family:var(--mono); white-space:nowrap; }
+  /* Bodies read as content, so they get full contrast and a clamp. Grey is for
+     chrome; an unbounded agent note is what made the panel a wall. */
+  .post .pbody { margin-top:3px; font-size:12px; line-height:1.5; color:var(--label);
+                 white-space:pre-wrap; overflow-wrap:anywhere; }
+  .post .pbody.clamped { display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical;
+                         overflow:hidden; }
+  .post .more { border:0; background:none; padding:2px 0; margin-top:1px; cursor:pointer;
+                font:inherit; font-size:10.5px; font-weight:600; color:var(--label-2); }
+  .post .more:hover { color:var(--label); }
+  .post .answer { margin-top:6px; padding:6px 0 0 9px; box-shadow:inset 0 0.5px 0 var(--separator); }
+  .post .answer .pbody { font-size:11.5px; color:var(--label-2); }
+
+  /* A published document is an event, not another paragraph of note text. */
+  .evt { display:flex; align-items:center; gap:7px; padding:5px 2px; font-size:11px;
+         color:var(--label-2); }
+  .evt .licon { width:13px; height:13px; stroke:var(--label-3); flex:none; }
+  .evt .ename { font-family:var(--mono); color:var(--label); min-width:0;
+                overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .evt.gone .ename { text-decoration:line-through; color:var(--label-3); }
+  .evt .eat { margin-left:auto; flex:none; font-size:10px; color:var(--label-3);
+              font-family:var(--mono); white-space:nowrap; }
 
   /* ---- graph ---- */
-  svg { display:block; width:100%; height:auto; max-height:calc(100vh - 190px);
-        touch-action:none; cursor:grab; }
+  svg { display:block; width:100%; height:100%; touch-action:none; cursor:grab; }
   svg.panning { cursor:grabbing; }
 
   /* One faint guide per depth, so the rings read as structure. */
@@ -103,6 +179,17 @@
   .shape.place { fill:var(--card); stroke:color-mix(in srgb, var(--label) 26%, transparent); }
   .shape.agent { stroke:color-mix(in srgb, var(--label) 26%, transparent); }
   .shape.home { fill:var(--card); stroke:var(--separator); stroke-width:1; }
+
+  /* Room state, on the node and in the index: does this place hold context,
+     and does it want anything. Selection rules below deliberately win. */
+  .shape.needs { stroke:var(--orange); stroke-width:2.1; }
+  .shape.live { stroke:var(--green); stroke-width:1.9; }
+  .shape.ctx { stroke:color-mix(in srgb, var(--label) 46%, transparent); }
+  .dot { width:7px; height:7px; border-radius:50%; flex:none; }
+  .dot.needs { background:var(--orange); }
+  .dot.live { background:var(--green); }
+  .dot.ctx { background:var(--label-2); }
+  .dot.idle { box-shadow:inset 0 0 0 1px var(--label-3); }
   .hubtext { font-size:17px; font-weight:650; fill:var(--label); text-anchor:middle;
              pointer-events:none; font-family:var(--mono); }
 
@@ -124,7 +211,6 @@
   .nlabel { font-size:11px; font-weight:650; fill:var(--label); }
   .nlabel.folder { font-size:10.5px; fill:var(--label-2); font-weight:600; letter-spacing:0.03em; }
   .nsub { font-size:9.5px; fill:var(--label-3); }
-  body.no-labels .nlabel, body.no-labels .nsub { display:none; }
 
   .node { cursor:pointer; }
   .node, .link { transition:opacity 0.12s ease; }
@@ -150,16 +236,16 @@
   .crumb.sep { background:none; padding:0; color:var(--label-3); }
   .hint { font-size:12px; color:var(--label-3); }
 
-  .roster { margin-top:8px; display:grid; gap:9px; }
+  .roster { display:grid; gap:9px; }
+  .panel .roster { margin-top:8px; }
   .arow { display:grid; grid-template-columns:1fr auto; gap:3px 8px; font-size:11.5px; }
   .arow .bar { grid-column:1 / -1; }
   .arow .who { font-weight:600; font-family:var(--mono); font-size:11px; }
-  .arow .who i { font-style:normal; margin-right:5px; }
+  .arow .who { display:flex; align-items:center; gap:5px; }
+  .arow .who .licon { width:12px; height:12px; flex:none; }
   .arow .model { color:var(--label-3); font-family:var(--mono); font-size:10px; grid-column:1; }
   .bar { height:7px; border-radius:4px; background:var(--fill); overflow:hidden; }
   .bar span { display:block; height:100%; border-radius:4px; }
-  .bar.claude span { background:var(--orange); }
-  .bar.codex span { background:var(--teal); }
   .arow .num { color:var(--label-2); font-variant-numeric:tabular-nums; text-align:right;
                font-size:11px; }
   .arow .unknown { color:var(--label-3); font-style:italic; }
@@ -167,7 +253,8 @@
   .openrow { margin-top:8px; font-size:11.5px; color:var(--label-2); }
   .openrow b { color:var(--label); font-weight:600; }
 
-  .controls { display:flex; gap:14px; align-items:center; flex-wrap:wrap; margin-top:9px; }
+  .controls { flex:none; display:flex; gap:14px; align-items:center; flex-wrap:wrap;
+              margin-top:9px; }
   .opt { display:inline-flex; align-items:center; gap:6px; font-size:11.5px;
          color:var(--label-2); cursor:pointer; }
   .btn { border:0; border-radius:6px; padding:4px 10px; background:var(--fill);
@@ -177,19 +264,22 @@
   .legend { display:flex; gap:14px; flex-wrap:wrap; align-items:center;
             margin-top:9px; font-size:11.5px; color:var(--label-2); }
   .litem { display:inline-flex; align-items:center; gap:5px; }
+  .litem.bare + :not(.bare) { margin-left:6px; }
   .litem b { font-weight:500; color:var(--label-2); }
   .licon { width:15px; height:15px; fill:none; stroke:var(--label-2);
            stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; }
-  .licon.claude { stroke:var(--orange); }
-  .licon.codex { stroke:var(--teal); }
+  .licon.self { stroke:currentColor; }
+  .icon.logo, .licon.logo { fill:currentColor; stroke:none; }
+  .icon.agent.logo { color:rgba(0,0,0,0.66); }
+  .licon.logo { color:var(--label-2); }
+  .licon.self.logo { color:inherit; }
 </style>
 </head>
 <body>
 <header>
-  <h1>crew</h1>
+  <h1>crew context</h1>
   <div class="subrow">
     <div class="sub" id="sub">Loading…</div>
-    <h2 class="room-title">Room activity</h2>
   </div>
   <div class="legend" id="legend"></div>
 </header>
@@ -197,13 +287,17 @@
   <div class="stage">
     <div class="controls">
       <label class="opt"><input type="checkbox" id="opt-usage" checked> Show context usage</label>
-      <label class="opt"><input type="checkbox" id="opt-labels" checked> Labels</label>
       <button class="btn" id="reheat" type="button">Reheat</button>
       <button class="btn" id="recentre" type="button">Fit</button>
     </div>
     <div class="graph"><div class="panel" id="panel" hidden></div><svg id="svg"></svg></div>
   </div>
-  <aside class="rooms"><div id="rooms"></div></aside>
+  <aside class="rooms">
+    <h2>Rooms</h2>
+    <div id="index"></div>
+    <div id="inspector"></div>
+  </aside>
+  <input type="file" id="picker" multiple hidden>
 </div>
 
 <script>
@@ -221,6 +315,11 @@ const TAU = Math.PI * 2;
 const MIN_GAP = [0, 118, 118, 108];
 const MIN_EXTENT = 260;
 
+// Room below the outermost node for its name and subtitle. The frame is
+// height-bound, so this is what stands between the fleet reading larger and
+// its labels running off the page.
+const LABEL_ROOM = 30;
+
 // Wide enough that everything on the ring fits round it, but no wider: fixed
 // radii leave a small fleet as a few nodes lost on a huge circle.
 function ringRadii(counts) {
@@ -232,7 +331,6 @@ function ringRadii(counts) {
 }
 
 let SHOW_USAGE = remembered("crew.usage", "1") === "1";
-let SHOW_LABELS = remembered("crew.labels", "1") === "1";
 
 let DATA = { sessions: [], entries: [] };
 let VIEW = null;
@@ -240,12 +338,14 @@ let SCENE = null;
 let SIM = null;
 let SIG = "";
 let META = null;
-const OPEN_ROOMS = new Set();   // rooms the reader has expanded
+let SELECTED = remembered("crew.room", "") || null;  // room in the inspector
+const DOCS = new Map();         // room key -> { docs, unavailable, error }
+const OPEN_POSTS = new Set();   // entries the reader expanded
 const KEEP = new Map();         // id -> {x,y,vx,vy}, so a poll does not restart the layout
 let PICK = null;                // { node, sessionKey } while something is selected
 let HOVER = null;
-let TX = { k: 1, x: 0, y: 0 };
-let USER_VIEW = false;          // the reader has panned or zoomed; stop refitting
+let TX = { x: 0, y: 0 };        // pan only; the scale is locked to the fit
+let USER_VIEW = false;          // the reader has panned; stop refitting
 let DRAGGING = 0;               // nodes currently held; the view must hold still
 let RAF = 0;
 
@@ -400,9 +500,61 @@ const ICONS = {
     ["circle", { cx: 8, cy: 5.7, r: 2.5 }],
     ["path", { d: "M3.4 13.5a4.6 4.6 0 0 1 9.2 0" }],
   ],
+  doc: [
+    ["path", { d: "M4 2.4h4.6L12 5.8v7.8a.6.6 0 0 1-.6.6H4a.6.6 0 0 1-.6-.6V3a.6.6 0 0 1 .6-.6z" }],
+    ["path", { d: "M8.4 2.6v3.4H11.8" }],
+  ],
 };
 
+// ---- harness logos ----
+// The published marks, path data unmodified: Claude Code from the Claude app's
+// own assets, the OpenAI blossom from OpenAI's logo kit. Filled rather than
+// stroked, so they carry fill-rule and their own coordinate space. Both are
+// trademarks of their owners, used here only to name which harness an agent is.
+const LOGOS = {
+  claude: {
+    w: 24, h: 15, cx: 12, cy: 12.5,
+    rule: "evenodd",
+    d: "M20.998 10.949H24v3.102h-3v3.028h-1.487V20H18v-2.921h-1.487V20H15v-2.921H9V20H7.488v-2.921H6V20H4.487v-2.921H3V14.05H0V10.95h3V5h17.998v5.949zM6 10.949h1.488V8.102H6v2.847zm10.51 0H18V8.102h-1.49v2.847z",
+  },
+  codex: {
+    w: 354.674, h: 354.674, cx: 357.837, cy: 357.837,
+    d: "M508.749 317.399C516.777 287.314 508.991 253.884 485.389 230.282C461.788 206.681 428.36 198.895 398.273 206.923C376.231 184.928 343.39 174.956 311.148 183.596C278.906 192.234 255.45 217.292 247.36 247.361C217.291 255.451 192.233 278.91 183.595 311.149C174.957 343.391 184.927 376.232 206.924 398.274C198.896 428.359 206.683 461.789 230.284 485.391C253.885 508.992 287.313 516.779 317.401 508.75C339.442 530.745 372.286 540.717 404.525 532.079C436.767 523.441 460.223 498.384 468.313 468.315C498.383 460.224 523.44 436.766 532.078 404.526C540.716 372.285 530.747 339.443 508.749 317.402V317.399ZM470.899 244.776C486.892 260.77 493.488 282.601 490.687 303.412L415.577 260.046C412.411 258.218 408.509 258.218 405.345 260.046L317.401 310.82V277.526C317.401 275.191 318.652 273.005 320.676 271.837L387.644 233.174C414.178 218.353 448.346 222.223 470.901 244.776H470.899ZM357.837 311.144L398.275 334.491V381.185L357.837 404.532L317.398 381.185V334.491L357.837 311.144ZM264.776 269.693C265.207 239.305 285.644 211.649 316.453 203.393C338.3 197.54 360.505 202.744 377.127 215.573L302.014 258.937C298.848 260.764 296.898 264.144 296.898 267.798V369.346L268.065 352.699C266.043 351.531 264.776 349.353 264.776 347.017V269.691V269.693ZM203.391 316.454C209.244 294.608 224.854 277.978 244.276 269.999V356.73C244.276 360.384 246.226 363.763 249.392 365.591L337.337 416.365L308.503 433.013C306.481 434.181 303.961 434.188 301.939 433.02L234.971 394.357C208.868 378.789 195.138 347.261 203.391 316.454ZM244.775 470.9C228.781 454.906 222.186 433.075 224.986 412.264L300.096 455.63C303.263 457.457 307.164 457.457 310.328 455.63L398.273 404.856V438.149C398.273 440.485 397.022 442.671 394.997 443.839L328.029 482.502C301.495 497.322 267.327 493.452 244.772 470.9H244.775ZM450.897 445.982C450.466 476.371 430.029 504.027 399.22 512.283C377.373 518.136 355.168 512.932 338.547 500.102L413.659 456.738C416.826 454.911 418.775 451.532 418.775 447.877V346.329L447.609 362.977C449.631 364.145 450.897 366.323 450.897 368.659V445.985V445.982ZM512.282 399.221C506.429 421.068 490.819 437.697 471.397 445.676V358.946C471.397 355.292 469.448 351.912 466.281 350.085L378.336 299.311L407.17 282.663C409.192 281.495 411.712 281.487 413.734 282.655L480.702 321.318C506.805 336.887 520.536 368.415 512.282 399.221Z",
+  },
+};
+
+// LOGO_FIT is the share of a glyph box the artwork fills, by area, so a wide
+// mark and a square one read as the same weight.
+const LOGO_FIT = 0.78;
+
+// logoBox is the square viewBox side that gives a logo its optical size.
+function logoBox(logo) {
+  return Math.sqrt(logo.w * logo.h) / LOGO_FIT;
+}
+
+function logoPath(logo) {
+  const path = el("path", { d: logo.d });
+  if (logo.rule) path.setAttribute("fill-rule", logo.rule);
+  return path;
+}
+
+// harnessMark is the glyph for a harness, or the generic person for one this
+// page has never heard of.
+function harnessMark(harness) {
+  return LOGOS[harness] || ICONS[harness] ? harness : "agent";
+}
+
 function glyph(kind, size, cls) {
+  const logo = LOGOS[kind];
+  if (logo) {
+    const k = size / logoBox(logo);
+    const g = el("g", {
+      class: "icon logo " + cls,
+      transform: "scale(" + k + ") translate(" + -logo.cx + "," + -logo.cy + ")",
+    });
+    g.append(logoPath(logo));
+    return g;
+  }
   const shapes = ICONS[kind] || ICONS.dir;
   const k = size / 16;
   const g = el("g", { class: "icon " + cls, transform: "scale(" + k + ") translate(-8,-8)" });
@@ -502,6 +654,7 @@ function buildGraph() {
       const key = sess.harness + ":" + sess.id;
       const node = Object.assign({
         id: "a:" + key, key, sess, kind: "agent", role: "agent",
+        glyph: harnessMark(sess.harness),
         name: sess.alias || sess.harness, path: place.path,
         parent: place, zone: place, depth: 3,
         a0: place.a0 + i * span, a1: place.a0 + (i + 1) * span,
@@ -536,7 +689,7 @@ function buildGraph() {
 
   VIEW = {
     root, nodes, links, byPath, zones, sessions, entries, agentsAt, entriesAt, openAt,
-    authors: new Map(sessions.map((x) => [x.harness + ":" + x.id, x.alias])),
+    authors: new Map(DATA.sessions.map((x) => [x.harness + ":" + x.id, x.alias])),
     palette, openTotal: entries.filter(isOpen).length, home, homeExact,
     total: sessions.length, waiting,
   };
@@ -735,6 +888,12 @@ function draw() {
   keepPositions();
   const cold = KEEP.size === 0;
   buildGraph();
+  buildRooms();
+  if (SELECTED && !PICK) {
+    const r = VIEW.rooms.find((x) => x.key === SELECTED);
+    const node = r ? VIEW.byPath.get(r.path) : null;
+    if (node) PICK = { node, sessionKey: null };
+  }
   SIM = createSim(VIEW.nodes, VIEW.links);
   scene();
   place();
@@ -801,7 +960,7 @@ function nodeElement(n) {
 
   if (n.square) {
     g.append(el("rect", {
-      class: "shape " + (n.kind === "folder" ? "folder" : "place"),
+      class: "shape " + (n.kind === "folder" ? "folder" : "place") + " " + zoneState(n),
       x: -n.r, y: -n.r, width: n.r * 2, height: n.r * 2, rx: n.rx,
     }));
   } else {
@@ -810,7 +969,7 @@ function nodeElement(n) {
   }
 
   const plain = n.kind === "folder" && !n.glyph;
-  const size = n.kind === "folder" ? 19 : n.kind === "agent" ? 16 : 18;
+  const size = n.kind === "folder" ? 24 : n.kind === "agent" ? 20 : 23;
   const cls = plain ? "folder" : n.kind === "agent" ? "agent" : "place";
   g.append(glyph(n.glyph || n.icon, size, cls));
 
@@ -826,6 +985,15 @@ function nodeElement(n) {
   g.append(el("title", {}, tooltip(n)));
   wire(g, n);
   return g;
+}
+
+// zoneState is the strongest state of the rooms standing at this place.
+function zoneState(n) {
+  const here = (VIEW.rooms || []).filter((r) => r.path === n.path);
+  for (const want of ["needs", "live", "ctx"]) {
+    if (here.some((r) => roomState(r) === want)) return want;
+  }
+  return "";
 }
 
 // The ring is the context window and the arc is what has been spent - the same
@@ -894,16 +1062,15 @@ function header() {
 
 function applyTransform() {
   if (!SCENE) return;
-  SCENE.root.setAttribute("transform",
-    "translate(" + TX.x + "," + TX.y + ") scale(" + TX.k + ")");
+  SCENE.root.setAttribute("transform", "translate(" + TX.x + "," + TX.y + ")");
 }
 
 // Home is pinned at the origin, so framing is just a square viewBox wide
-// enough for the outermost label. A pan or zoom freezes it.
+// enough for the outermost label. A pan freezes it.
 function fitView() {
   if (USER_VIEW || DRAGGING || !VIEW || !VIEW.nodes.length || !SCENE) return;
   let ext = MIN_EXTENT;
-  for (const n of VIEW.nodes) ext = Math.max(ext, Math.hypot(n.x, n.y) + n.r + 36);
+  for (const n of VIEW.nodes) ext = Math.max(ext, Math.hypot(n.x, n.y) + n.r + LABEL_ROOM);
   SCENE.svg.setAttribute("viewBox", -ext + " " + -ext + " " + ext * 2 + " " + ext * 2);
 }
 
@@ -981,6 +1148,7 @@ function wire(g, n) {
   g.addEventListener("pointerenter", () => {
     HOVER = n;
     highlight(n.zone, n.key || null);
+    renderPanel(n.zone, n.key || null);
   });
   g.addEventListener("pointerleave", () => {
     if (HOVER === n) HOVER = null;
@@ -1033,22 +1201,6 @@ function toGraph(ev) {
 function initStage() {
   const svg = document.getElementById("svg");
 
-  svg.addEventListener("wheel", (ev) => {
-    ev.preventDefault();
-    if (!SCENE) return;
-    const m = svg.getScreenCTM();
-    if (!m) return;
-    // Zoom about the cursor: take the pointer into viewBox units, then solve
-    // for the translation that leaves that point where it already was.
-    const p = new DOMPoint(ev.clientX, ev.clientY).matrixTransform(m.inverse());
-    const k = Math.max(0.25, Math.min(4, TX.k * Math.pow(2, -ev.deltaY * 0.002)));
-    TX.x = p.x - ((p.x - TX.x) / TX.k) * k;
-    TX.y = p.y - ((p.y - TX.y) / TX.k) * k;
-    TX.k = k;
-    USER_VIEW = true;
-    applyTransform();
-  }, { passive: false });
-
   let panning = null;
   svg.addEventListener("pointerdown", (ev) => {
     if (ev.button !== 0) return;
@@ -1087,7 +1239,7 @@ function initStage() {
 
 function recentre() {
   USER_VIEW = false;
-  TX = { k: 1, x: 0, y: 0 };
+  TX = { x: 0, y: 0 };
   applyTransform();
   fitView();
 }
@@ -1101,6 +1253,7 @@ function ancestors(n) {
 }
 
 // Dimming everything off the ancestor chain is what makes ownership legible.
+// Dimming only: the floating panel belongs to hover, the inspector to selection.
 function highlight(zone, sessionKey) {
   if (!SCENE) return;
   const chain = new Set(ancestors(zone).map((n) => n.path));
@@ -1123,14 +1276,37 @@ function highlight(zone, sessionKey) {
   for (const e of SCENE.linkEls) {
     e.classList.toggle("dim", !(lit.has(e.dataset.source) && lit.has(e.dataset.target)));
   }
-  renderPanel(zone, sessionKey);
 }
 
 function pick(zone, sessionKey) {
   const same = PICK && PICK.node === zone && PICK.sessionKey === sessionKey;
-  PICK = same ? null : { node: zone, sessionKey };
+  if (same) return select(null, null);
+  select(roomAt(zone.path), { node: zone, sessionKey });
+}
+
+// select is the one place selection changes, whichever half was clicked.
+function select(roomKey, picked) {
+  SELECTED = roomKey || null;
+  remember("crew.room", SELECTED || "");
+  PICK = picked || null;
   repaintPicks();
   resetPanel();
+  renderIndex();
+  renderInspector();
+  if (SELECTED && !DOCS.has(SELECTED)) loadDocs([SELECTED]);
+}
+
+// selectRoom comes from the index: the graph follows the sidebar.
+function selectRoom(roomKey) {
+  const r = VIEW.rooms.find((x) => x.key === roomKey);
+  const node = r ? VIEW.byPath.get(r.path) : null;
+  select(roomKey, node ? { node, sessionKey: null } : null);
+}
+
+// roomAt names the room a graph node stands for.
+function roomAt(nodePath) {
+  const r = VIEW.rooms.find((x) => x.path === nodePath);
+  return r ? r.key : null;
 }
 
 function repaintPicks() {
@@ -1157,7 +1333,7 @@ function resetPanel() {
     for (const e of SCENE.linkEls) e.classList.remove("dim");
   }
   markWaiting();
-  if (PICK) { highlight(PICK.node, PICK.sessionKey); return; }
+  if (PICK) highlight(PICK.node, PICK.sessionKey);
   document.getElementById("panel").hidden = true;
 }
 
@@ -1197,13 +1373,6 @@ function renderPanel(node, sessionKey) {
       ": " + asked.body));
   }
 
-  const open = (VIEW.entriesAt.get(node.path) || []).filter((e) => isOpen(e) && !e.to);
-  if (open.length) {
-    const row = tag("div", "openrow");
-    row.append(tag("b", "", open.length + " open: "),
-      document.createTextNode(open.map((e) => e.body).join(" · ")));
-    panel.append(row);
-  }
 }
 
 // A crumb names a place; the full path is on the node's own tooltip.
@@ -1222,20 +1391,22 @@ function elide(name, max = 13) {
 function agentRow(s, focused) {
   const u = s.usage || {};
   const known = u.context_window > 0 && u.context_used > 0;
-  const cls = harnessClass(s.harness);
+  const colour = colourOf(s.harness + ":" + s.id);
   const row = tag("div", "arow");
   if (focused) row.style.outline = "1px solid var(--separator)";
 
-  const who = tag("div", "who " + cls);
-  who.append(tag("i", "", "●"), document.createTextNode(s.alias || s.harness));
-  who.style.color = colourOf(s.harness + ":" + s.id);
+  const who = tag("div", "who");
+  who.style.color = colour;
+  who.append(mark(harnessMark(s.harness), "self"),
+    document.createTextNode(s.alias || s.harness));
   who.append(tag("span", "model", " " + (u.model || (s.meta && s.meta.model) || s.harness)));
   row.append(who);
 
   if (known) {
-    const bar = tag("div", "bar " + cls);
+    const bar = tag("div", "bar");
     const fillEl = document.createElement("span");
     fillEl.style.width = Math.min(100, (u.context_used / u.context_window) * 100) + "%";
+    fillEl.style.background = colour;
     bar.append(fillEl);
     row.append(bar, tag("div", "num",
       Math.round((u.context_used / u.context_window) * 100) + "% of " + fmt(u.context_window) +
@@ -1246,17 +1417,22 @@ function agentRow(s, focused) {
   return row;
 }
 
-// ---- room panel ----
+// ---- rooms ----
 //
-// Mirrors room.For: the working tree a session sits in, plus the repository
-// that owns it when they differ.
+// A room is a place: its key is the path the graph already positions a node by.
+// The index says which rooms want attention, the inspector shows one room.
+
+// roomsOf mirrors room.For: the working tree a session sits in, plus the
+// repository that owns it when they differ.
 function roomsOf(sess) {
   const repo = sess.repo;
-  if (!repo) return sess.cwd ? [sess.cwd] : [];
+  if (!repo) return sess.cwd ? [{ key: sess.cwd, scope: "folder" }] : [];
   const lease = sess.pool && sess.pool.lease_id;
-  const keys = [lease ? repo.root + "#" + lease : repo.root];
-  if (repo.main_root && repo.main_root !== repo.root) keys.push(repo.main_root);
-  return keys;
+  const out = [{ key: lease ? repo.root + "#" + lease : repo.root, scope: "worktree" }];
+  if (repo.main_root && repo.main_root !== repo.root) {
+    out.push({ key: repo.main_root, scope: "repo" });
+  }
+  return out;
 }
 
 function roomName(key, home) {
@@ -1265,124 +1441,464 @@ function roomName(key, home) {
   return rel.split("/").filter(Boolean).slice(-1)[0] || rel;
 }
 
-function renderRooms() {
-  const host = document.getElementById("rooms");
+// buildRooms collects every room worth showing. A room with no posts but live
+// agents still exists; a room with posts and no agents is what the next
+// arrival will be told.
+function buildRooms() {
   const { entries, sessions, home } = VIEW;
-
-  const byRoom = new Map();
-  for (const e of entries) {
-    if (!byRoom.has(e.room)) byRoom.set(e.room, []);
-    byRoom.get(e.room).push(e);
-  }
-  const whoIn = new Map();
-  for (const sess of sessions) {
-    for (const key of roomsOf(sess)) {
-      if (!whoIn.has(key)) whoIn.set(key, []);
-      whoIn.get(key).push(sess.harness + ":" + sess.id);
+  const rooms = new Map();
+  const room = (key, scope) => {
+    let r = rooms.get(key);
+    if (!r) {
+      r = { key, scope, name: roomName(key, home), path: roomPath(key),
+            posts: [], agents: [], open: 0, last: 0 };
+      rooms.set(key, r);
     }
+    if (scope) r.scope = scope;
+    return r;
+  };
+
+  for (const sess of sessions) {
+    for (const { key, scope } of roomsOf(sess)) room(key, scope).agents.push(sess);
   }
-  // A room with no posts but live agents still exists; a room with posts and no
-  // agents is what the next arrival will be told.
-  for (const key of whoIn.keys()) if (!byRoom.has(key)) byRoom.set(key, []);
+  for (const e of entries) {
+    const r = room(e.room, e.scope);
+    r.posts.push(e);
+    if (isOpen(e)) r.open++;
+    r.last = Math.max(r.last, Date.parse(e.created_at) || 0);
+  }
 
-  const byId = new Map(entries.map((e) => [e.id, e]));
-  const rooms = [...byRoom.keys()].sort((a, b) =>
-    roomName(a, home).localeCompare(roomName(b, home)) || a.localeCompare(b));
+  // Ordered by what wants attention, not by name: open requests, then recent
+  // activity, then whoever is here.
+  VIEW.rooms = [...rooms.values()].sort((a, b) =>
+    b.open - a.open || b.last - a.last || b.agents.length - a.agents.length ||
+    a.name.localeCompare(b.name));
+  if (SELECTED && !rooms.has(SELECTED)) SELECTED = null;
 
-  if (!rooms.length) {
-    host.replaceChildren(tag("div", "roomsempty", "No rooms yet."));
+  // A pooled slot and the repository it was leased from both end in the
+  // repo's own name, so a shared name needs saying which is which.
+  const times = new Map();
+  for (const r of VIEW.rooms) times.set(r.name, (times.get(r.name) || 0) + 1);
+  for (const r of VIEW.rooms) {
+    if (times.get(r.name) < 2) continue;
+    const pooled = r.agents.find((x) => x.pool);
+    r.qual = pooled && r.key.includes("#") ? "slot " + pooled.pool.slot : r.scope;
+  }
+}
+
+function renderRooms() {
+  renderIndex();
+  renderInspector();
+  loadDocs(VIEW.rooms.map((r) => r.key));
+}
+
+// A room is worth opening when it holds context; worth acting on when
+// something in it is still open.
+function roomState(r) {
+  if (r.open) return "needs";
+  if (r.agents.length) return "live";
+  if (r.posts.length || docsOf(r.key).length) return "ctx";
+  return "idle";
+}
+
+const STATE_TITLE = {
+  needs: "has an open request",
+  live: "agents working here now",
+  ctx: "holds context, nobody here",
+  idle: "empty",
+};
+
+function stateDot(r) {
+  const dot = tag("span", "dot " + roomState(r));
+  dot.title = r.name + ": " + STATE_TITLE[roomState(r)];
+  return dot;
+}
+
+function scopeGlyph(r) {
+  if (r.key.includes("#")) return "pool";
+  return r.scope === "repo" ? "repo" : r.scope === "folder" ? "folder" : "worktree";
+}
+
+function docsOf(key) {
+  const state = DOCS.get(key);
+  return state && state.docs ? state.docs : [];
+}
+
+function renderIndex() {
+  const host = document.getElementById("index");
+  if (!VIEW.rooms.length) {
+    host.replaceChildren(tag("div", "indexempty", "No rooms yet."));
     return;
   }
+  host.replaceChildren(...VIEW.rooms.map((r) => {
+    const state = roomState(r);
+    const row = tag("button", "rrow" + (r.key === SELECTED ? " on" : "") +
+      (state === "idle" ? " quiet" : ""));
+    row.type = "button";
+    const name = tag("span", "rname", r.name);
+    if (r.qual) name.append(tag("span", "qual", r.qual));
+    row.append(stateDot(r), mark(scopeGlyph(r)), name);
 
-  host.replaceChildren(...rooms.map((key) => {
-    const posts = byRoom.get(key);
-    const open = posts.filter(isOpen).length;
-    const scope = posts.length ? posts[0].scope : "worktree";
+    const meta = tag("div", "rmeta");
+    if (r.open) meta.append(tag("span", "pill", r.open + " open"));
+    meta.append(tag("span", "", holdings(r).join(" · ") || "empty"));
+    row.append(meta);
 
-    const box = document.createElement("details");
-    box.className = "room";
-    if (OPEN_ROOMS.has(key)) box.open = true;
-    box.addEventListener("toggle", () => {
-      box.open ? OPEN_ROOMS.add(key) : OPEN_ROOMS.delete(key);
-    });
-
-    const head = document.createElement("summary");
-    const openButton = tag("button", "ropen");
-    openButton.type = "button";
-    openButton.title = "Open room documents in VS Code";
-    openButton.setAttribute("aria-label", "Open " + roomName(key, home) + " room documents in VS Code");
-    openButton.append(mark("folder"));
-    openButton.addEventListener("click", async (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      openButton.disabled = true;
-      openButton.classList.remove("failed");
-      try {
-        const response = await fetch(API + "/v1/rooms/open?room=" + encodeURIComponent(key), { method: "POST" });
-        if (!response.ok) throw new Error("HTTP " + response.status);
-      } catch (error) {
-        openButton.classList.add("failed");
-        openButton.title = "Could not open room documents";
-        console.error(error);
-      } finally {
-        openButton.disabled = false;
-      }
-    });
-    head.append(
-      tag("span", "caret", "›"),
-      tag("span", "rname", roomName(key, home)),
-      tag("span", "rscope", scope),
-      tag("span", "rcount"),
-      openButton,
-    );
-    const count = head.querySelector(".rcount");
-    if (open) count.append(tag("b", "", open + " open"), document.createTextNode(" · "));
-    count.append(document.createTextNode(posts.length + (posts.length === 1 ? " post" : " posts")));
-    box.append(head);
-
-    const here = whoIn.get(key);
-    if (here && here.length) {
-      const line = tag("div", "rwho");
-      here.forEach((k, i) => {
-        if (i) line.append(document.createTextNode(", "));
-        line.append(named(k));
-      });
-      box.append(line);
-    }
-
-    // Open first, then most recent: the same order the briefing reads in.
-    const ordered = [...posts].sort((a, b) =>
-      (isOpen(b) ? 1 : 0) - (isOpen(a) ? 1 : 0) || b.id - a.id);
-    for (const e of ordered) {
-      if (e.resolves) continue;  // answers are shown under what they answer
-      box.append(postRow(e, byId));
-    }
-    return box;
+    row.title = r.key;
+    row.addEventListener("click", () =>
+      r.key === SELECTED ? select(null, null) : selectRoom(r.key));
+    return row;
   }));
+}
+
+// holdings names what is in a room, spelled out: an abbreviation saves a few
+// pixels and costs the reader the meaning.
+function holdings(r) {
+  const out = [];
+  const say = (n, one, many) => out.push(n + " " + (n === 1 ? one : many));
+  if (r.agents.length) say(r.agents.length, "agent", "agents");
+  const docs = docsOf(r.key).length;
+  if (docs) say(docs, "doc", "docs");
+  if (r.posts.length) say(r.posts.length, "post", "posts");
+  return out;
+}
+
+function renderInspector() {
+  const host = document.getElementById("inspector");
+  const r = VIEW.rooms.find((x) => x.key === SELECTED);
+  host.classList.toggle("empty", !r);
+  if (!r) {
+    host.replaceChildren(tag("div", "none", "Select a room, or a place in the graph."));
+    return;
+  }
+  const scroll = host.scrollTop;
+  host.replaceChildren(inspectorHead(r), members(r), documentSection(r), timeline(r));
+  host.scrollTop = scroll;
+}
+
+function inspectorHead(r) {
+  const head = tag("div", "ihead");
+  const name = tag("div", "iname");
+  const title = document.createElement("h3");
+  title.textContent = r.name;
+  name.append(stateDot(r), mark(scopeGlyph(r)), title);
+
+  const acts = tag("div", "iacts");
+  const reveal = tag("button", "btn", "Folder");
+  reveal.type = "button";
+  reveal.title = "Reveal this room's document folder";
+  reveal.addEventListener("click", async () => {
+    reveal.disabled = true;
+    try {
+      const res = await fetch(API + "/v1/rooms/open?room=" + encodeURIComponent(r.key), { method: "POST" });
+      if (!res.ok) throw new Error(await message(res));
+    } catch (err) {
+      setDocError(r.key, "Could not open the folder: " + err.message);
+      renderInspector();
+    } finally {
+      reveal.disabled = false;
+    }
+  });
+  const close = tag("button", "btn", "✕");
+  close.type = "button";
+  close.title = "Close this room (Esc)";
+  close.addEventListener("click", () => select(null, null));
+  acts.append(reveal, close);
+  name.append(acts);
+
+  head.append(name, tag("div", "ipath", r.scope + " · " + r.key.replace(VIEW.home, "~")));
+  return head;
+}
+
+function members(r) {
+  const sec = tag("div", "sec");
+  sec.append(heading("Members", r.agents.length));
+  if (!r.agents.length) {
+    sec.append(tag("div", "none", "Nobody here right now."));
+    return sec;
+  }
+  const roster = tag("div", "roster");
+  for (const sess of r.agents) roster.append(agentRow(sess, false));
+  sec.append(roster);
+  return sec;
+}
+
+function heading(text, count, attention) {
+  const h = document.createElement("h4");
+  h.append(document.createTextNode(text));
+  if (count) h.append(tag(attention ? "b" : "span", "", String(count)));
+  return h;
+}
+
+// ---- documents ----
+
+function documentSection(r) {
+  const sec = tag("div", "sec");
+  const docs = docsOf(r.key);
+  sec.append(heading("Documents", docs.length));
+
+  const state = DOCS.get(r.key) || {};
+  if (state.unavailable) {
+    sec.append(tag("div", "none", "This registry serves no documents."));
+    return sec;
+  }
+  for (const doc of docs) sec.append(documentRow(r.key, doc));
+  if (state.error) sec.append(tag("div", "err", state.error));
+
+  const drop = tag("div", "drop", docs.length ? "Drop a file, or click to publish" : "No documents yet. Drop a file, or click to publish");
+  drop.addEventListener("click", () => choose(r.key));
+  drop.addEventListener("dragover", (ev) => {
+    ev.preventDefault();
+    drop.classList.add("over");
+  });
+  drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+  drop.addEventListener("drop", (ev) => {
+    ev.preventDefault();
+    drop.classList.remove("over");
+    publish(r.key, [...ev.dataTransfer.files]);
+  });
+  sec.append(drop);
+  return sec;
+}
+
+function documentRow(key, doc) {
+  const row = tag("div", "doc");
+  row.append(mark("doc"), tag("div", "dname", doc.name),
+    tag("div", "dmeta", bytes(doc.size) + " · " + age(doc.mod_time)));
+
+  // Removing is two clicks: a published document is somebody's context, and
+  // one stray click should not take it out of the room.
+  const x = tag("button", "x", "✕");
+  x.type = "button";
+  x.title = "Remove " + doc.name + " from this room";
+  let timer = 0;
+  const disarm = () => {
+    clearTimeout(timer);
+    x.classList.remove("armed");
+    x.textContent = "✕";
+  };
+  x.addEventListener("click", () => {
+    if (x.classList.contains("armed")) {
+      disarm();
+      unpublish(key, doc.name);
+      return;
+    }
+    x.classList.add("armed");
+    x.textContent = "Remove?";
+    // Leaving the row is the answer "no". The timer is only a backstop, so
+    // an armed button never outlives the reader's attention on screen.
+    timer = setTimeout(disarm, 15000);
+  });
+  row.addEventListener("pointerleave", disarm);
+  row.append(x);
+  return row;
+}
+
+function choose(key) {
+  const picker = document.getElementById("picker");
+  picker.value = "";
+  picker.onchange = () => publish(key, [...picker.files]);
+  picker.click();
+}
+
+async function publish(key, files) {
+  const failed = [];
+  for (const file of files) {
+    const body = new FormData();
+    body.append("file", file, file.name);
+    try {
+      const res = await fetch(API + "/v1/rooms/documents?room=" + encodeURIComponent(key),
+        { method: "POST", body });
+      if (!res.ok) failed.push(label(files, file, await message(res)));
+    } catch (err) {
+      failed.push(label(files, file, err.message));
+    }
+  }
+  setDocError(key, failed.join(" · "));
+  await loadDocs([key]);
+  // Publishing announces itself in the room, so the timeline has changed too.
+  load().catch(() => {});
+}
+
+// One file names itself in its own error; several need saying which failed.
+function label(files, file, text) {
+  return files.length > 1 ? file.name + ": " + text : text;
+}
+
+async function unpublish(key, name) {
+  try {
+    const res = await fetch(API + "/v1/rooms/documents?room=" + encodeURIComponent(key) +
+      "&name=" + encodeURIComponent(name), { method: "DELETE" });
+    setDocError(key, res.ok ? "" : name + ": " + await message(res));
+  } catch (err) {
+    setDocError(key, name + ": " + err.message);
+  }
+  await loadDocs([key]);
+  load().catch(() => {});
+}
+
+async function loadDocs(keys) {
+  await Promise.all(keys.map(async (key) => {
+    const state = DOCS.get(key) || {};
+    try {
+      const res = await fetch(API + "/v1/rooms/documents?room=" + encodeURIComponent(key),
+        { cache: "no-store" });
+      if (res.status === 404) {
+        // Nobody has joined this room and nothing is posted in it yet.
+        state.docs = [];
+      } else if (res.status === 403 || res.status === 405) {
+        state.unavailable = true;
+      } else if (!res.ok) {
+        state.error = "Could not read documents: " + await message(res);
+      } else {
+        state.docs = (await res.json()).documents || [];
+        state.unavailable = false;
+      }
+    } catch {
+      state.unavailable = true;
+    }
+    DOCS.set(key, state);
+  }));
+  if (!VIEW) return;
+  renderIndex();
+  renderInspector();
+  repaintStates();
+}
+
+// repaintStates refreshes node state in place: documents arrive after the
+// scene is drawn, and a room can gain context without the graph changing.
+function repaintStates() {
+  if (!SCENE) return;
+  for (const g of SCENE.nodeEls) {
+    const n = VIEW.nodes.find((x) => x.id === g.dataset.id);
+    const shape = n && n.square ? g.querySelector(".shape") : null;
+    if (!shape) continue;
+    shape.classList.remove("needs", "live", "ctx");
+    const state = zoneState(n);
+    if (state) shape.classList.add(state);
+  }
+}
+
+function setDocError(key, text) {
+  const state = DOCS.get(key) || {};
+  state.error = text;
+  DOCS.set(key, state);
+}
+
+async function message(res) {
+  try {
+    const body = await res.json();
+    if (body && body.error) return body.error;
+  } catch { /* not JSON */ }
+  return "HTTP " + res.status;
+}
+
+function bytes(n) {
+  if (!(n > 0)) return "0 B";
+  if (n < 1024) return n + " B";
+  if (n < 1048576) return (n / 1024).toFixed(n < 10240 ? 1 : 0) + " KB";
+  return (n / 1048576).toFixed(1) + " MB";
+}
+
+// ---- timeline ----
+
+function timeline(r) {
+  const sec = tag("div", "sec");
+  sec.append(heading("Timeline", r.open, true));
+  if (!r.posts.length) {
+    sec.append(tag("div", "none", "Nothing posted yet."));
+    return sec;
+  }
+  const byId = new Map(r.posts.map((e) => [e.id, e]));
+  // Open first, then most recent: the same order the briefing reads in.
+  const ordered = [...r.posts].sort((a, b) =>
+    (isOpen(b) ? 1 : 0) - (isOpen(a) ? 1 : 0) || b.id - a.id);
+  for (const e of ordered) {
+    if (e.resolves) continue;  // answers are shown under what they answer
+    sec.append(documentEvent(e) || postRow(e, byId));
+  }
+  return sec;
+}
+
+// A published or removed document is an event. Rendering it as one keeps the
+// timeline from turning the room's own bookkeeping into more note text.
+const PUBLISHED = "Published document: ";
+const REMOVED = "Removed document: ";
+
+function documentEvent(e) {
+  if (e.mode !== "note" || e.resolved_by) return null;
+  const removed = e.body.startsWith(REMOVED);
+  if (!removed && !e.body.startsWith(PUBLISHED)) return null;
+
+  const row = tag("div", "evt" + (removed ? " gone" : ""));
+  const name = e.body.slice((removed ? REMOVED : PUBLISHED).length);
+  const label = tag("span", "ename", name);
+  label.title = name;
+  row.append(mark("doc"), document.createTextNode(removed ? "removed" : "published"), label);
+  const at = tag("span", "eat");
+  at.append(named(e.author), document.createTextNode(" · " + age(e.created_at)));
+  row.append(at);
+  return row;
 }
 
 function postRow(e, byId) {
   const row = tag("div", "post" + (isOpen(e) ? " open" : ""));
-  const line = tag("div");
-  line.append(tag("span", "pmode", e.mode), tag("span", "pbody", e.body));
-  row.append(line);
+
+  const who = tag("div", "pwho");
+  who.append(named(e.author));
+  if (isOpen(e)) who.append(tag("span", "pmode", e.to ? "asking" : "request"));
+  if (e.to) who.append(tag("span", "pmode", "→"), named(e.to));
+  who.append(tag("span", "pat", "#" + e.id + " · " + age(e.created_at)));
+  row.append(who, body(e.body, e.id));
 
   const answer = e.resolved_by && byId.get(e.resolved_by);
-  if (answer) row.append(tag("div", "answer", answer.body));
-
-  const meta = tag("div", "pmeta");
-  meta.append(document.createTextNode("#" + e.id + " "), named(e.author));
-  if (e.to) meta.append(document.createTextNode(" → "), named(e.to));
-  meta.append(document.createTextNode(" · " + age(e.created_at)));
-  row.append(meta);
+  if (answer) {
+    const wrap = tag("div", "answer");
+    const line = tag("div", "pwho");
+    line.append(named(answer.author), tag("span", "pat", age(answer.created_at)));
+    wrap.append(line, body(answer.body, answer.id));
+    row.append(wrap);
+  }
   return row;
 }
 
-// An author keeps its hue wherever it is named.
+// CLAMP is a character count rather than a measured height: an agent note runs
+// to thousands of characters, and no room panel should be one post long.
+const CLAMP = 220;
+
+function body(text, id) {
+  const long = text.length > CLAMP || text.split("\n").length > 3;
+  const open = OPEN_POSTS.has(id);
+  const wrap = document.createDocumentFragment();
+  const el2 = tag("div", "pbody" + (long && !open ? " clamped" : ""), text);
+  wrap.append(el2);
+  if (!long) return wrap;
+
+  const more = tag("button", "more", open ? "Less" : "More");
+  more.type = "button";
+  more.addEventListener("click", () => {
+    OPEN_POSTS.has(id) ? OPEN_POSTS.delete(id) : OPEN_POSTS.add(id);
+    renderInspector();
+  });
+  wrap.append(more);
+  return wrap;
+}
+
+// An author keeps its hue wherever it is named. A name outlives the session;
+// the hue does not, so history reads in plain text.
 function named(key) {
-  const e = tag("span", "who-name", VIEW.authors.get(key) || key.split(":")[0]);
+  const e = tag("span", "who-name", authorName(key));
   if (VIEW.palette.has(key)) e.style.color = colourOf(key);
+  e.title = key;
   return e;
+}
+
+function authorName(key) {
+  const alias = VIEW.authors.get(key);
+  if (alias) return alias;
+  const [kind, rest] = [key.split(":")[0], key.slice(key.indexOf(":") + 1)];
+  // A person is named by their account; an agent that has gone by its harness.
+  return kind === "human" && rest ? rest : kind;
 }
 
 function age(ts) {
@@ -1407,10 +1923,6 @@ function shortModel(model) {
   return model.split("[")[0].replace(/^claude-/, "");
 }
 
-function harnessClass(h) {
-  return h === "claude" || h === "codex" ? h : "unknown";
-}
-
 function fmt(n) {
   return n >= 1e6 ? +(n / 1e6).toFixed(1) + "M" : Math.round(n / 1000) + "k";
 }
@@ -1432,20 +1944,36 @@ function el(name, attrs = {}, text) {
 // ---- legend ----
 
 function mark(kind, extra) {
-  const svg = el("svg", { viewBox: "0 0 16 16", class: "licon" + (extra ? " " + extra : "") });
+  const cls = "licon" + (extra ? " " + extra : "");
+  const logo = LOGOS[kind];
+  if (logo) {
+    const side = logoBox(logo);
+    const svg = el("svg", {
+      viewBox: (logo.cx - side / 2) + " " + (logo.cy - side / 2) + " " + side + " " + side,
+      class: cls + " logo",
+    });
+    svg.append(logoPath(logo));
+    return svg;
+  }
+  const svg = el("svg", { viewBox: "0 0 16 16", class: cls });
   for (const [t, a] of ICONS[kind]) svg.append(el(t, a));
   return svg;
 }
 
 function buildLegend() {
-  const item = (glyph2, text) => {
-    const s = tag("span", "litem");
-    s.append(glyph2, tag("b", "", text));
+  // A logo is its own label and needs only a tooltip. Room state is not here
+  // at all: every state dot already names itself on hover, where the reader
+  // is already looking.
+  const item = (glyph2, text, title) => {
+    const s = tag("span", "litem" + (text ? "" : " bare"));
+    s.title = title || text;
+    s.append(glyph2);
+    if (text) s.append(tag("b", "", text));
     return s;
   };
   document.getElementById("legend").replaceChildren(
-    item(mark("agent", "claude"), "claude"),
-    item(mark("agent", "codex"), "codex"),
+    item(mark("claude"), "", "Claude Code agent"),
+    item(mark("codex"), "", "Codex agent"),
     item(mark("folder"), "folder · no repo"),
     item(mark("repo"), "repository"),
     item(mark("worktree"), "worktree"),
@@ -1465,13 +1993,8 @@ usageBox.addEventListener("change", () => {
   if (VIEW) { scene(); place(); resetPanel(); }
 });
 
-const labelBox = document.getElementById("opt-labels");
-labelBox.checked = SHOW_LABELS;
-document.body.classList.toggle("no-labels", !SHOW_LABELS);
-labelBox.addEventListener("change", () => {
-  SHOW_LABELS = labelBox.checked;
-  remember("crew.labels", SHOW_LABELS ? "1" : "0");
-  document.body.classList.toggle("no-labels", !SHOW_LABELS);
+document.addEventListener("keydown", (ev) => {
+  if (ev.key === "Escape" && SELECTED) select(null, null);
 });
 
 document.getElementById("reheat").addEventListener("click", () => {
