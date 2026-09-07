@@ -6,15 +6,19 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"time"
 
+	"github.com/codyhartsook/multiplayer/internal/documents"
 	"github.com/codyhartsook/multiplayer/internal/room"
+	"github.com/codyhartsook/multiplayer/internal/roomdoc"
 	"github.com/codyhartsook/multiplayer/internal/session"
 	"github.com/codyhartsook/multiplayer/internal/store"
 	"github.com/codyhartsook/multiplayer/internal/usage"
@@ -28,11 +32,12 @@ type backend interface {
 }
 
 type Server struct {
-	store    backend
-	log      *slog.Logger
-	ui       http.Handler
-	table    http.Handler
-	openRoom func(string) error
+	store     backend
+	log       *slog.Logger
+	ui        http.Handler
+	table     http.Handler
+	openRoom  func(string) error
+	documents func(string) (string, error)
 }
 
 type Option func(*Server)
@@ -48,9 +53,16 @@ func WithTableUI(h http.Handler) Option {
 	return func(s *Server) { s.table = h }
 }
 
-// WithRoomOpener lets the local dashboard reveal a room's document directory.
-func WithRoomOpener(open func(string) error) Option {
+// WithRoomOpener lets the local dashboard reveal a directory on this machine.
+// It is given the path to open, not a room key.
+func WithRoomOpener(open func(path string) error) Option {
 	return func(s *Server) { s.openRoom = open }
+}
+
+// WithDocuments mounts room document stores, resolved per room key. Without
+// it the server serves no documents.
+func WithDocuments(dir func(string) (string, error)) Option {
+	return func(s *Server) { s.documents = dir }
 }
 
 // New returns a Server backed by st. A nil logger discards request logs.
@@ -77,8 +89,13 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/sessions/{key}/usage", s.setSessionUsage)
 	mux.HandleFunc("GET /v1/entries", s.listEntries)
 	mux.HandleFunc("GET /v1/meta", s.meta)
-	if s.openRoom != nil {
-		mux.HandleFunc("POST /v1/rooms/open", s.openRoomDocuments)
+	if s.openRoom != nil && s.documents != nil {
+		mux.HandleFunc("POST /v1/rooms/open", s.local(s.openRoomDocuments))
+	}
+	if s.documents != nil {
+		mux.HandleFunc("GET /v1/rooms/documents", s.local(s.listDocuments))
+		mux.HandleFunc("POST /v1/rooms/documents", s.local(s.addDocument))
+		mux.HandleFunc("DELETE /v1/rooms/documents", s.local(s.removeDocument))
 	}
 	if s.table != nil {
 		mux.Handle("GET /table", s.table)
@@ -91,40 +108,179 @@ func (s *Server) Handler() http.Handler {
 	return s.logRequests(mux)
 }
 
-func (s *Server) openRoomDocuments(w http.ResponseWriter, r *http.Request) {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	origin := r.Header.Get("Origin")
-	if err != nil || !net.ParseIP(host).IsLoopback() ||
-		(origin != "" && origin != "http://"+r.Host && origin != "https://"+r.Host) {
-		writeError(w, http.StatusForbidden, errors.New("opening room documents is local dashboard access only"))
-		return
+// local rejects anything but the dashboard on this machine. Documents are
+// files on disk, so the surface is loopback-only and never cross-origin.
+func (s *Server) local(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		host, _, err := net.SplitHostPort(r.RemoteAddr)
+		origin := r.Header.Get("Origin")
+		if err != nil || !net.ParseIP(host).IsLoopback() ||
+			(origin != "" && origin != "http://"+r.Host && origin != "https://"+r.Host) {
+			writeError(w, http.StatusForbidden, errors.New("room documents are local dashboard access only"))
+			return
+		}
+		next(w, r)
 	}
+}
+
+// errBadRequest marks a client mistake, so one fail path can tell it from a
+// store failure.
+type errBadRequest struct{ error }
+
+// roomKey reads and verifies the room a request names. A room exists once
+// anyone has joined it or posted in it.
+func (s *Server) roomKey(r *http.Request) (string, error) {
 	key := r.URL.Query().Get("room")
 	if key == "" {
-		writeError(w, http.StatusBadRequest, errors.New("room is required"))
-		return
+		return "", errBadRequest{errors.New("room is required")}
 	}
 	members, err := s.store.Members(r.Context(), key)
+	if err != nil {
+		return "", err
+	}
+	if len(members) > 0 {
+		return key, nil
+	}
+	entries, err := s.store.Entries(r.Context(), room.Filter{Rooms: []string{key}, Limit: 1})
+	if err != nil {
+		return "", err
+	}
+	if len(entries) == 0 {
+		return "", store.ErrNotFound
+	}
+	return key, nil
+}
+
+// roomDir resolves a verified room's document directory.
+func (s *Server) roomDir(r *http.Request) (string, string, error) {
+	key, err := s.roomKey(r)
+	if err != nil {
+		return "", "", err
+	}
+	dir, err := s.documents(key)
+	return key, dir, err
+}
+
+// openRoomDocuments reveals a room's folder: the generated transcript and the
+// documents beside it. The transcript is regenerated on the way out, so what
+// opens is the room as it is now rather than as it was last time.
+func (s *Server) openRoomDocuments(w http.ResponseWriter, r *http.Request) {
+	key, dir, err := s.roomDir(r)
 	if err != nil {
 		s.fail(w, err)
 		return
 	}
-	if len(members) == 0 {
-		entries, err := s.store.Entries(r.Context(), room.Filter{Rooms: []string{key}, Limit: 1})
-		if err != nil {
-			s.fail(w, err)
-			return
-		}
-		if len(entries) == 0 {
-			writeError(w, http.StatusNotFound, errors.New("room not found"))
-			return
-		}
+	target := filepath.Dir(dir)
+	here := room.Room{Key: key, Scope: s.scopeOf(r, key), Name: room.NameFor(key)}
+	if _, err := roomdoc.Write(r.Context(), s.store, s.store, dir, here); err != nil {
+		// The documents are still worth opening without their transcript.
+		s.log.Error("write room transcript", "room", key, "error", err)
 	}
-	if err := s.openRoom(key); err != nil {
+	if err := s.openRoom(target); err != nil {
 		s.fail(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// DocumentsResponse wraps a room's document listing.
+type DocumentsResponse struct {
+	Documents []documents.Document `json:"documents"`
+	Count     int                  `json:"count"`
+}
+
+func (s *Server) listDocuments(w http.ResponseWriter, r *http.Request) {
+	_, dir, err := s.roomDir(r)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	docs, err := documents.List(dir)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, DocumentsResponse{Documents: docs, Count: len(docs)})
+}
+
+// maxDocument caps an upload: documents are plans and reports, not build output.
+const maxDocument = 25 << 20
+
+func (s *Server) addDocument(w http.ResponseWriter, r *http.Request) {
+	key, dir, err := s.roomDir(r)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxDocument+1<<16)
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("read uploaded document: %w", err))
+		return
+	}
+	defer file.Close()
+	if header.Size > maxDocument {
+		writeError(w, http.StatusRequestEntityTooLarge,
+			fmt.Errorf("document is %d bytes; the limit is %d", header.Size, maxDocument))
+		return
+	}
+
+	// Filename is already its own base: RFC 7578 forbids using the directory
+	// part and mime/multipart strips it. Add still validates what is left.
+	name, err := documents.Add(dir, header.Filename, file)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	s.announce(r, key, documents.PublishedNote+name)
+	writeJSON(w, http.StatusOK, documents.Document{Name: name, Size: header.Size, ModTime: time.Now().UTC()})
+}
+
+func (s *Server) removeDocument(w http.ResponseWriter, r *http.Request) {
+	key, dir, err := s.roomDir(r)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	name := r.URL.Query().Get("name")
+	if name == "" {
+		writeError(w, http.StatusBadRequest, errors.New("name is required"))
+		return
+	}
+	if _, err := documents.Remove(dir, name); err != nil {
+		if errors.Is(err, documents.ErrNotFound) {
+			writeError(w, http.StatusNotFound, err)
+			return
+		}
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	s.announce(r, key, documents.RemovedNote+name)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// announce records a document change in the room timeline. The file has
+// already moved, so a failed announcement is logged, not returned.
+func (s *Server) announce(r *http.Request, key, body string) {
+	e := &room.Entry{
+		Room: key, Scope: s.scopeOf(r, key), Mode: room.ModeNote,
+		Author: room.HumanAuthor(), Body: body, CreatedAt: time.Now().UTC(),
+	}
+	if err := s.store.Post(r.Context(), e); err != nil {
+		s.log.Error("announce document change", "room", key, "error", err)
+	}
+}
+
+// scopeOf recovers a room's scope from whoever is in it or what is posted there.
+func (s *Server) scopeOf(r *http.Request, key string) room.Scope {
+	if members, err := s.store.Members(r.Context(), key); err == nil && len(members) > 0 {
+		return members[0].Scope
+	}
+	if entries, err := s.store.Entries(r.Context(), room.Filter{Rooms: []string{key}, Limit: 1}); err == nil && len(entries) > 0 {
+		return entries[0].Scope
+	}
+	return room.ScopeFolder
 }
 
 // EndRequest is the body of POST /v1/sessions/{key}/end. An omitted EndedAt
@@ -320,6 +476,11 @@ func (s *Server) deleteSession(w http.ResponseWriter, r *http.Request) {
 
 // fail maps a store error onto a status code.
 func (s *Server) fail(w http.ResponseWriter, err error) {
+	var bad errBadRequest
+	if errors.As(err, &bad) {
+		writeError(w, http.StatusBadRequest, bad.error)
+		return
+	}
 	if errors.Is(err, store.ErrNotFound) {
 		writeError(w, http.StatusNotFound, err)
 		return

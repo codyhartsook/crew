@@ -84,14 +84,14 @@ func Serve(ctx context.Context, opts *cmdutil.Options, cfg Config) error {
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	roomDir := func(key string) (string, error) { return documents.Dir(filepath.Dir(path), key) }
 	srv := &http.Server{
-		Handler: api.New(st, log, api.WithUI(ui.Handler()), api.WithTableUI(ui.Table()), api.WithRoomOpener(func(key string) error {
-			dir, err := documents.Dir(filepath.Dir(path), key)
-			if err != nil {
-				return err
-			}
-			return openDirectory(dir)
-		})).Handler(),
+		Handler: api.New(st, log,
+			api.WithUI(ui.Handler()),
+			api.WithTableUI(ui.Table()),
+			api.WithDocuments(roomDir),
+			api.WithRoomOpener(openDirectory),
+		).Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
