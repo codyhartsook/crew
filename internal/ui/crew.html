@@ -269,6 +269,7 @@
   .licon { width:15px; height:15px; fill:none; stroke:var(--label-2);
            stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; }
   .licon.self { stroke:currentColor; }
+  .licon.live { stroke:var(--green); stroke-width:1.9; }
   .icon.logo, .licon.logo { fill:currentColor; stroke:none; }
   .icon.agent.logo { color:rgba(0,0,0,0.66); }
   .licon.logo { color:var(--label-2); }
@@ -315,10 +316,19 @@ const TAU = Math.PI * 2;
 const MIN_GAP = [0, 118, 118, 108];
 const MIN_EXTENT = 260;
 
-// Room below the outermost node for its name and subtitle. The frame is
-// height-bound, so this is what stands between the fleet reading larger and
-// its labels running off the page.
-const LABEL_ROOM = 30;
+// GAUGE_REACH is how far the context ring sits outside an agent's circle:
+// radius r + 4.6, plus half of its 3.2 stroke.
+const GAUGE_REACH = 6.2;
+
+// Gap from whatever a node reaches to its name's baseline, then to the line
+// under it. Labels carry a 3.2px halo stroke, so the gap clears that too.
+const LABEL_GAP = 15;
+const LINE_GAP = 11;
+
+// Room past a node's reach for its name and the line under it, descender
+// included. The frame is height-bound, so this is what stands between the
+// fleet reading larger and its labels running off the page.
+const LABEL_ROOM = LABEL_GAP + LINE_GAP + 4;
 
 // Wide enough that everything on the ring fits round it, but no wider: fixed
 // radii leave a small fleet as a few nodes lost on a huge circle.
@@ -504,6 +514,7 @@ const ICONS = {
     ["path", { d: "M4 2.4h4.6L12 5.8v7.8a.6.6 0 0 1-.6.6H4a.6.6 0 0 1-.6-.6V3a.6.6 0 0 1 .6-.6z" }],
     ["path", { d: "M8.4 2.6v3.4H11.8" }],
   ],
+  room: [["rect", { x: 2.6, y: 2.6, width: 10.8, height: 10.8, rx: 3.4 }]],
 };
 
 // ---- harness logos ----
@@ -975,12 +986,13 @@ function nodeElement(n) {
 
   // Kept short: collide is circular, so a name wider than the node's own
   // footprint is the one thing the layout cannot pull apart.
+  const base = reach(n) + LABEL_GAP;
   g.append(el("text", {
-    class: "nlabel" + (plain ? " folder" : ""), y: n.r + 14,
+    class: "nlabel" + (plain ? " folder" : ""), y: base,
   }, fit(n.label || shortName(n.name), 17)));
 
   const sub = subtitle(n);
-  if (sub) g.append(el("text", { class: "nsub", y: n.r + 25 }, fit(sub, 19)));
+  if (sub) g.append(el("text", { class: "nsub", y: base + LINE_GAP }, fit(sub, 19)));
 
   g.append(el("title", {}, tooltip(n)));
   wire(g, n);
@@ -994,6 +1006,11 @@ function zoneState(n) {
     if (here.some((r) => roomState(r) === want)) return want;
   }
   return "";
+}
+
+// reach is a node's outermost ink: an agent's ring counts, a square's does not.
+function reach(n) {
+  return n.kind === "agent" ? n.r + GAUGE_REACH : n.r;
 }
 
 // The ring is the context window and the arc is what has been spent - the same
@@ -1070,7 +1087,9 @@ function applyTransform() {
 function fitView() {
   if (USER_VIEW || DRAGGING || !VIEW || !VIEW.nodes.length || !SCENE) return;
   let ext = MIN_EXTENT;
-  for (const n of VIEW.nodes) ext = Math.max(ext, Math.hypot(n.x, n.y) + n.r + LABEL_ROOM);
+  for (const n of VIEW.nodes) {
+    ext = Math.max(ext, Math.hypot(n.x, n.y) + reach(n) + LABEL_ROOM);
+  }
   SCENE.svg.setAttribute("viewBox", -ext + " " + -ext + " " + ext * 2 + " " + ext * 2);
 }
 
@@ -1978,6 +1997,7 @@ function buildLegend() {
     item(mark("repo"), "repository"),
     item(mark("worktree"), "worktree"),
     item(mark("pool"), "pool slot"),
+    item(mark("room", "live"), "context room"),
   );
 }
 

@@ -50,6 +50,39 @@ func Dir(storeDir, roomKey string) (string, error) {
 	return dir, nil
 }
 
+// SnapshotName is the generated transcript that sits beside a room's
+// documents. It is regenerated, never edited, so it is written read-only.
+const SnapshotName = "ROOM.md"
+
+// WriteSnapshot replaces a room's transcript and returns its path. roomDir is
+// the room's own directory, the parent of its documents.
+func WriteSnapshot(roomDir, body string) (string, error) {
+	if err := os.MkdirAll(roomDir, 0o755); err != nil {
+		return "", fmt.Errorf("create room directory: %w", err)
+	}
+	path := filepath.Join(roomDir, SnapshotName)
+	tmp, err := os.CreateTemp(roomDir, ".ROOM-*.md")
+	if err != nil {
+		return "", fmt.Errorf("create room snapshot: %w", err)
+	}
+	tmpPath := tmp.Name()
+	defer os.Remove(tmpPath)
+	if _, err := tmp.WriteString(body); err != nil {
+		tmp.Close()
+		return "", fmt.Errorf("write room snapshot: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return "", fmt.Errorf("close room snapshot: %w", err)
+	}
+	if err := os.Chmod(tmpPath, 0o444); err != nil {
+		return "", fmt.Errorf("protect room snapshot: %w", err)
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		return "", fmt.Errorf("replace room snapshot: %w", err)
+	}
+	return path, nil
+}
+
 // List returns the room's documents by name. Hidden files are not documents:
 // the directory gets opened in a file browser, so it collects .DS_Store.
 func List(dir string) ([]Document, error) {

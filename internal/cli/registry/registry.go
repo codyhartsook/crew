@@ -90,13 +90,7 @@ func Serve(ctx context.Context, opts *cmdutil.Options, cfg Config) error {
 			api.WithUI(ui.Handler()),
 			api.WithTableUI(ui.Table()),
 			api.WithDocuments(roomDir),
-			api.WithRoomOpener(func(key string) error {
-				dir, err := roomDir(key)
-				if err != nil {
-					return err
-				}
-				return openDirectory(dir)
-			}),
+			api.WithRoomOpener(openDirectory),
 		).Handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}

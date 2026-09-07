@@ -12,11 +12,13 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"time"
 
 	"github.com/codyhartsook/multiplayer/internal/documents"
 	"github.com/codyhartsook/multiplayer/internal/room"
+	"github.com/codyhartsook/multiplayer/internal/roomdoc"
 	"github.com/codyhartsook/multiplayer/internal/session"
 	"github.com/codyhartsook/multiplayer/internal/store"
 	"github.com/codyhartsook/multiplayer/internal/usage"
@@ -51,8 +53,9 @@ func WithTableUI(h http.Handler) Option {
 	return func(s *Server) { s.table = h }
 }
 
-// WithRoomOpener lets the local dashboard reveal a room's document directory.
-func WithRoomOpener(open func(string) error) Option {
+// WithRoomOpener lets the local dashboard reveal a directory on this machine.
+// It is given the path to open, not a room key.
+func WithRoomOpener(open func(path string) error) Option {
 	return func(s *Server) { s.openRoom = open }
 }
 
@@ -86,7 +89,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /v1/sessions/{key}/usage", s.setSessionUsage)
 	mux.HandleFunc("GET /v1/entries", s.listEntries)
 	mux.HandleFunc("GET /v1/meta", s.meta)
-	if s.openRoom != nil {
+	if s.openRoom != nil && s.documents != nil {
 		mux.HandleFunc("POST /v1/rooms/open", s.local(s.openRoomDocuments))
 	}
 	if s.documents != nil {
@@ -158,13 +161,22 @@ func (s *Server) roomDir(r *http.Request) (string, string, error) {
 	return key, dir, err
 }
 
+// openRoomDocuments reveals a room's folder: the generated transcript and the
+// documents beside it. The transcript is regenerated on the way out, so what
+// opens is the room as it is now rather than as it was last time.
 func (s *Server) openRoomDocuments(w http.ResponseWriter, r *http.Request) {
-	key, err := s.roomKey(r)
+	key, dir, err := s.roomDir(r)
 	if err != nil {
 		s.fail(w, err)
 		return
 	}
-	if err := s.openRoom(key); err != nil {
+	target := filepath.Dir(dir)
+	here := room.Room{Key: key, Scope: s.scopeOf(r, key), Name: room.NameFor(key)}
+	if _, err := roomdoc.Write(r.Context(), s.store, s.store, dir, here); err != nil {
+		// The documents are still worth opening without their transcript.
+		s.log.Error("write room transcript", "room", key, "error", err)
+	}
+	if err := s.openRoom(target); err != nil {
 		s.fail(w, err)
 		return
 	}

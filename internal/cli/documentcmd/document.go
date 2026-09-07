@@ -165,7 +165,7 @@ func findRoom(ctx context.Context, rc *roomctx.Context, key string) (room.Room, 
 	if members, err := rc.Rooms.Members(ctx, key); err != nil {
 		return room.Room{}, err
 	} else if len(members) > 0 {
-		return room.Room{Key: key, Scope: members[0].Scope, Name: roomName(key)}, nil
+		return room.Room{Key: key, Scope: members[0].Scope, Name: room.NameFor(key)}, nil
 	}
 	entries, err := rc.Rooms.Entries(ctx, room.Filter{Rooms: []string{key}, Limit: 1})
 	if err != nil {
@@ -174,15 +174,7 @@ func findRoom(ctx context.Context, rc *roomctx.Context, key string) (room.Room, 
 	if len(entries) == 0 {
 		return room.Room{}, fmt.Errorf("room %q does not exist", key)
 	}
-	return room.Room{Key: key, Scope: entries[0].Scope, Name: roomName(key)}, nil
-}
-
-func roomName(key string) string {
-	name := filepath.Base(strings.Split(key, "#")[0])
-	if name == "." || name == string(filepath.Separator) || name == "" {
-		return key
-	}
-	return name
+	return room.Room{Key: key, Scope: entries[0].Scope, Name: room.NameFor(key)}, nil
 }
 
 func isHuman() bool {
