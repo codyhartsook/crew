@@ -18,7 +18,9 @@ import (
 
 func TestPublicCommands(t *testing.T) {
 	root := New()
-	for _, name := range []string{"init", "uninstall", "ls", "whoami", "dashboard", "room", "post", "resolve", "search", "docs", "publish", "open"} {
+	// remove is public: retracting your own post is the agent's job, not
+	// machinery, and hiding it only kept it out of help.
+	for _, name := range []string{"init", "uninstall", "ls", "whoami", "dashboard", "room", "post", "resolve", "remove", "search", "docs", "publish", "open"} {
 		cmd, _, err := root.Find([]string{name})
 		if err != nil || cmd.Name() != name || cmd.Hidden {
 			t.Errorf("public command %q = (%v, %v)", name, cmd, err)
@@ -29,7 +31,7 @@ func TestPublicCommands(t *testing.T) {
 			t.Errorf("removed command %q is still available", name)
 		}
 	}
-	for _, name := range []string{"clear", "hook", "remove", "serve", "prune"} {
+	for _, name := range []string{"clear", "hook", "serve", "prune"} {
 		cmd, _, err := root.Find([]string{name})
 		if err != nil || !cmd.Hidden {
 			t.Errorf("internal command %q = (%v, %v), want hidden", name, cmd, err)

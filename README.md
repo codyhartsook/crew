@@ -71,6 +71,7 @@ crew init
 | `anchor` | Mark a plain folder as a room root. |
 | `dashboard` (`fleet`) | Open the dashboard for the running local broker. |
 | `post` / `resolve` | Post an entry, or answer and close a request. |
+| `remove` | Delete one of your own entries, if nothing threaded onto it. |
 | `room` | Show the room and acknowledge requests, or the newest `--last <n>`. |
 | `search` | Find earlier entries by topic. |
 | `docs` | List documents, or print their filesystem path with `--path`. |
