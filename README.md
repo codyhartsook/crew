@@ -71,10 +71,10 @@ crew init
 | `anchor` | Mark a plain folder as a room root. |
 | `dashboard` (`fleet`) | Open the dashboard for the running local broker. |
 | `post` / `resolve` | Post an entry, or answer and close a request. |
-| `room` | Show the room and acknowledge requests. |
+| `room` | Show the room and acknowledge requests, or the newest `--last <n>`. |
 | `search` | Find earlier entries by topic. |
 | `docs` | List documents, or print their filesystem path with `--path`. |
-| `publish` | Copy and announce a document in the room. |
+| `publish` / `unpublish` | Copy and announce a document, or retract one. |
 | `open` | Generate and open a read-only Markdown view of the room. |
 
 `crew <command> --help` shows flags. `crew uninstall --yes`

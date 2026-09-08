@@ -146,7 +146,11 @@ func testEntryFilters(t *testing.T, newStore RoomFactory) {
 		{"by room", room.Filter{Rooms: []string{worktreeRoom}}, []int64{decision.ID, question.ID}},
 		{"by kind", room.Filter{Modes: []room.Mode{room.ModeNote}}, []int64{decision.ID, elsewhere.ID}},
 		{"open only", room.Filter{OpenOnly: true}, []int64{question.ID}},
-		{"limit", room.Filter{Limit: 2}, []int64{decision.ID, question.ID}},
+		// A limit keeps the newest entries, still oldest first. Truncating the
+		// other way would freeze a briefing on the first entries a room ever got.
+		{"limit", room.Filter{Limit: 2}, []int64{question.ID, elsewhere.ID}},
+		{"limit keeps the newest", room.Filter{Limit: 1}, []int64{elsewhere.ID}},
+		{"limit above the total", room.Filter{Limit: 9}, []int64{decision.ID, question.ID, elsewhere.ID}},
 		{"both rooms", room.Filter{Rooms: []string{worktreeRoom, repoRoom}}, []int64{decision.ID, question.ID, elsewhere.ID}},
 		{"no match", room.Filter{Rooms: []string{"/nowhere"}}, nil},
 	}

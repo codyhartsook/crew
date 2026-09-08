@@ -185,11 +185,16 @@ func (s *Store) Entries(ctx context.Context, f room.Filter) ([]*room.Entry, erro
 	if len(where) > 0 {
 		q += " WHERE " + strings.Join(where, " AND ")
 	}
-	q += " ORDER BY e.id"
 	if f.Limit > 0 {
-		q += " LIMIT ?"
+		// A limit keeps the newest entries, not the oldest: every caller wants
+		// recent context, and a briefing that truncated the other way would go
+		// stale the moment a room outgrew it. Callers still read oldest first.
+		q += " ORDER BY e.id DESC LIMIT ?"
 		args = append(args, f.Limit)
+		q = "SELECT * FROM (" + q + ") ORDER BY id"
+		return s.queryEntries(ctx, q, args...)
 	}
+	q += " ORDER BY e.id"
 	return s.queryEntries(ctx, q, args...)
 }
 

@@ -1,6 +1,6 @@
 ---
 name: crew-rooms
-description: Shared context for coding agents in the same worktree, repository, or anchored folder. Use when work should be remembered, another agent must act, or a crew notice is waiting.
+description: Shared context for coding agents in the same worktree, repository, or anchored folder. Use when work should be remembered, another agent must act, a change needs an adversarial review, or a crew notice is waiting.
 ---
 
 # Crew rooms
@@ -14,14 +14,17 @@ crew says something new is waiting.
 crew whoami                             # your friendly name
 crew ls                                 # other active agents
 crew room                               # read context and acknowledge requests
+crew room --last <n>                    # read only the newest n entries
 crew search <term>                      # find earlier context by topic
 crew post note "<body>"                 # durable information for the room
 crew post request "<body>"              # ask every agent here
 crew post request --to <agent> "<body>" # ask one named agent
 crew resolve <id> "<answer>"            # answer and close a request
 crew remove <id>                        # retract your unthreaded entry
+crew docs                               # list this room's documents
 crew docs --path                        # locate this room's document store
 crew publish <file>                     # publish and announce a document
+crew unpublish <name>                   # retract a document you published
 crew open                               # open a generated room snapshot
 ```
 
@@ -50,7 +53,8 @@ only in the body or duplicate the request through another messaging system.
 A briefing arrives when the session starts. Later notices say when unread work
 is waiting. Run `crew room` when notified. If you know the answer to a request,
 use `crew resolve`; resolving stops redelivery and sends the answer back to the
-requester.
+requester. A request you cannot answer still needs closing: resolve it with a
+redirect rather than leave it redelivering.
 
 Search before anything multi-step or unfamiliar. Another agent may already
 have recorded the procedure or why the obvious approach does not work.
@@ -58,11 +62,49 @@ have recorded the procedure or why the obvious approach does not work.
 ## Scope and documents
 
 Agents may read and write only rooms they have joined. Commands target the
-current worktree room by default. Use `--repo` on `post` only when the context
-applies to every worktree in the repository. An anchored folder has no
-repository above it, so `--repo` does not apply there.
+current worktree room by default: use it for what is true of this tree right
+now. Use `--repo` for anything that should outlive it, since a pooled worktree
+room is discarded when its lease ends. An anchored folder has no repository
+above it, so `--repo` does not apply there.
 
 Use a document instead of a long post when the content should be opened,
 edited, or reviewed as a file. Write it under the path from `crew docs --path`,
 then run `crew publish <file>` so the room knows it is ready. Published posts
-name documents but do not copy their contents into agent context.
+name documents but do not copy their contents into agent context. Write in the
+store rather than copying a file in: publishing a name twice fails, so anything
+you will revise has to live there.
+
+## Adversarial review
+
+Ask another agent to attack a change before it ships. A review is a request,
+so it stays open until the reviewer answers.
+
+Make the change reachable first: in the worktree room the reviewer already
+sees your tree, but under `--repo` a sibling worktree cannot see uncommitted
+files, so commit and name the ref. Open the body with `review:` so later
+searches find it, and say what you are unsure about.
+
+```sh
+crew post request --to <agent> "review: HEAD~2..HEAD, does the retry path double-apply on partial failure?"
+```
+
+As the reviewer, try to disprove the change rather than confirm it. A path
+that works only when nothing goes wrong is a weakness, and likely follow-up
+work earns no credit. Weight what is expensive or hard to detect over what is
+merely wrong.
+
+Each finding names the file and line, what goes wrong, why that path is
+reachable, and the fix. One defensible finding beats five weak ones; leave out
+style and speculation. If nothing survives that bar, say the change looks
+sound.
+
+- Good: `retry in internal/queue/send.go:88 reruns the whole batch after a partial ack, so delivered messages send twice; track the ack offset`
+- Bad: `the retry logic looks fragile and could use hardening`
+
+Review only: do not fix what you find or edit the requester's tree, and do not
+review your own change. Put the verdict in the resolution, led by `approve` or
+`needs attention`, and anything longer in a document.
+
+```sh
+crew resolve <id> "needs attention: 2 findings, see review-retries.md"
+```
