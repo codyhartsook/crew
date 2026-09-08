@@ -15,10 +15,14 @@ func NewRemove(opts *cmdutil.Options) *cobra.Command {
 	var as string
 
 	cmd := &cobra.Command{
-		Use:    "remove <id>",
-		Short:  "Remove one of your unthreaded entries",
-		Hidden: true,
-		Args:   cobra.ExactArgs(1),
+		Use:   "remove <id>",
+		Short: "Remove one of your unthreaded entries",
+		Long: `Deletes an entry you posted, so a mistake does not stay in the room.
+
+Only your own entries, and only while nothing has threaded onto them: an answer
+cannot be removed, and neither can a request once it has been answered. Post a
+correction instead. Removal is permanent.`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := strconv.ParseInt(args[0], 10, 64)
 			if err != nil || id <= 0 {
