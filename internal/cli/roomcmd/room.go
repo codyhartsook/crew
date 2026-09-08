@@ -15,7 +15,10 @@ import (
 )
 
 func New(opts *cmdutil.Options) *cobra.Command {
-	var asJSON bool
+	var (
+		asJSON bool
+		last   int
+	)
 
 	cmd := &cobra.Command{
 		Use:     "room",
@@ -23,6 +26,9 @@ func New(opts *cmdutil.Options) *cobra.Command {
 		Short:   "Show the shared context for where you are",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if last < 0 {
+				return fmt.Errorf("--last must not be negative")
+			}
 			rc, err := roomctx.Open(cmd.Context(), opts, roomctx.Cwd())
 			if err != nil {
 				return err
@@ -36,13 +42,16 @@ func New(opts *cmdutil.Options) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			entries, err := rc.Rooms.Entries(cmd.Context(), room.Filter{Rooms: keys})
+			entries, err := rc.Rooms.Entries(cmd.Context(), room.Filter{Rooms: keys, Limit: last})
 			if err != nil {
 				return err
 			}
-			// Listing the caller as "also here" is noise.
+			// The cursor is a high-water mark, so acking the newest entry of a
+			// truncated view would also silence the older requests it hid.
+			// A partial read leaves them waiting.
+			truncated := last > 0 && len(entries) == last
 			ack := func() error {
-				if self == "" || len(entries) == 0 {
+				if self == "" || len(entries) == 0 || truncated {
 					return nil
 				}
 				return rc.Rooms.Ack(cmd.Context(), self, entries[len(entries)-1].ID)
@@ -72,6 +81,7 @@ func New(opts *cmdutil.Options) *cobra.Command {
 	}
 
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of a briefing")
+	cmd.Flags().IntVar(&last, "last", 0, "show only the newest N entries")
 	return cmd
 }
 

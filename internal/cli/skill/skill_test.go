@@ -21,6 +21,21 @@ func TestSkillKeepsAgentOperatingContext(t *testing.T) {
 	}
 }
 
+// Delegating a review is only worth it if the reviewer attacks the change and
+// hands the verdict back, rather than quietly fixing the author's tree.
+func TestSkillKeepsAdversarialReviewStance(t *testing.T) {
+	for _, want := range []string{
+		"## Adversarial review",
+		"try to disprove the change rather than confirm it",
+		"do not fix what you find",
+		"review your own change",
+	} {
+		if !strings.Contains(string(doc), want) {
+			t.Errorf("skill is missing %q", want)
+		}
+	}
+}
+
 // The skill is meant to be tuned once you see what agents write, so a re-init
 // must not overwrite an edit.
 func TestInstallPreservesLocalEdits(t *testing.T) {
