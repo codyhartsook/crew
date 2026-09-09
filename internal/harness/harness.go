@@ -12,6 +12,7 @@ import (
 	"github.com/codyhartsook/multiplayer/internal/harness/codex"
 	"github.com/codyhartsook/multiplayer/internal/harness/notifier"
 	"github.com/codyhartsook/multiplayer/internal/session"
+	"github.com/codyhartsook/multiplayer/internal/usage"
 )
 
 // Spec is everything that varies between coding-agent CLIs.
@@ -43,6 +44,8 @@ type Spec struct {
 	Timeouts map[string]int
 	// Notify delivers a message into a live session, and is nil when unsupported.
 	Notify notifier.Notifier
+	// Usage samples this harness's local usage data, and is nil when unavailable.
+	Usage usage.Source
 }
 
 var specs = []Spec{
@@ -60,6 +63,7 @@ var specs = []Spec{
 		EndBudget: 4 * time.Second,
 		Timeouts:  map[string]int{"SessionStart": 10, "UserPromptSubmit": 5, "SessionEnd": 5},
 		Notify:    claude.Notify,
+		Usage:     usage.ClaudeSource{},
 	},
 	{
 		Harness:     session.HarnessCodex,
@@ -75,6 +79,7 @@ var specs = []Spec{
 		EndBudget: 2500 * time.Millisecond,
 		Timeouts:  map[string]int{"SessionStart": 10, "UserPromptSubmit": 5, "SessionEnd": 3},
 		Notify:    codex.Notify,
+		Usage:     usage.CodexSource{},
 	},
 }
 

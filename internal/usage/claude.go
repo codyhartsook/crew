@@ -41,23 +41,7 @@ func FromClaudeTranscript(path string) (Snapshot, error) {
 	// 64KB. A line we cannot buffer is skipped, not an error.
 	sc.Buffer(make([]byte, 0, 64*1024), 8*1024*1024)
 	for sc.Scan() {
-		var line claudeLine
-		if err := json.Unmarshal(sc.Bytes(), &line); err != nil {
-			continue
-		}
-		u := line.Message.Usage
-		if u == nil {
-			continue
-		}
-		input := u.InputTokens + u.CacheReadInputTokens + u.CacheCreationInputTokens
-		s.InputTokens += input
-		s.CachedInputTokens += u.CacheReadInputTokens
-		s.OutputTokens += u.OutputTokens
-		// The newest assistant message is the one still holding the window.
-		s.ContextUsed = int(input)
-		if line.Message.Model != "" {
-			s.Model = line.Message.Model
-		}
+		consumeClaudeLine(sc.Bytes(), &s)
 	}
 	if err := sc.Err(); err != nil {
 		return Snapshot{}, fmt.Errorf("scan transcript: %w", err)
@@ -66,4 +50,25 @@ func FromClaudeTranscript(path string) (Snapshot, error) {
 		s.ContextWindow = w
 	}
 	return s, nil
+}
+
+func consumeClaudeLine(raw []byte, s *Snapshot) bool {
+	var line claudeLine
+	if err := json.Unmarshal(raw, &line); err != nil || line.Message.Usage == nil {
+		return false
+	}
+	u := line.Message.Usage
+	input := u.InputTokens + u.CacheReadInputTokens + u.CacheCreationInputTokens
+	s.InputTokens += input
+	s.CachedInputTokens += u.CacheReadInputTokens
+	s.OutputTokens += u.OutputTokens
+	// The newest assistant message is the one still holding the window.
+	s.ContextUsed = int(input)
+	if line.Message.Model != "" {
+		s.Model = line.Message.Model
+	}
+	if w, ok := WindowOf(s.Model); ok {
+		s.ContextWindow = w
+	}
+	return true
 }

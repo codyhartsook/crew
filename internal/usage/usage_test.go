@@ -1,6 +1,7 @@
 package usage
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -105,5 +106,66 @@ func TestFindCodexRollout(t *testing.T) {
 	}
 	if _, err := FindCodexRollout(home, "01a99999-0000-0000-0000-000000000000"); err == nil {
 		t.Error("an unknown thread should not resolve to a rollout")
+	}
+}
+
+func TestFindCodexRolloutPrefersExactIDAndRejectsAmbiguity(t *testing.T) {
+	home := t.TempDir()
+	dir := filepath.Join(home, "sessions", "2026", "09", "02")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	id := "01a05f19-7831-78a1-9f95-11cd7a51f258"
+	exact := filepath.Join(dir, "rollout-2026-09-02T13-00-13-"+id+".jsonl")
+	other := filepath.Join(dir, "rollout-2026-09-02T13-00-14-01a05f19-9999-7b62-be69-92260048f107.jsonl")
+	for _, path := range []string{exact, other} {
+		if err := os.WriteFile(path, nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got, err := FindCodexRollout(home, id); err != nil || got != exact {
+		t.Errorf("FindCodexRollout exact = (%q, %v), want %q", got, err, exact)
+	}
+	if _, err := FindCodexRollout(home, "01a05f19-0000-0000-0000-000000000000"); err == nil {
+		t.Error("FindCodexRollout accepted ambiguous prefix")
+	}
+}
+
+func TestClaudeSamplerReadsOnlyAppendedUsage(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "transcript.jsonl")
+	first := `{"message":{"model":"claude-opus-5","usage":{"input_tokens":10,"output_tokens":2,"cache_read_input_tokens":3,"cache_creation_input_tokens":4}}}` + "\n"
+	if err := os.WriteFile(path, []byte(first), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sampler := (ClaudeSource{}).Open("session", path)
+	got, changed, err := sampler.Refresh(context.Background())
+	if err != nil || !changed {
+		t.Fatalf("first Refresh = (%+v, %v, %v), want changed snapshot", got, changed, err)
+	}
+	if got.ContextUsed != 17 || got.InputTokens != 17 || got.OutputTokens != 2 || got.ContextWindow != 1_000_000 {
+		t.Errorf("first snapshot = %+v", got)
+	}
+	if _, changed, err := sampler.Refresh(context.Background()); err != nil || changed {
+		t.Errorf("unchanged Refresh changed=%v err=%v, want false nil", changed, err)
+	}
+	second := `{"message":{"model":"claude-opus-5","usage":{"input_tokens":20,"output_tokens":5,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}` + "\n"
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.WriteString(second); err != nil {
+		_ = f.Close()
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	got, changed, err = sampler.Refresh(context.Background())
+	if err != nil || !changed {
+		t.Fatalf("appended Refresh = (%+v, %v, %v), want changed snapshot", got, changed, err)
+	}
+	if got.ContextUsed != 20 || got.InputTokens != 37 || got.OutputTokens != 7 {
+		t.Errorf("appended snapshot = %+v", got)
 	}
 }

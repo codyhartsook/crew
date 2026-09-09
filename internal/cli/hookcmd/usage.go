@@ -3,10 +3,10 @@ package hookcmd
 import (
 	"context"
 
+	"github.com/codyhartsook/multiplayer/internal/harness"
 	"github.com/codyhartsook/multiplayer/internal/hook"
 	"github.com/codyhartsook/multiplayer/internal/session"
 	"github.com/codyhartsook/multiplayer/internal/store"
-	"github.com/codyhartsook/multiplayer/internal/usage"
 )
 
 // recordUsage stores what the session has spent so work can be routed to the
@@ -25,8 +25,12 @@ func recordUsage(ctx context.Context, st store.Store, h session.Harness, p hook.
 	default:
 		return
 	}
-	s, err := usage.For(string(h), p.TranscriptPath, p.SessionID)
-	if err != nil || !s.Known() {
+	spec, ok := harness.For(h)
+	if !ok || spec.Usage == nil {
+		return
+	}
+	s, changed, err := spec.Usage.Open(p.SessionID, p.TranscriptPath).Refresh(ctx)
+	if err != nil || !changed || !s.Known() {
 		return
 	}
 	_ = st.SetUsage(ctx, sessionKey, &s)

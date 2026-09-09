@@ -19,11 +19,10 @@ const (
 )
 
 func (h Harness) Valid() bool {
-	switch h {
-	case HarnessClaude, HarnessCodex, HarnessUnknown:
-		return true
-	}
-	return false
+	// Sessions may outlive the binary that knows a harness's capabilities, so
+	// persistence accepts every non-empty harness name. The harness registry
+	// decides which local integrations are available.
+	return h != ""
 }
 
 // Status is the lifecycle state of a session.

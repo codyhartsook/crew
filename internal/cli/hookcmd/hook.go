@@ -53,7 +53,7 @@ process exits 0. Set MULTIPLAYER_DEBUG=1 to log every invocation and payload.`,
 	}
 
 	cmd.Flags().StringVar(&harnessFlag, "harness", "auto",
-		"calling harness: claude, codex, or auto")
+		"calling harness registered by crew, or auto")
 	cmd.Flags().BoolVar(&quiet, "quiet", false, "log errors only, nothing on stderr")
 	return cmd
 }
@@ -104,14 +104,14 @@ func runHook(cmd *cobra.Command, opts *cmdutil.Options, harnessFlag string) erro
 }
 
 func resolveHarness(flag string) (session.Harness, error) {
-	switch flag {
-	case "", "auto":
+	if flag == "" || flag == "auto" {
 		return harness.Detect(), nil
-	case string(session.HarnessClaude), string(session.HarnessCodex):
-		return session.Harness(flag), nil
-	default:
-		return "", fmt.Errorf("unknown harness %q: want claude, codex, or auto", flag)
 	}
+	h := session.Harness(flag)
+	if _, ok := harness.For(h); ok {
+		return h, nil
+	}
+	return "", fmt.Errorf("unknown harness %q", flag)
 }
 
 // debugEnabled reports whether every invocation should be logged. An
