@@ -106,6 +106,7 @@ func Serve(ctx context.Context, opts *cmdutil.Options, cfg Config) error {
 		log.Warn("notification signals unavailable; using polling", "err", err)
 	}
 	go broker.Run(ctx)
+	go newUsageCoordinator(st, log).run(ctx)
 	err = run(ctx, srv, ln, lifecycle)
 	if err == nil {
 		lifecycle.Info("broker stopped")
