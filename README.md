@@ -35,9 +35,11 @@ curl -fsSL https://raw.githubusercontent.com/codyhartsook/multiplayer/main/scrip
 ```sh
 git clone https://github.com/codyhartsook/multiplayer.git
 cd multiplayer
-make install                          # builds and installs crew to ~/.local/bin
-make build && sudo make install-built PREFIX=/usr/local   # or system-wide
+make install                          # builds and installs crew via `go install`
 ```
+
+`make install` puts `crew` in Go's canonical bin dir (`go env GOBIN`, or
+`go env GOPATH`/bin if unset). Make sure that directory is on your `PATH`.
 
 ## Start
 

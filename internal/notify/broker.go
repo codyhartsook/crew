@@ -7,20 +7,27 @@ import (
 	"time"
 
 	"github.com/codyhartsook/multiplayer/internal/harness"
+	"github.com/codyhartsook/multiplayer/internal/prune"
 	"github.com/codyhartsook/multiplayer/internal/room"
 	"github.com/codyhartsook/multiplayer/internal/session"
 	"github.com/codyhartsook/multiplayer/internal/store"
+	"github.com/codyhartsook/multiplayer/internal/usage"
 )
 
 // DefaultInterval is how often the broker sweeps. Local SQLite reads are cheap,
 // and a short interval keeps Claude channel delivery responsive.
 const DefaultInterval = time.Second
 
+// MaintainInterval bounds how often a sweep also reaps dead sessions and
+// retries unknown usage. Costlier than a list read, so it runs less often.
+const MaintainInterval = time.Minute
+
 // Reader is the store surface the broker needs.
 type Reader interface {
 	Ender
 	List(ctx context.Context, f store.Filter) ([]*session.Session, error)
 	Unread(ctx context.Context, sessionKey string) ([]*room.Entry, error)
+	SetUsage(ctx context.Context, key string, u *usage.Snapshot) error
 }
 
 // Broker wakes sessions that have entries addressed to them and have not been
@@ -44,6 +51,8 @@ type Broker struct {
 	woken map[string]int64
 	// notify is the harness call, injected so tests do not shell out.
 	notify notifyFunc
+	// lastMaintain is when prune/usage retry last ran; zero runs them now.
+	lastMaintain time.Time
 }
 
 func NewBroker(st Reader, log *slog.Logger, interval time.Duration) *Broker {
@@ -87,6 +96,11 @@ func (b *Broker) Run(ctx context.Context) {
 }
 
 func (b *Broker) sweep(ctx context.Context) {
+	if time.Since(b.lastMaintain) >= MaintainInterval {
+		b.maintain(ctx)
+		b.lastMaintain = time.Now()
+	}
+
 	sessions, err := b.store.List(ctx, store.Filter{Status: session.StatusActive})
 	if err != nil {
 		b.log.Error("notify sweep", "err", err)
@@ -115,6 +129,36 @@ func (b *Broker) sweep(ctx context.Context) {
 	for key := range b.woken {
 		if !live[key] {
 			delete(b.woken, key)
+		}
+	}
+}
+
+// maintain reaps sessions whose process is gone and retries unknown usage.
+func (b *Broker) maintain(ctx context.Context) {
+	dead, err := prune.Dead(ctx, b.store)
+	if err != nil {
+		b.log.Warn("prune", "err", err)
+	} else if n, err := prune.End(ctx, b.store, dead, time.Now().UTC()); err != nil {
+		b.log.Warn("prune end", "err", err)
+	} else if n > 0 {
+		b.log.Info("pruned dead sessions", "count", n)
+	}
+
+	active, err := b.store.List(ctx, store.Filter{Status: session.StatusActive})
+	if err != nil {
+		b.log.Warn("usage retry list", "err", err)
+		return
+	}
+	for _, s := range active {
+		if s.Usage != nil {
+			continue
+		}
+		snap, err := usage.For(string(s.Harness), s.Meta["transcript_path"], s.ID)
+		if err != nil || !snap.Known() {
+			continue
+		}
+		if err := b.store.SetUsage(ctx, s.Key(), &snap); err != nil {
+			b.log.Warn("usage retry set", "session", s.Key(), "err", err)
 		}
 	}
 }

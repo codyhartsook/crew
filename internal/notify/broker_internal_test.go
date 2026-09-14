@@ -4,6 +4,8 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -12,6 +14,7 @@ import (
 	"github.com/codyhartsook/multiplayer/internal/room"
 	"github.com/codyhartsook/multiplayer/internal/session"
 	"github.com/codyhartsook/multiplayer/internal/store"
+	"github.com/codyhartsook/multiplayer/internal/usage"
 )
 
 type fakeReader struct {
@@ -19,6 +22,7 @@ type fakeReader struct {
 	unread   map[string][]*room.Entry
 	asked    []string
 	ended    []string
+	usageSet map[string]*usage.Snapshot
 }
 
 func (f *fakeReader) List(context.Context, store.Filter) ([]*session.Session, error) {
@@ -35,6 +39,14 @@ func (f *fakeReader) End(_ context.Context, key string, _ time.Time, _ string) e
 	return nil
 }
 
+func (f *fakeReader) SetUsage(_ context.Context, key string, u *usage.Snapshot) error {
+	if f.usageSet == nil {
+		f.usageSet = map[string]*usage.Snapshot{}
+	}
+	f.usageSet[key] = u
+	return nil
+}
+
 func entries(ids ...int64) []*room.Entry {
 	out := make([]*room.Entry, 0, len(ids))
 	for _, id := range ids {
@@ -44,7 +56,10 @@ func entries(ids ...int64) []*room.Entry {
 }
 
 func testBroker(f *fakeReader, w notifyFunc) *Broker {
-	return &Broker{store: f, log: slog.New(slog.NewTextHandler(io.Discard, nil)), woken: map[string]int64{}, notify: w}
+	return &Broker{
+		store: f, log: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		woken: map[string]int64{}, notify: w, lastMaintain: time.Now(),
+	}
 }
 
 func sess(h session.Harness, id string) *session.Session {
@@ -163,6 +178,47 @@ func TestWakeTextNamesTheEntry(t *testing.T) {
 	many := noticeText(entries(12, 13), named)
 	if !strings.Contains(many, "2 entries") || !strings.Contains(many, "[13]") || !strings.Contains(many, "crew room") {
 		t.Errorf("multi-entry text lost detail: %q", many)
+	}
+}
+
+func TestMaintainRetriesUnknownUsage(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("CODEX_HOME", home)
+	dir := filepath.Join(home, "sessions", "2026", "09", "02")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	rollout := filepath.Join(dir, "rollout-2026-09-02T13-00-13-01a05f19-7894-7b62-be69-92260048f107.jsonl")
+	line := `{"type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":3000,"cached_input_tokens":2500,"output_tokens":90},"last_token_usage":{"input_tokens":1200,"cached_input_tokens":1100,"output_tokens":40},"model_context_window":258400}}}`
+	if err := os.WriteFile(rollout, []byte(line+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	s := sess(session.HarnessCodex, "01a05f19-7831-78a1-9f95-11cd7a51f258")
+	f := &fakeReader{sessions: []*session.Session{s}}
+	b := &Broker{store: f, log: slog.New(slog.NewTextHandler(io.Discard, nil)), woken: map[string]int64{}}
+
+	b.maintain(context.Background())
+
+	got, ok := f.usageSet[s.Key()]
+	if !ok {
+		t.Fatal("usage was not retried")
+	}
+	if got.ContextUsed != 1200 || got.InputTokens != 3000 {
+		t.Errorf("snapshot = %+v, want context 1200, input 3000", got)
+	}
+}
+
+func TestMaintainSkipsSessionsWithKnownUsage(t *testing.T) {
+	s := sess(session.HarnessCodex, "t1")
+	s.Usage = &usage.Snapshot{InputTokens: 1}
+	f := &fakeReader{sessions: []*session.Session{s}}
+	b := &Broker{store: f, log: slog.New(slog.NewTextHandler(io.Discard, nil)), woken: map[string]int64{}}
+
+	b.maintain(context.Background())
+
+	if len(f.usageSet) != 0 {
+		t.Errorf("usageSet = %v, want no retries for a session with known usage", f.usageSet)
 	}
 }
 

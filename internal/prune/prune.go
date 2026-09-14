@@ -30,8 +30,13 @@ const graceperiod = 60 * time.Second
 // snapshot reads the process table, injected so tests need not shell out.
 var snapshot = proc.Snapshot
 
+// Lister is the store surface Dead needs.
+type Lister interface {
+	List(ctx context.Context, f store.Filter) ([]*session.Session, error)
+}
+
 // Dead lists active sessions on this host whose process is no longer there.
-func Dead(ctx context.Context, st store.Store) ([]*session.Session, error) {
+func Dead(ctx context.Context, st Lister) ([]*session.Session, error) {
 	active, err := st.List(ctx, store.Filter{Status: session.StatusActive})
 	if err != nil {
 		return nil, err
@@ -72,8 +77,13 @@ func deadAmong(active []*session.Session, table proc.Table, host string, now tim
 	return dead
 }
 
+// Ender is the store surface End needs.
+type Ender interface {
+	End(ctx context.Context, key string, at time.Time, reason string) error
+}
+
 // End closes every session in dead, reporting how many were ended.
-func End(ctx context.Context, st store.Store, dead []*session.Session, at time.Time) (int, error) {
+func End(ctx context.Context, st Ender, dead []*session.Session, at time.Time) (int, error) {
 	n := 0
 	for _, s := range dead {
 		if err := st.End(ctx, s.Key(), at, deadReason); err != nil {
