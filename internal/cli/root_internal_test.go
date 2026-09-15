@@ -20,7 +20,7 @@ func TestPublicCommands(t *testing.T) {
 	root := New()
 	// remove is public: retracting your own post is the agent's job, not
 	// machinery, and hiding it only kept it out of help.
-	for _, name := range []string{"init", "uninstall", "ls", "whoami", "dashboard", "room", "post", "resolve", "remove", "search", "docs", "publish", "open"} {
+	for _, name := range []string{"init", "uninstall", "ls", "whoami", "dashboard", "room", "post", "resolve", "remove", "search", "docs", "publish", "open", "roles", "memory", "delegate"} {
 		cmd, _, err := root.Find([]string{name})
 		if err != nil || cmd.Name() != name || cmd.Hidden {
 			t.Errorf("public command %q = (%v, %v)", name, cmd, err)
@@ -50,7 +50,7 @@ func TestRoomAcknowledgesRequests(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(t.TempDir(), "sessions.db")
-	t.Setenv("MULTIPLAYER_DB", path)
+	t.Setenv("CREW_DB", path)
 	t.Setenv("CODEX_THREAD_ID", "reader")
 
 	st, err := sqlitestore.Open(path)
@@ -103,7 +103,7 @@ func TestRoomCommandsRepairMembership(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(t.TempDir(), "sessions.db")
-	t.Setenv("MULTIPLAYER_DB", path)
+	t.Setenv("CREW_DB", path)
 	t.Setenv("CODEX_THREAD_ID", "reader")
 
 	st, err := sqlitestore.Open(path)
@@ -199,7 +199,7 @@ func TestFolderRoomSpansSubdirectories(t *testing.T) {
 	}
 
 	path := filepath.Join(t.TempDir(), "sessions.db")
-	t.Setenv("MULTIPLAYER_DB", path)
+	t.Setenv("CREW_DB", path)
 	t.Setenv("CODEX_THREAD_ID", "folder-agent")
 
 	t.Chdir(root)

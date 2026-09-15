@@ -25,7 +25,10 @@ const BriefingLimit = 12
 type Context struct {
 	Store store.Store
 	Rooms store.RoomStore
-	Here  []room.Room
+	// Memory is nil when the store does not support role memory. Only a
+	// memory command needs it, so Open never fails for lacking it.
+	Memory store.MemoryStore
+	Here   []room.Room
 
 	// close releases the store this context opened; nil when a caller
 	// assembled the Context around a store it already owns.
@@ -60,7 +63,8 @@ func Open(ctx context.Context, opts *cmdutil.Options, cwd string) (*Context, err
 		st.Close()
 		return nil, errors.New("no room here")
 	}
-	return &Context{Store: st, Rooms: rooms, Here: here, close: func() { st.Close() }}, nil
+	mem, _ := st.(store.MemoryStore)
+	return &Context{Store: st, Rooms: rooms, Memory: mem, Here: here, close: func() { st.Close() }}, nil
 }
 
 // Close releases the store, if this context opened one.
@@ -117,10 +121,15 @@ func (c *Context) Author(ctx context.Context, as string) (string, error) {
 
 // Accessible ensures the identified local agent is joined, then returns its
 // rooms. A missed start hook should not make an agent unable to use its own
-// room, while Author still rejects an identity from another location.
+// room, while Author still rejects an identity from another location. It
+// respects CREW_AUTO_JOIN: a delegated role's spawn sets it to 0 specifically
+// to stay outside the room, and joining it here regardless would silently
+// undo that isolation the moment it touched a room command.
 func (c *Context) Accessible(ctx context.Context, sessionKey string) ([]string, error) {
-	if err := Join(ctx, c.Rooms, sessionKey, c.Here); err != nil {
-		return nil, err
+	if cmdutil.AutoJoinEnabled() {
+		if err := Join(ctx, c.Rooms, sessionKey, c.Here); err != nil {
+			return nil, err
+		}
 	}
 	memberships, err := c.Rooms.Rooms(ctx, sessionKey)
 	if err != nil {

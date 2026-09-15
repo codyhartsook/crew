@@ -19,7 +19,7 @@ const marker = "hook --harness "
 // managedEvents is every event this tool has ever installed. An event a harness
 // no longer prices in its Timeouts is swept on init, so dropping one removes
 // it rather than leaving an orphan hook firing with no way to uninstall it.
-var managedEvents = []string{"SessionStart", "UserPromptSubmit", "SessionEnd"}
+var managedEvents = []string{"SessionStart", "UserPromptSubmit", "PreToolUse", "SessionEnd"}
 
 // Events lists the managed events, in firing order.
 func Events() []string { return slices.Clone(managedEvents) }

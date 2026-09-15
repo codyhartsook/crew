@@ -15,10 +15,19 @@ import (
 
 // Environment variables that supply defaults for the global flags.
 const (
-	EnvDB       = "MULTIPLAYER_DB"
-	EnvServer   = "MULTIPLAYER_SERVER"
-	EnvDebug    = "MULTIPLAYER_DEBUG"
-	EnvAutoJoin = "MULTIPLAYER_AUTO_JOIN"
+	EnvDB       = "CREW_DB"
+	EnvServer   = "CREW_SERVER"
+	EnvDebug    = "CREW_DEBUG"
+	EnvAutoJoin = "CREW_AUTO_JOIN"
+	// EnvRole names the role identity a spawned role runs as. Phase 4 sets it
+	// on a delegated spawn's environment; a plain session can also set it to
+	// carry a role identity before delegation exists.
+	EnvRole = "CREW_ROLE"
+	// EnvDelegation carries the delegation id on a spawned role's environment,
+	// for correlating its lifecycle with the launcher's request. Env rather
+	// than either harness's own session id: Claude accepts an injected one,
+	// Codex does not, so neither is a usable key across both.
+	EnvDelegation = "CREW_DELEGATION"
 )
 
 // Options holds the global flags that decide which store the command talks to.
@@ -69,6 +78,24 @@ func (o *Options) StoreDir() (string, error) {
 		return "", err
 	}
 	return filepath.Dir(path), nil
+}
+
+// autoJoinDefault governs whether a starting session joins its rooms without
+// being asked. CREW_AUTO_JOIN overrides it.
+const autoJoinDefault = true
+
+// AutoJoinEnabled reports the policy a delegated role's own environment
+// carries: CREW_AUTO_JOIN=0 marks a session that is deliberately not a
+// member of its rooms, so nothing should join it on its behalf.
+func AutoJoinEnabled() bool {
+	switch os.Getenv(EnvAutoJoin) {
+	case "":
+		return autoJoinDefault
+	case "0", "false", "no":
+		return false
+	default:
+		return true
+	}
 }
 
 // SignalBroker asks the broker to sweep now. A missed signal only costs

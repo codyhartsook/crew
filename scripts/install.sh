@@ -3,8 +3,8 @@
 set -eu
 
 repo="codyhartsook/multiplayer"
-version="${MULTIPLAYER_VERSION:-latest}"
-destination="${MULTIPLAYER_INSTALL_DIR:-$HOME/.local/bin}"
+version="${CREW_VERSION:-latest}"
+destination="${CREW_INSTALL_DIR:-$HOME/.local/bin}"
 
 case "$(uname -s)" in
 Darwin) os="darwin" ;;

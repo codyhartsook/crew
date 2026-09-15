@@ -70,7 +70,9 @@ func TestPayloadEvent(t *testing.T) {
 		"session_end":        hook.EventEnd,
 		"UserPromptSubmit":   hook.EventPrompt,
 		"user_prompt_submit": hook.EventPrompt,
-		"PreToolUse":         hook.EventOther,
+		"PreToolUse":         hook.EventPreToolUse,
+		"pre_tool_use":       hook.EventPreToolUse,
+		"Stop":               hook.EventOther,
 		"":                   hook.EventOther,
 	}
 	for name, want := range cases {

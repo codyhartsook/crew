@@ -20,6 +20,7 @@ import (
 	"github.com/codyhartsook/multiplayer/internal/harness"
 	"github.com/codyhartsook/multiplayer/internal/hook"
 	"github.com/codyhartsook/multiplayer/internal/session"
+	"github.com/codyhartsook/multiplayer/internal/store"
 )
 
 // maxPayload bounds how much of stdin the hook will read.
@@ -39,7 +40,7 @@ func New(opts *cmdutil.Options) *cobra.Command {
 any pooled worktree, and writes the session to the store.
 
 Never fails the calling harness: errors go to ~/.multiplayer/hook.log and the
-process exits 0. Set MULTIPLAYER_DEBUG=1 to log every invocation and payload.`,
+process exits 0. Set CREW_DEBUG=1 to log every invocation and payload.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := runHook(cmd, opts, harnessFlag); err != nil {
@@ -84,6 +85,9 @@ func runHook(cmd *cobra.Command, opts *cmdutil.Options, harnessFlag string) erro
 		return err
 	}
 	defer st.Close()
+	if debugEnabled() && payload.Event() == hook.EventStart {
+		logMissingCapabilities(opts, st)
+	}
 
 	// The budget depends on the event and the harness: a session-end hook gets
 	// far less time than a session-start one, and each harness caps it its own way.
@@ -95,6 +99,14 @@ func runHook(cmd *cobra.Command, opts *cmdutil.Options, harnessFlag string) erro
 
 	sessionKey := sessionKeyFrom(h, payload)
 	recordUsage(ctx, st, h, payload, sessionKey)
+
+	if payload.Event() == hook.EventPreToolUse {
+		deny, reason, enforceErr := enforceFor(ctx, st, sessionKey, payload)
+		if writeErr := writeDecision(cmd.OutOrStdout(), deny, reason); writeErr != nil {
+			enforceErr = errors.Join(enforceErr, writeErr)
+		}
+		return errors.Join(recordErr, enforceErr)
+	}
 
 	injected, roomErr := roomsFor(ctx, st, payload.Event(), sess, sessionKey)
 	if writeErr := writeContext(cmd.OutOrStdout(), payload.Event(), injected); writeErr != nil {
@@ -121,6 +133,30 @@ func resolveHarness(flag string) (session.Harness, error) {
 func debugEnabled() bool {
 	v := os.Getenv(cmdutil.EnvDebug)
 	return v != "" && v != "0" && v != "false"
+}
+
+// logMissingCapabilities notes, once per session, which optional store
+// interfaces this store lacks. Every tier below already skips silently
+// rather than failing the harness when one is missing - that must not
+// change - but "nothing happened" is otherwise indistinguishable from a
+// real bug, so CREW_DEBUG=1 gets a reason instead of only ever silence.
+func logMissingCapabilities(opts *cmdutil.Options, st store.Store) {
+	var missing []string
+	if _, ok := st.(store.RoomStore); !ok {
+		missing = append(missing, "rooms")
+	}
+	if _, ok := st.(store.RoleStore); !ok {
+		missing = append(missing, "roles")
+	}
+	if _, ok := st.(store.RoutingStore); !ok {
+		missing = append(missing, "routing")
+	}
+	if _, ok := st.(store.DelegationStore); !ok {
+		missing = append(missing, "delegation")
+	}
+	if len(missing) > 0 {
+		logHookLine(opts, "store missing capabilities: "+strings.Join(missing, ", "))
+	}
 }
 
 // compact collapses a payload onto one line so the log stays greppable.

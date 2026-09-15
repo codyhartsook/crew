@@ -29,6 +29,8 @@ const (
 	// DefaultEndBudget applies to a harness this build does not recognize, so it
 	// stays at the tightest of the known caps rather than overrunning one.
 	DefaultEndBudget = 2500 * time.Millisecond
+	// PreToolUseBudget is tight: this hook blocks every tool call.
+	PreToolUseBudget = 2 * time.Second
 
 	// orphanDetectBudget caps location detection on the one end-path that needs
 	// it, leaving room in the budget for the write that follows.
@@ -43,6 +45,9 @@ const (
 	EventEnd   Event = "SessionEnd"
 	// EventPrompt is a user turn, where undelivered entries are handed over.
 	EventPrompt Event = "UserPromptSubmit"
+	// EventPreToolUse is tier 2 routing: a chance to deny an exact tool call
+	// and redirect it to a role instead.
+	EventPreToolUse Event = "PreToolUse"
 	// EventOther covers hook events the registry does not act on. Wiring an
 	// unrelated event to this binary should be inert, not an error.
 	EventOther Event = "other"
@@ -67,6 +72,25 @@ type Payload struct {
 	PermissionMode string `json:"permission_mode"`
 	AgentType      string `json:"agent_type"`
 	TurnID         string `json:"turn_id"`
+
+	// ToolName and ToolInput carry a PreToolUse call. AgentID is present only
+	// when Claude's own subagent (Task tool) made the call; Codex has no
+	// equivalent.
+	ToolName  string          `json:"tool_name"`
+	ToolInput json.RawMessage `json:"tool_input"`
+	AgentID   string          `json:"agent_id"`
+}
+
+// ToolTarget is what a tool trigger's pattern matches against: a Bash call's
+// command, or the tool input verbatim when there is no command field.
+func (p Payload) ToolTarget() string {
+	var fields struct {
+		Command string `json:"command"`
+	}
+	if json.Unmarshal(p.ToolInput, &fields) == nil && fields.Command != "" {
+		return fields.Command
+	}
+	return string(p.ToolInput)
 }
 
 // ParsePayload reads a hook payload from r. Empty input is not an error: it
@@ -98,6 +122,8 @@ func (p Payload) Event() Event {
 		return EventEnd
 	case "userpromptsubmit":
 		return EventPrompt
+	case "pretooluse":
+		return EventPreToolUse
 	default:
 		return EventOther
 	}
@@ -109,6 +135,9 @@ func (p Payload) Event() Event {
 func BudgetFor(h session.Harness, p Payload) time.Duration {
 	if p.Event() == EventStart {
 		return StartBudget
+	}
+	if p.Event() == EventPreToolUse {
+		return PreToolUseBudget
 	}
 	if spec, ok := harness.For(h); ok {
 		return spec.EndBudget

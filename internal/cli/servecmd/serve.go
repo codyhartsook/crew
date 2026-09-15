@@ -21,7 +21,7 @@ func New(opts *cmdutil.Options) *cobra.Command {
 		Short:  "Serve the registry API and dashboard over HTTP",
 		Hidden: true,
 		Long: `Reads and writes the same local database the CLI uses. Setting
-MULTIPLAYER_SERVER points hooks at it, so they write through the API instead of
+CREW_SERVER points hooks at it, so they write through the API instead of
 opening the database directly.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -32,7 +32,7 @@ opening the database directly.`,
 				Log:     cmd.ErrOrStderr(),
 				OnReady: func(baseURL string) {
 					fmt.Fprintf(out, "dashboard  %s\n", baseURL)
-					fmt.Fprintf(out, "hooks      export MULTIPLAYER_SERVER=%s\n", baseURL)
+					fmt.Fprintf(out, "hooks      export CREW_SERVER=%s\n", baseURL)
 				},
 			})
 		},

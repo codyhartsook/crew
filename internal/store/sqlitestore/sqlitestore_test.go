@@ -11,6 +11,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
+	"github.com/codyhartsook/multiplayer/internal/delegation"
 	"github.com/codyhartsook/multiplayer/internal/session"
 
 	"github.com/codyhartsook/multiplayer/internal/store"
@@ -33,6 +34,50 @@ func TestStore(t *testing.T) {
 
 func TestRoomStore(t *testing.T) {
 	storetest.RunRooms(t, func(t *testing.T) store.RoomStore {
+		s, err := sqlitestore.Open(filepath.Join(t.TempDir(), "sessions.db"))
+		if err != nil {
+			t.Fatalf("Open: %v", err)
+		}
+		t.Cleanup(func() { s.Close() })
+		return s
+	})
+}
+
+func TestMemoryStore(t *testing.T) {
+	storetest.RunMemory(t, func(t *testing.T) store.MemoryStore {
+		s, err := sqlitestore.Open(filepath.Join(t.TempDir(), "sessions.db"))
+		if err != nil {
+			t.Fatalf("Open: %v", err)
+		}
+		t.Cleanup(func() { s.Close() })
+		return s
+	})
+}
+
+func TestRoleStore(t *testing.T) {
+	storetest.RunRoles(t, func(t *testing.T) store.RoleStore {
+		s, err := sqlitestore.Open(filepath.Join(t.TempDir(), "sessions.db"))
+		if err != nil {
+			t.Fatalf("Open: %v", err)
+		}
+		t.Cleanup(func() { s.Close() })
+		return s
+	})
+}
+
+func TestRoutingStore(t *testing.T) {
+	storetest.RunRouting(t, func(t *testing.T) store.RoutingStore {
+		s, err := sqlitestore.Open(filepath.Join(t.TempDir(), "sessions.db"))
+		if err != nil {
+			t.Fatalf("Open: %v", err)
+		}
+		t.Cleanup(func() { s.Close() })
+		return s
+	})
+}
+
+func TestDelegationStore(t *testing.T) {
+	storetest.RunDelegations(t, func(t *testing.T) store.DelegationStore {
 		s, err := sqlitestore.Open(filepath.Join(t.TempDir(), "sessions.db"))
 		if err != nil {
 			t.Fatalf("Open: %v", err)
@@ -129,6 +174,74 @@ func TestOpenMigratesAdditively(t *testing.T) {
 	if got.Folder != nil {
 		t.Errorf("Folder = %+v, want nil on a row written before folders", got.Folder)
 	}
+}
+
+// A database can already be at the current schema version but still predate
+// a column added to a table introduced in that same version - exactly what
+// happened here when delegations.dir was added after delegations itself
+// shipped at version 9. CREATE TABLE IF NOT EXISTS alone would never notice.
+func TestOpenAddsAColumnMissingFromAnAlreadyCurrentDatabase(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "predates-dir.db")
+	ctx := context.Background()
+
+	s, err := sqlitestore.Open(path)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	if err := s.CreateDelegation(ctx, &delegation.Delegation{
+		ID: "d1", Room: "/repo", Dir: "/repo", Role: "tester", Harness: "codex",
+		Requester: "codex:a", Prompt: "run the tests", Status: delegation.StatusPending,
+		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("seed delegation: %v", err)
+	}
+	s.Close()
+
+	// Rewind to the shape delegations shipped with before dir existed, at the
+	// same schema version: this is not a version to migrate away from.
+	db, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatalf("open raw: %v", err)
+	}
+	if _, err := db.Exec(`ALTER TABLE delegations DROP COLUMN dir`); err != nil {
+		t.Fatalf("rewind: %v", err)
+	}
+	db.Close()
+
+	s, err = sqlitestore.Open(path)
+	if err != nil {
+		t.Fatalf("Open on a database missing delegations.dir: %v", err)
+	}
+	defer s.Close()
+
+	// The pre-existing row survives the reopen; its dir cannot be recovered
+	// (dropping a column destroys that cell), but the row itself must not be
+	// lost, and the restored column must work for anything written from here.
+	if _, err := s.GetDelegation(ctx, "d1"); err != nil {
+		t.Fatalf("GetDelegation after reopen: %v", err)
+	}
+	if err := s.CreateDelegation(ctx, &delegation.Delegation{
+		ID: "d2", Room: "/repo", Dir: "/repo#lease", Role: "tester", Harness: "codex",
+		Requester: "codex:a", Prompt: "run the tests", Status: delegation.StatusPending,
+		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("create delegation after reopen: %v", err)
+	}
+	got, err := s.GetDelegation(ctx, "d2")
+	if err != nil {
+		t.Fatalf("GetDelegation(d2): %v", err)
+	}
+	if got.Dir != "/repo#lease" {
+		t.Errorf("Dir = %q, want the restored column to hold what was written", got.Dir)
+	}
+
+	// Reopening again must not fail by trying to add the column twice.
+	s.Close()
+	again, err := sqlitestore.Open(path)
+	if err != nil {
+		t.Fatalf("second Open = %v, want idempotent", err)
+	}
+	again.Close()
 }
 
 // Opening the current schema repeatedly is safe.
