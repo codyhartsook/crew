@@ -12,11 +12,14 @@ import (
 	"github.com/codyhartsook/multiplayer/internal/cli/clearcmd"
 	"github.com/codyhartsook/multiplayer/internal/cli/cmdutil"
 	"github.com/codyhartsook/multiplayer/internal/cli/dashboardcmd"
+	"github.com/codyhartsook/multiplayer/internal/cli/delegatecmd"
 	"github.com/codyhartsook/multiplayer/internal/cli/documentcmd"
 	"github.com/codyhartsook/multiplayer/internal/cli/hookcmd"
 	"github.com/codyhartsook/multiplayer/internal/cli/initcmd"
 	"github.com/codyhartsook/multiplayer/internal/cli/lscmd"
 	"github.com/codyhartsook/multiplayer/internal/cli/prunecmd"
+	"github.com/codyhartsook/multiplayer/internal/cli/rolecmd"
+	"github.com/codyhartsook/multiplayer/internal/cli/rolememcmd"
 	"github.com/codyhartsook/multiplayer/internal/cli/roomcmd"
 	"github.com/codyhartsook/multiplayer/internal/cli/searchcmd"
 	"github.com/codyhartsook/multiplayer/internal/cli/servecmd"
@@ -66,6 +69,9 @@ call records the git checkout, and the pool slot if there is one.`,
 		searchcmd.New(opts),
 		clearcmd.New(opts),
 		prunecmd.New(opts),
+		rolecmd.New(opts),
+		rolememcmd.New(opts),
+		delegatecmd.New(opts),
 		initcmd.New(opts),
 		uninstallcmd.New(opts),
 	)

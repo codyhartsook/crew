@@ -66,8 +66,9 @@ func Notice(entries []*Entry) string {
 		strings.Join(parts, ", "), plural("it", "them", len(entries)))
 }
 
-const hint = "Read and acknowledge entries with `crew room`, post with " +
-	"`crew post <note|request> \"...\"`, " +
+const hint = "Read and acknowledge entries with `crew room`. Post only " +
+	"information that changes another agent's work, with " +
+	"`crew post <note|request> \"...\"`; " +
 	"answer with `crew resolve <id> \"...\"`."
 
 func writeSection(b *strings.Builder, title string, entries []*Entry, mode Mode, authors Authors) {

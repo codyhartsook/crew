@@ -109,6 +109,7 @@ the broker wakes live sessions when they have addressed entries.`,
 			if dryRun {
 				return nil
 			}
+			reviewRoles(cmd.Context(), opts, cmd.InOrStdin(), out, rep.view, headless)
 
 			fmt.Fprintln(out)
 			baseURL := "http://" + addr

@@ -24,11 +24,11 @@ func TestNotifyUsesControlRelay(t *testing.T) {
 	binDir := t.TempDir()
 	marker := filepath.Join(t.TempDir(), "relayed")
 	script := filepath.Join(binDir, "claude")
-	if err := os.WriteFile(script, []byte("#!/bin/sh\ntouch \"$MULTIPLAYER_RELAY_MARKER\"\n"), 0o700); err != nil {
+	if err := os.WriteFile(script, []byte("#!/bin/sh\ntouch \"$CREW_RELAY_MARKER\"\n"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
-	t.Setenv("MULTIPLAYER_RELAY_MARKER", marker)
+	t.Setenv("CREW_RELAY_MARKER", marker)
 
 	s := &session.Session{ID: "test", PID: pid}
 	if err := Notify(context.Background(), s, "check inbox"); err != nil {

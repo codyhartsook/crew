@@ -30,7 +30,7 @@ const timeFormat = time.RFC3339Nano
 
 // SchemaVersion is the store layout this binary understands. Raise it whenever
 // a migration changes what older binaries can safely assume.
-const SchemaVersion = 6
+const SchemaVersion = 9
 
 const schema = `
 CREATE TABLE IF NOT EXISTS sessions (
@@ -133,6 +133,21 @@ var additive = map[int][]string{
 		`ALTER TABLE sessions ADD COLUMN folder_name TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE sessions ADD COLUMN folder_root TEXT NOT NULL DEFAULT ''`,
 	},
+	7: {
+		roleMemorySchema,
+		roleMemoryIndex,
+	},
+	8: {
+		roleActivationSchema,
+		roleActivationIndex,
+		routingLogSchema,
+		routingLogIndex,
+	},
+	9: {
+		delegationSchema,
+		delegationIndexStatus,
+		delegationIndexRequester,
+	},
 }
 
 // upgrade walks a database forward one version at a time and reports the
@@ -196,7 +211,7 @@ func migrate(db *sql.DB) error {
 		return fmt.Errorf("crew now requires a fresh version %d database: move the unversioned database aside and restart", SchemaVersion)
 	}
 
-	if _, err := db.ExecContext(ctx, schema+roomSchema); err != nil {
+	if _, err := db.ExecContext(ctx, schema+roomSchema+roleMemorySchema+roleActivationSchema+routingLogSchema+delegationSchema); err != nil {
 		return fmt.Errorf("apply schema: %w", err)
 	}
 	if _, err := db.ExecContext(ctx, aliasIndex); err != nil {
@@ -205,12 +220,45 @@ func migrate(db *sql.DB) error {
 	if err := backfillAliases(ctx, db); err != nil {
 		return err
 	}
-	if _, err := db.ExecContext(ctx, roomIndexes); err != nil {
+	if _, err := db.ExecContext(ctx, roomIndexes+roleMemoryIndex+roleActivationIndex+routingLogIndex+delegationIndexStatus+delegationIndexRequester); err != nil {
 		return fmt.Errorf("create indexes: %w", err)
+	}
+	// A database from an earlier build may have delegations without dir;
+	// CREATE TABLE IF NOT EXISTS above won't add it, so check separately.
+	if err := ensureColumn(ctx, db, "delegations", "dir", `ALTER TABLE delegations ADD COLUMN dir TEXT NOT NULL DEFAULT ''`); err != nil {
+		return err
 	}
 	// PRAGMA takes no parameters; the value is a constant.
 	if _, err := db.ExecContext(ctx, fmt.Sprintf(`PRAGMA user_version = %d`, SchemaVersion)); err != nil {
 		return fmt.Errorf("record schema version: %w", err)
+	}
+	return nil
+}
+
+// ensureColumn adds column to table via addSQL unless already present.
+func ensureColumn(ctx context.Context, db *sql.DB, table, column, addSQL string) error {
+	rows, err := db.QueryContext(ctx, fmt.Sprintf(`PRAGMA table_info(%s)`, table))
+	if err != nil {
+		return fmt.Errorf("check %s columns: %w", table, err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var cid, notNull, pk int
+		var name, colType string
+		var dflt sql.NullString
+		if err := rows.Scan(&cid, &name, &colType, &notNull, &dflt, &pk); err != nil {
+			return fmt.Errorf("check %s columns: %w", table, err)
+		}
+		if name == column {
+			return nil
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("check %s columns: %w", table, err)
+	}
+	if _, err := db.ExecContext(ctx, addSQL); err != nil {
+		return fmt.Errorf("add %s.%s: %w", table, column, err)
 	}
 	return nil
 }

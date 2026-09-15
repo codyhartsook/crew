@@ -61,7 +61,7 @@ var specs = []Spec{
 		// Claude Code's hook timeout has a high ceiling, so the end path is not
 		// squeezed the way Codex's is.
 		EndBudget: 4 * time.Second,
-		Timeouts:  map[string]int{"SessionStart": 10, "UserPromptSubmit": 5, "SessionEnd": 5},
+		Timeouts:  map[string]int{"SessionStart": 10, "UserPromptSubmit": 5, "PreToolUse": 3, "SessionEnd": 5},
 		Notify:    claude.Notify,
 		Usage:     usage.ClaudeSource{},
 	},
@@ -77,7 +77,7 @@ var specs = []Spec{
 		SandboxTOML: ".codex/config.toml",
 		// Codex clamps SessionEnd to three seconds and warns above it.
 		EndBudget: 2500 * time.Millisecond,
-		Timeouts:  map[string]int{"SessionStart": 10, "UserPromptSubmit": 5, "SessionEnd": 3},
+		Timeouts:  map[string]int{"SessionStart": 10, "UserPromptSubmit": 5, "PreToolUse": 3, "SessionEnd": 3},
 		Notify:    codex.Notify,
 		Usage:     usage.CodexSource{},
 	},

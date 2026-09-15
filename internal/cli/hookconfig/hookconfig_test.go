@@ -42,7 +42,7 @@ func TestMergeHooksSweepsRetiredEvents(t *testing.T) {
 	    {"hooks": [{"type":"command","command":"\"/old/mp\" hook --harness codex --quiet"}]},
 	    {"hooks": [{"type":"command","command":"someone-else --watch"}]}
 	  ],
-	  "PreToolUse":       [{"hooks": [{"type":"command","command":"\"/old/mp\" hook --harness codex --quiet"}]}]
+	  "Stop":             [{"hooks": [{"type":"command","command":"\"/old/mp\" hook --harness codex --quiet"}]}]
 	}`)
 
 	// UserPromptSubmit is managed but no longer tracked: sweep it.
@@ -57,8 +57,8 @@ func TestMergeHooksSweepsRetiredEvents(t *testing.T) {
 		t.Errorf("SessionStart = %v, want the reinstalled hook at the new path", starts)
 	}
 	// An event this tool never managed is not its business to touch.
-	if len(commands(t, got, "PreToolUse")) != 1 {
-		t.Error("PreToolUse was modified; only managed events should be swept")
+	if len(commands(t, got, "Stop")) != 1 {
+		t.Error("Stop was modified; only managed events should be swept")
 	}
 }
 
@@ -154,7 +154,7 @@ func TestInstalledIgnoresForeignEntries(t *testing.T) {
 // init walks Events to report a hook per line, so order matters.
 func TestEventsIsAnOrderedCopy(t *testing.T) {
 	got := Events()
-	want := []string{"SessionStart", "UserPromptSubmit", "SessionEnd"}
+	want := []string{"SessionStart", "UserPromptSubmit", "PreToolUse", "SessionEnd"}
 	if !slices.Equal(got, want) {
 		t.Errorf("Events() = %v, want %v", got, want)
 	}

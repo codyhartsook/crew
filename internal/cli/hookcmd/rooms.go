@@ -3,34 +3,20 @@ package hookcmd
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
-	"os"
 	"time"
 
 	"github.com/codyhartsook/multiplayer/internal/cli/cmdutil"
 	"github.com/codyhartsook/multiplayer/internal/cli/roomctx"
+	"github.com/codyhartsook/multiplayer/internal/delegation"
 	"github.com/codyhartsook/multiplayer/internal/hook"
 	"github.com/codyhartsook/multiplayer/internal/prune"
 	"github.com/codyhartsook/multiplayer/internal/room"
 	"github.com/codyhartsook/multiplayer/internal/session"
 	"github.com/codyhartsook/multiplayer/internal/store"
 )
-
-// autoJoinDefault governs whether a starting session joins its rooms without
-// being asked. MULTIPLAYER_AUTO_JOIN overrides it.
-const autoJoinDefault = true
-
-func autoJoinEnabled() bool {
-	switch os.Getenv(cmdutil.EnvAutoJoin) {
-	case "":
-		return autoJoinDefault
-	case "0", "false", "no":
-		return false
-	default:
-		return true
-	}
-}
 
 // hookOutput is the directive envelope both harnesses accept.
 type hookOutput struct {
@@ -66,14 +52,24 @@ func roomsFor(ctx context.Context, st store.Store, event hook.Event, sess *sessi
 	case hook.EventStart:
 		// Reap sessions whose process is gone before reporting who is here.
 		prune.Quietly(ctx, st)
-		return briefingFor(ctx, st, rs, sess)
+		briefing, err := briefingFor(ctx, st, rs, sess)
+		if err != nil || sess == nil {
+			return briefing, err
+		}
+		roster, err := rosterFor(ctx, st, sess, room.For(sess.Place))
+		return joinContext(briefing, roster), err
 	case hook.EventPrompt:
 		// A turn is the only proof a session is still working, so it is what
 		// keeps last-seen meaning last active rather than started.
 		if sessionKey != "" {
 			_ = st.Touch(ctx, sessionKey, time.Now().UTC())
 		}
-		return noticeFor(ctx, rs, sessionKey)
+		roomNotice, err := noticeFor(ctx, rs, sessionKey)
+		if err != nil {
+			return roomNotice, err
+		}
+		delegationNotice, err := delegationNoticeFor(ctx, st, sessionKey)
+		return joinContext(roomNotice, delegationNotice), err
 	default:
 		return "", nil
 	}
@@ -87,7 +83,7 @@ func briefingFor(ctx context.Context, st store.Store, rs store.RoomStore, sess *
 	if len(here) == 0 {
 		return "", nil
 	}
-	if autoJoinEnabled() {
+	if cmdutil.AutoJoinEnabled() {
 		if err := roomctx.Join(ctx, rs, sess.Key(), here); err != nil {
 			return "", err
 		}
@@ -134,6 +130,38 @@ func noticeFor(ctx context.Context, rs store.RoomStore, sessionKey string) (stri
 		return "", err
 	}
 	return room.Notice(entries), nil
+}
+
+// delegationNoticeFor surfaces the requester's finished delegations.
+func delegationNoticeFor(ctx context.Context, st store.Store, sessionKey string) (string, error) {
+	ds, ok := st.(store.DelegationStore)
+	if !ok || sessionKey == "" {
+		return "", nil
+	}
+	done, err := ds.ListDelegations(ctx, delegation.Filter{Requester: sessionKey, Status: delegation.StatusDone, Unnotified: true})
+	if err != nil {
+		return "", err
+	}
+	failed, err := ds.ListDelegations(ctx, delegation.Filter{Requester: sessionKey, Status: delegation.StatusFailed, Unnotified: true})
+	if err != nil {
+		return "", err
+	}
+	finished := append(done, failed...)
+	if len(finished) == 0 {
+		return "", nil
+	}
+
+	// Only what MarkNotified confirmed; a failure stays Unnotified for retry.
+	var notified []*delegation.Delegation
+	var markErr error
+	for _, d := range finished {
+		if err := ds.MarkNotified(ctx, d.ID); err != nil {
+			markErr = errors.Join(markErr, err)
+			continue
+		}
+		notified = append(notified, d)
+	}
+	return delegation.Notice(notified), markErr
 }
 
 func sessionKeyFrom(harness session.Harness, p hook.Payload) string {
