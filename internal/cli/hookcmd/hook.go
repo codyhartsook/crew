@@ -135,11 +135,8 @@ func debugEnabled() bool {
 	return v != "" && v != "0" && v != "false"
 }
 
-// logMissingCapabilities notes, once per session, which optional store
-// interfaces this store lacks. Every tier below already skips silently
-// rather than failing the harness when one is missing - that must not
-// change - but "nothing happened" is otherwise indistinguishable from a
-// real bug, so CREW_DEBUG=1 gets a reason instead of only ever silence.
+// logMissingCapabilities notes which optional store interfaces are absent,
+// so CREW_DEBUG=1 gives a reason instead of silent no-ops.
 func logMissingCapabilities(opts *cmdutil.Options, st store.Store) {
 	var missing []string
 	if _, ok := st.(store.RoomStore); !ok {

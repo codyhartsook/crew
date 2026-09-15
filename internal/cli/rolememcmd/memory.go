@@ -1,5 +1,4 @@
-// Package rolememcmd is a role's private memory: read what a role wrote for
-// itself last time, or write something for it to read next time.
+// Package rolememcmd reads or writes a role's private memory.
 package rolememcmd
 
 import (
@@ -79,8 +78,7 @@ delegation exists.`,
 	return cmd
 }
 
-// roleIdentity prefers an explicit --role over the environment a delegated
-// spawn carries it in.
+// roleIdentity prefers an explicit --role over the spawn's own environment.
 func roleIdentity(role string) string {
 	if role != "" {
 		return role

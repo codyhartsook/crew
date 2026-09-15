@@ -1,6 +1,5 @@
 // Package routing decides what work leaves the main session: tier 1's
-// advisory roster, recorded here for later analysis, and tier 2's exact-match
-// tool interception.
+// advisory roster and tier 2's exact-match tool interception.
 package routing
 
 import (
@@ -19,9 +18,7 @@ type Decision struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-// MatchTool finds the first enforcing role among defs whose tool trigger
-// matches an exact call, tier 2's job. Suggest-mode roles are never
-// intercepted here; tier 1's roster is their only routing signal.
+// MatchTool finds the first enforcing role whose tool trigger matches exactly.
 func MatchTool(defs []role.Definition, toolName, target string) (role.Definition, bool) {
 	for _, d := range defs {
 		if d.Triggers.Mode != role.TriggerEnforce {
@@ -33,9 +30,7 @@ func MatchTool(defs []role.Definition, toolName, target string) (role.Definition
 			}
 			re := t.Compiled()
 			if re == nil {
-				// Validate normally compiles this; a definition built by hand
-				// (tests, mainly) has not, so fall back rather than never
-				// matching.
+				// Unset only for a hand-built definition (tests); fall back.
 				var err error
 				if re, err = regexp.Compile(t.Pattern); err != nil {
 					continue

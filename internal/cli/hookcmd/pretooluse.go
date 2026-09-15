@@ -40,9 +40,7 @@ func writeDecision(w io.Writer, deny bool, reason string) error {
 }
 
 // enforceFor is tier 2: deny an exact, enforced tool call and redirect it to
-// the role that owns it. Allow (the common case) needs no reason. sessionKey
-// is the caller's - sessionKeyFrom(h, p), the same key roomsFor and
-// recordUsage use, so the format is defined in exactly one place.
+// the role that owns it. sessionKey is the caller's own sessionKeyFrom(h, p).
 func enforceFor(ctx context.Context, st store.Store, sessionKey string, p hook.Payload) (deny bool, reason string, err error) {
 	if p.ToolName == "" || sessionKey == "" {
 		return false, "", nil

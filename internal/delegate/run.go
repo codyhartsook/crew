@@ -13,9 +13,8 @@ import (
 	"github.com/codyhartsook/multiplayer/internal/session"
 )
 
-// Run spawns one headless harness invocation in dir (the broker may not be
-// sitting in the room it resolves for) and returns its bounded result. env
-// carries the caller's environment additions (auto-join, role, delegation id).
+// Run spawns one headless harness invocation in dir and returns its bounded
+// result. env carries the caller's environment additions.
 func Run(ctx context.Context, h session.Harness, def role.Definition, task, dir string, env []string) (string, error) {
 	bin, err := exec.LookPath(string(h))
 	if err != nil {
@@ -78,8 +77,7 @@ func Run(ctx context.Context, h session.Harness, def role.Definition, task, dir 
 	}
 }
 
-// runCapturing runs cmd to completion. Stdin is left nil, which Go connects
-// to the null device.
+// runCapturing runs cmd to completion; Stdin nil means the null device.
 func runCapturing(cmd *exec.Cmd) ([]byte, error) {
 	out, err := cmd.Output()
 	if err != nil {

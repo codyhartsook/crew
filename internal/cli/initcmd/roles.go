@@ -16,10 +16,8 @@ import (
 	"github.com/codyhartsook/multiplayer/internal/store"
 )
 
-// reviewRoles offers to activate this location's discovered roles, alongside
-// the report the rest of init already prints. Activation is explicit opt-in,
-// so nothing here changes without an answer; it fails soft throughout,
-// since a role never gets in the way of the hooks init exists to install.
+// reviewRoles offers to activate discovered roles; it fails soft throughout,
+// since a role never blocks the hooks init exists to install.
 func reviewRoles(ctx context.Context, opts *cmdutil.Options, in io.Reader, out io.Writer, view initView, headless bool) {
 	if headless || !isTerminalReader(in) {
 		return
@@ -70,9 +68,8 @@ func reviewRoles(ctx context.Context, opts *cmdutil.Options, in io.Reader, out i
 	}
 }
 
-// promptActivation asks which discovered-but-inactive roles to turn on, and
-// returns the names chosen. Pure aside from the read and the print, so the
-// parsing is testable without a real terminal.
+// promptActivation asks which inactive roles to turn on; pure enough aside
+// from the read/print to test without a real terminal.
 func promptActivation(in io.Reader, out io.Writer, view initView, defs []role.Definition, active map[string]bool) []string {
 	var candidates []role.Definition
 	for _, d := range defs {
@@ -116,8 +113,7 @@ func promptActivation(in io.Reader, out io.Writer, view initView, defs []role.De
 }
 
 // isTerminalReader reports whether in is a real terminal, so a piped or
-// redirected stdin - every test, and any scripted use - skips the prompt
-// rather than blocking on input that will never come.
+// scripted stdin skips the prompt instead of blocking forever.
 func isTerminalReader(in io.Reader) bool {
 	f, ok := in.(*os.File)
 	if !ok {

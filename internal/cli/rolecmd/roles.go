@@ -1,5 +1,4 @@
-// Package rolecmd lists the role identities crew's delegation system reads,
-// and activates or deactivates them for a room.
+// Package rolecmd lists, activates, and deactivates role identities.
 package rolecmd
 
 import (
@@ -49,8 +48,7 @@ A discovered role is dormant until this location's room activates it, with
 	return cmd
 }
 
-// discover resolves the current directory into a repo root, if any, and reads
-// both scopes.
+// discover resolves cwd into a repo root, if any, and reads both scopes.
 func discover(ctx context.Context) (*role.Registry, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -59,9 +57,8 @@ func discover(ctx context.Context) (*role.Registry, error) {
 	return role.DiscoverFromDir(ctx, cwd)
 }
 
-// activeHere is which roles this location's room has activated. Best effort:
-// a listing outside any room, or against a store that predates activation,
-// degrades to an empty set rather than failing the whole command.
+// activeHere is which roles are active here. Best effort: degrades to
+// an empty set rather than failing the whole command.
 func activeHere(ctx context.Context, opts *cmdutil.Options) map[string]bool {
 	rc, err := roomctx.Open(ctx, opts, roomctx.Cwd())
 	if err != nil {

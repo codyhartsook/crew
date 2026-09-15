@@ -1,5 +1,4 @@
-// Package delegatecmd spawns a role headless for one task and returns its
-// bounded result to the launcher, or queues it for the broker to run.
+// Package delegatecmd spawns a role headless, or queues it for the broker.
 package delegatecmd
 
 import (
@@ -105,8 +104,7 @@ Either way, the role spawns headless with room auto-join disabled.`,
 	return cmd
 }
 
-// runNow runs d synchronously and prints its result, for --wait. The
-// requester already sees the result directly, so nothing is left to notify.
+// runNow runs d synchronously for --wait; nothing is left to notify after.
 func runNow(cmd *cobra.Command, ds store.DelegationStore, d *delegation.Delegation, def role.Definition, h session.Harness, timeout time.Duration) error {
 	ctx := cmd.Context()
 	if started, err := ds.StartDelegation(ctx, d.ID); err != nil || !started {

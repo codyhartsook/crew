@@ -15,9 +15,8 @@ import (
 	"github.com/codyhartsook/multiplayer/internal/store"
 )
 
-// rosterFor is tier 1 routing: active roles injected as advisory context,
-// silent when none are active. Routing is logged once per room, so a
-// multi-room session attributes each role to the room that activated it.
+// rosterFor is tier 1 routing: active roles as advisory context, logged once
+// per room so a multi-room session attributes each role correctly.
 func rosterFor(ctx context.Context, st store.Store, sess *session.Session, here []room.Room) (string, error) {
 	rs, ok := st.(store.RoleStore)
 	if !ok || sess == nil {
@@ -77,8 +76,7 @@ func activeRoleNames(ctx context.Context, rs store.RoleStore, here []room.Room) 
 	return names, nil
 }
 
-// defsFor resolves each active name to its definition, dropping any that no
-// longer has one - a role can be active with its file since removed.
+// defsFor resolves each name to its definition, dropping any now missing.
 func defsFor(names []string, reg *role.Registry) []role.Definition {
 	if reg == nil {
 		return nil
@@ -92,10 +90,8 @@ func defsFor(names []string, reg *role.Registry) []role.Definition {
 	return defs
 }
 
-// discoverRoles reads role definitions to describe an active roster. A
-// failure here (an unreadable directory, a bad definition) is not worth
-// failing the hook over: the roster still injects, just by name. The
-// session's own Repo is already known, so this skips re-detecting it.
+// discoverRoles reads definitions for the roster. A failure is not worth
+// failing the hook over: the roster still injects, just by name.
 func discoverRoles(sess *session.Session) *role.Registry {
 	repoRoot := ""
 	if sess.Repo != nil {
@@ -123,8 +119,7 @@ func rosterText(names []string, reg *role.Registry) string {
 	return strings.TrimRight(b.String(), "\n")
 }
 
-// joinContext combines the room briefing and the role roster, either of which
-// may be empty, into the one string a hook injects.
+// joinContext combines the briefing and roster into one injected string.
 func joinContext(parts ...string) string {
 	var kept []string
 	for _, p := range parts {

@@ -19,15 +19,11 @@ const delegationPollInterval = 2 * time.Second
 // delegationTimeout bounds one spawn, matching the CLI's --wait default.
 const delegationTimeout = 10 * time.Minute
 
-// staleRunningTimeout is how long a "running" delegation may sit untouched by
-// this process's own claim before it is assumed orphaned - the broker (or a
-// --wait launcher) that was running it crashed or restarted - and failed so
-// a retry is possible. It must clear delegationTimeout: a spawn still
-// legitimately in flight elsewhere updates nothing until it finishes.
+// staleRunningTimeout is how long "running" may go unclaimed before it is
+// assumed orphaned by a crashed process and failed. Must exceed delegationTimeout.
 const staleRunningTimeout = 2 * delegationTimeout
 
-// delegationCoordinator runs fire-and-forget delegations. A pending row can
-// come from any repo on the machine, since one broker serves them all.
+// delegationCoordinator runs fire-and-forget delegations from any repo.
 type delegationCoordinator struct {
 	store store.DelegationStore
 	log   *slog.Logger
@@ -53,8 +49,7 @@ func (c *delegationCoordinator) run(ctx context.Context) {
 	}
 }
 
-// sweep claims and spawns pending delegations concurrently, so one long spawn
-// never delays the next poll.
+// sweep claims and spawns pending delegations concurrently.
 func (c *delegationCoordinator) sweep(ctx context.Context) {
 	pending, err := c.store.ListDelegations(ctx, delegation.Filter{Status: delegation.StatusPending})
 	if err != nil {
@@ -78,9 +73,8 @@ func (c *delegationCoordinator) sweep(ctx context.Context) {
 	c.reapStale(ctx)
 }
 
-// reapStale fails a "running" delegation this process is not itself
-// executing and has not been touched in staleRunningTimeout: the broker that
-// claimed it is gone, and nothing else will ever move it out of "running".
+// reapStale fails a "running" delegation this process isn't executing and
+// hasn't touched in staleRunningTimeout.
 func (c *delegationCoordinator) reapStale(ctx context.Context) {
 	running, err := c.store.ListDelegations(ctx, delegation.Filter{Status: delegation.StatusRunning})
 	if err != nil {

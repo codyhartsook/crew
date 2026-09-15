@@ -25,8 +25,7 @@ const BriefingLimit = 12
 type Context struct {
 	Store store.Store
 	Rooms store.RoomStore
-	// Memory is nil when the store does not support role memory. Only a
-	// memory command needs it, so Open never fails for lacking it.
+	// Memory is nil when the store does not support role memory.
 	Memory store.MemoryStore
 	Here   []room.Room
 
@@ -119,12 +118,8 @@ func (c *Context) Author(ctx context.Context, as string) (string, error) {
 	return ResolveAuthor(ctx, c.Store, c.Keys())
 }
 
-// Accessible ensures the identified local agent is joined, then returns its
-// rooms. A missed start hook should not make an agent unable to use its own
-// room, while Author still rejects an identity from another location. It
-// respects CREW_AUTO_JOIN: a delegated role's spawn sets it to 0 specifically
-// to stay outside the room, and joining it here regardless would silently
-// undo that isolation the moment it touched a room command.
+// Accessible joins the agent (unless CREW_AUTO_JOIN=0, a delegated role
+// staying deliberately out) and returns its rooms.
 func (c *Context) Accessible(ctx context.Context, sessionKey string) ([]string, error) {
 	if cmdutil.AutoJoinEnabled() {
 		if err := Join(ctx, c.Rooms, sessionKey, c.Here); err != nil {

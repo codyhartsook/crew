@@ -19,14 +19,9 @@ const (
 	EnvServer   = "CREW_SERVER"
 	EnvDebug    = "CREW_DEBUG"
 	EnvAutoJoin = "CREW_AUTO_JOIN"
-	// EnvRole names the role identity a spawned role runs as. Phase 4 sets it
-	// on a delegated spawn's environment; a plain session can also set it to
-	// carry a role identity before delegation exists.
+	// EnvRole names the role identity a spawned role runs as.
 	EnvRole = "CREW_ROLE"
-	// EnvDelegation carries the delegation id on a spawned role's environment,
-	// for correlating its lifecycle with the launcher's request. Env rather
-	// than either harness's own session id: Claude accepts an injected one,
-	// Codex does not, so neither is a usable key across both.
+	// EnvDelegation carries the delegation id on a spawned role's environment.
 	EnvDelegation = "CREW_DELEGATION"
 )
 
@@ -80,13 +75,11 @@ func (o *Options) StoreDir() (string, error) {
 	return filepath.Dir(path), nil
 }
 
-// autoJoinDefault governs whether a starting session joins its rooms without
-// being asked. CREW_AUTO_JOIN overrides it.
+// autoJoinDefault is overridden by CREW_AUTO_JOIN.
 const autoJoinDefault = true
 
-// AutoJoinEnabled reports the policy a delegated role's own environment
-// carries: CREW_AUTO_JOIN=0 marks a session that is deliberately not a
-// member of its rooms, so nothing should join it on its behalf.
+// AutoJoinEnabled reports whether a session should auto-join its rooms.
+// CREW_AUTO_JOIN=0 marks a delegated role deliberately not a member.
 func AutoJoinEnabled() bool {
 	switch os.Getenv(EnvAutoJoin) {
 	case "":

@@ -19,14 +19,11 @@ const dirName = ".crew/agents"
 // GlobalDir is where user-wide role definitions live, relative to home.
 func GlobalDir(home string) string { return filepath.Join(home, dirName) }
 
-// RepoDir is where a repository's own role definitions live, relative to its
-// root.
+// RepoDir is where a repo's own role definitions live, relative to its root.
 func RepoDir(repoRoot string) string { return filepath.Join(repoRoot, dirName) }
 
-// Load reads every *.toml file directly in dir as a definition of the given
-// scope. A missing directory is not an error: most scopes define no roles.
-// Every definition is validated before Load returns, so a bad file is caught
-// here rather than at spawn time, and the error names it.
+// Load reads every *.toml file in dir as a validated definition. A missing
+// directory is not an error: most scopes define no roles.
 func Load(dir string, scope Scope) ([]Definition, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -75,15 +72,13 @@ func load(path string, scope Scope) (Definition, error) {
 	return def, nil
 }
 
-// Registry is every role definition currently in effect: repo and global,
-// with repo already resolved as the winner of any name collision.
+// Registry is every role definition in effect, repo already won on collision.
 type Registry struct {
 	byName   map[string]Definition
 	shadowed map[string]Definition
 }
 
-// Discover loads both scopes and merges them. repoDir may be empty, for a
-// command running outside any repository.
+// Discover loads both scopes and merges them. repoDir may be empty.
 func Discover(repoDir, globalDir string) (*Registry, error) {
 	global, err := Load(globalDir, ScopeGlobal)
 	if err != nil {
@@ -110,9 +105,8 @@ func Discover(repoDir, globalDir string) (*Registry, error) {
 	return reg, nil
 }
 
-// DiscoverFor is Discover resolved from a repo root a caller already knows
-// (empty for none), and the user's home for the global scope. The one glue
-// every caller needs, so it exists in one place instead of several.
+// DiscoverFor is Discover given a repo root the caller already knows (empty
+// for none). The one glue every caller needs, kept in one place.
 func DiscoverFor(repoRoot string) (*Registry, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -126,9 +120,7 @@ func DiscoverFor(repoRoot string) (*Registry, error) {
 }
 
 // DiscoverFromDir is DiscoverFor, detecting the repo root from dir first.
-// dir need not be the caller's own cwd - the broker resolves a delegation's
-// stored directory this same way. Prefer DiscoverFor when the repo root is
-// already known: detection shells out to git.
+// Prefer DiscoverFor when the root is already known: this shells out to git.
 func DiscoverFromDir(ctx context.Context, dir string) (*Registry, error) {
 	repoRoot := ""
 	if place, err := detect.New().Detect(ctx, dir); err == nil && place != nil && place.Repo != nil {
@@ -153,8 +145,7 @@ func (r *Registry) Get(name string) (Definition, bool) {
 	return d, ok
 }
 
-// Shadowed reports the global definition a repo one of the same name hid, if
-// any, so a listing can say why only one is active.
+// Shadowed reports the global definition a repo one of the same name hid.
 func (r *Registry) Shadowed(name string) (Definition, bool) {
 	d, ok := r.shadowed[name]
 	return d, ok

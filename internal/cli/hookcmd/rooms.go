@@ -132,8 +132,7 @@ func noticeFor(ctx context.Context, rs store.RoomStore, sessionKey string) (stri
 	return room.Notice(entries), nil
 }
 
-// delegationNoticeFor surfaces finished delegations the requester has not
-// been told about yet, through the same notice path as room requests.
+// delegationNoticeFor surfaces the requester's finished delegations.
 func delegationNoticeFor(ctx context.Context, st store.Store, sessionKey string) (string, error) {
 	ds, ok := st.(store.DelegationStore)
 	if !ok || sessionKey == "" {
@@ -152,9 +151,7 @@ func delegationNoticeFor(ctx context.Context, st store.Store, sessionKey string)
 		return "", nil
 	}
 
-	// Include only what MarkNotified actually confirmed: one that fails stays
-	// Unnotified and is retried next time, rather than being dropped because
-	// it shared a loop with one that succeeded.
+	// Only what MarkNotified confirmed; a failure stays Unnotified for retry.
 	var notified []*delegation.Delegation
 	var markErr error
 	for _, d := range finished {

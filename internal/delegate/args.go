@@ -36,8 +36,7 @@ func claudeArgs(def role.Definition, task string, schema []byte) []string {
 	return args
 }
 
-// codexArgs builds a headless Codex spawn. codex exec has no system-prompt
-// flag, so the persona is composed into the prompt instead of the task alone.
+// codexArgs builds a headless Codex spawn; codex exec has no system-prompt flag.
 func codexArgs(def role.Definition, task, schemaPath, resultFile string) []string {
 	prompt := task
 	if def.Instructions != "" {
@@ -63,8 +62,7 @@ func codexArgs(def role.Definition, task, schemaPath, resultFile string) []strin
 }
 
 // loadSchema reads a role's output schema, relative to its definition file.
-// Codex requires additionalProperties: false throughout; crew does not
-// rewrite a role's schema to add it.
+// Codex requires additionalProperties: false; crew does not rewrite it in.
 func loadSchema(def role.Definition) ([]byte, error) {
 	if def.Output.Schema == "" {
 		return nil, nil

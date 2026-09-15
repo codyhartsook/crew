@@ -1,6 +1,4 @@
-// Package delegation is a delegated task: what was asked, of which role, and
-// what came back. Fire-and-forget is the default; --wait just blocks the
-// launcher on the same record instead of returning immediately.
+// Package delegation is a delegated task: what was asked, and what came back.
 package delegation
 
 import (
@@ -22,9 +20,7 @@ const (
 type Delegation struct {
 	ID   string `json:"id"`
 	Room string `json:"room"`
-	// Dir is the filesystem directory to spawn and resolve roles in. Not
-	// always Room: a pooled worktree's room key has a "#<lease>" suffix that
-	// is not a valid path.
+	// Dir is where to spawn and resolve roles; a pooled Room key is not a path.
 	Dir       string    `json:"dir"`
 	Role      string    `json:"role"`
 	Harness   string    `json:"harness"`
@@ -38,8 +34,7 @@ type Delegation struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
-// Notice is the one-line nudge for finished delegations: enough to know
-// something is waiting, not the result itself.
+// Notice is a one-line nudge for finished delegations, not the result itself.
 func Notice(ds []*Delegation) string {
 	if len(ds) == 0 {
 		return ""

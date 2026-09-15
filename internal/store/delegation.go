@@ -14,15 +14,13 @@ type DelegationStore interface {
 
 	ListDelegations(ctx context.Context, f delegation.Filter) ([]*delegation.Delegation, error)
 
-	// StartDelegation claims one pending delegation, moving it to running.
-	// False means it was already claimed or is not pending.
+	// StartDelegation claims a pending delegation. False if already claimed.
 	StartDelegation(ctx context.Context, id string) (bool, error)
 
 	CompleteDelegation(ctx context.Context, id, result string) error
 
 	FailDelegation(ctx context.Context, id, errMsg string) error
 
-	// MarkNotified records that the requester has been told this delegation
-	// finished, so the notice path shows it only once.
+	// MarkNotified records that the requester was told, so it shows once.
 	MarkNotified(ctx context.Context, id string) error
 }

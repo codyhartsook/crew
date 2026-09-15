@@ -1,6 +1,4 @@
-// Package role is the registry of role identities crew's delegation system
-// reads. A definition names a role, which harness runs it, and how it is
-// briefed; nothing in this package changes runtime behavior on its own.
+// Package role is the registry of role identities: name, harness, briefing.
 package role
 
 import (
@@ -9,9 +7,7 @@ import (
 	"strings"
 )
 
-// Scope distinguishes where a definition came from. Both are searched;
-// ScopeRepo wins on a name collision, since a repo definition is
-// version-controlled and reviewable.
+// Scope distinguishes where a definition came from. Repo wins on collision.
 type Scope string
 
 const (
@@ -19,8 +15,7 @@ const (
 	ScopeGlobal Scope = "global"
 )
 
-// Harness names which agent CLI a role runs under. "any" defers the choice to
-// whatever spawns the role.
+// Harness names which agent CLI runs a role. "any" defers the choice.
 type Harness string
 
 const (
@@ -56,9 +51,7 @@ func (m Memory) Valid() bool {
 	}
 }
 
-// TriggerMode decides whether a matched trigger only suggests delegating, or
-// blocks the inline call. Enforce has no effect before phase 6 builds the
-// interception it requires, but a definition can declare it in advance.
+// TriggerMode decides whether a match only suggests, or blocks the call.
 type TriggerMode string
 
 const (
@@ -75,33 +68,26 @@ func (m TriggerMode) Valid() bool {
 	}
 }
 
-// ToolTrigger matches an exact tool call, for the structured interception
-// phase 6 adds. Pattern is matched against the tool's input, not its name.
+// ToolTrigger matches an exact tool call. Pattern matches the tool's input.
 type ToolTrigger struct {
 	Tool    string `toml:"tool" json:"tool"`
 	Pattern string `toml:"pattern" json:"pattern"`
 
-	// compiled is set once by Validate, the only place Pattern is known to be
-	// valid, so a hot path matching every tool call need not recompile it.
+	// compiled once by Validate; avoids recompiling on every tool call.
 	compiled *regexp.Regexp
 }
 
-// Compiled returns the trigger's pattern already compiled by Validate, or nil
-// if that never ran (a definition built by hand rather than loaded).
+// Compiled returns the pattern Validate compiled, or nil if that never ran.
 func (t ToolTrigger) Compiled() *regexp.Regexp { return t.compiled }
 
-// Triggers is the routing signal a definition carries. Prompt patterns are
-// advisory (tier 1); Tool patterns are exact matches structured interception
-// can act on (tier 2).
+// Triggers is a definition's routing signal: Prompt is advisory, Tool is exact.
 type Triggers struct {
 	Prompt []string      `toml:"prompt" json:"prompt,omitempty"`
 	Tool   []ToolTrigger `toml:"tool" json:"tool,omitempty"`
 	Mode   TriggerMode   `toml:"mode" json:"mode"`
 }
 
-// Render is spawn configuration. Fields carry both harnesses' vocabulary
-// rather than a lowest common denominator; each spawn path takes what
-// applies to it.
+// Render is spawn config; each harness takes the fields that apply to it.
 type Render struct {
 	Model   string   `toml:"model" json:"model,omitempty"`
 	Sandbox string   `toml:"sandbox" json:"sandbox,omitempty"`
@@ -125,8 +111,7 @@ type Definition struct {
 	Output       Output   `toml:"output" json:"output"`
 	Instructions string   `toml:"instructions" json:"instructions"`
 
-	// Scope and Path are not read from the file; the loader fills them in so
-	// an error, or a listing, can name where a definition came from.
+	// Scope and Path are filled in by the loader, not the file.
 	Scope Scope  `toml:"-" json:"scope"`
 	Path  string `toml:"-" json:"path"`
 }
@@ -134,9 +119,7 @@ type Definition struct {
 // nameRE keeps a role's name usable as a CLI argument and a file stem.
 var nameRE = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
 
-// Validate checks a definition for the mistakes that must fail at load rather
-// than surface later as a confusing spawn failure. Every problem is reported
-// together, and the error always names the source file.
+// Validate reports every problem at once, naming the source file.
 func (d *Definition) Validate() error {
 	var problems []string
 	if d.Name == "" {
@@ -183,8 +166,7 @@ func (d *Definition) Validate() error {
 	return fmt.Errorf("%s: %s", d.Path, strings.Join(problems, "; "))
 }
 
-// normalize fills in defaults that would otherwise make an unset field read
-// as an error. Enforce is opt-in, so an unset mode means suggest.
+// normalize defaults an unset trigger mode to suggest.
 func (d *Definition) normalize() {
 	if d.Triggers.Mode == "" {
 		d.Triggers.Mode = TriggerSuggest

@@ -9,9 +9,7 @@ import (
 	"github.com/codyhartsook/multiplayer/internal/store"
 )
 
-// roleActivationSchema is which roles a room has turned on. Kept apart from
-// role definitions, which are files: this is the only part of a role's
-// existence that lives in the database.
+// roleActivationSchema is which roles a room has turned on.
 const roleActivationSchema = `
 CREATE TABLE IF NOT EXISTS role_activation (
     room         TEXT NOT NULL,

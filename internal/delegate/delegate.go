@@ -1,6 +1,5 @@
-// Package delegate resolves a role and runs it headless for one task,
-// returning its bounded result. Used both by a --wait launcher, which calls
-// Run directly, and by the broker's async delegation loop.
+// Package delegate resolves a role and runs it headless, returning its
+// bounded result. Used by both a --wait launcher and the broker.
 package delegate
 
 import (
@@ -21,9 +20,8 @@ func Resolve(ctx context.Context, name string) (role.Definition, error) {
 	return ResolveIn(ctx, cwd, name)
 }
 
-// ResolveIn discovers both scopes from dir rather than cwd, for a caller
-// that is not itself sitting in the room it resolves for - the broker,
-// running one delegation whose room is any repo on the machine.
+// ResolveIn discovers both scopes from dir rather than cwd, for a caller not
+// sitting in the room it resolves for (the broker, running any repo's job).
 func ResolveIn(ctx context.Context, dir, name string) (role.Definition, error) {
 	reg, err := role.DiscoverFromDir(ctx, dir)
 	if err != nil {

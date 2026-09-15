@@ -223,10 +223,8 @@ func migrate(db *sql.DB) error {
 	if _, err := db.ExecContext(ctx, roomIndexes+roleMemoryIndex+roleActivationIndex+routingLogIndex+delegationIndexStatus+delegationIndexRequester); err != nil {
 		return fmt.Errorf("create indexes: %w", err)
 	}
-	// delegationSchema already includes dir, but a database created from an
-	// earlier build of this same, still-unreleased table predates it: CREATE
-	// TABLE IF NOT EXISTS above is a no-op against an existing table, so the
-	// column needs its own idempotent check.
+	// A database from an earlier build may have delegations without dir;
+	// CREATE TABLE IF NOT EXISTS above won't add it, so check separately.
 	if err := ensureColumn(ctx, db, "delegations", "dir", `ALTER TABLE delegations ADD COLUMN dir TEXT NOT NULL DEFAULT ''`); err != nil {
 		return err
 	}
@@ -237,9 +235,7 @@ func migrate(db *sql.DB) error {
 	return nil
 }
 
-// ensureColumn adds column to table via addSQL unless it is already there.
-// PRAGMA table_info always succeeds, even against a table that does not
-// exist, so this is safe to call before the table is known to exist.
+// ensureColumn adds column to table via addSQL unless already present.
 func ensureColumn(ctx context.Context, db *sql.DB, table, column, addSQL string) error {
 	rows, err := db.QueryContext(ctx, fmt.Sprintf(`PRAGMA table_info(%s)`, table))
 	if err != nil {

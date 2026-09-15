@@ -45,8 +45,7 @@ const (
 	EventEnd   Event = "SessionEnd"
 	// EventPrompt is a user turn, where undelivered entries are handed over.
 	EventPrompt Event = "UserPromptSubmit"
-	// EventPreToolUse is tier 2 routing: a chance to deny an exact tool call
-	// and redirect it to a role instead.
+	// EventPreToolUse is tier 2: a chance to deny an exact tool call.
 	EventPreToolUse Event = "PreToolUse"
 	// EventOther covers hook events the registry does not act on. Wiring an
 	// unrelated event to this binary should be inert, not an error.
@@ -73,9 +72,8 @@ type Payload struct {
 	AgentType      string `json:"agent_type"`
 	TurnID         string `json:"turn_id"`
 
-	// ToolName and ToolInput carry a PreToolUse call. AgentID is present only
-	// when Claude's own subagent (Task tool) made the call; Codex has no
-	// equivalent.
+	// ToolName/ToolInput carry a PreToolUse call. AgentID is Claude-only,
+	// present when a native subagent made the call.
 	ToolName  string          `json:"tool_name"`
 	ToolInput json.RawMessage `json:"tool_input"`
 	AgentID   string          `json:"agent_id"`

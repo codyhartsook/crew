@@ -10,10 +10,7 @@ import (
 	"github.com/codyhartsook/multiplayer/internal/store"
 )
 
-// roleMemorySchema is its own table, not a visibility flag on entries: a flag
-// has to be filtered correctly by every read path, including a generated
-// snapshot, and one missed filter leaks. A separate table cannot leak by
-// omission.
+// roleMemorySchema is its own table, not a visibility flag on entries.
 const roleMemorySchema = `
 CREATE TABLE IF NOT EXISTS role_memory (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -77,8 +74,7 @@ func (s *Store) ReadMemory(ctx context.Context, f rolemem.Filter) ([]*rolemem.En
 		q += " WHERE " + strings.Join(where, " AND ")
 	}
 	if f.Limit > 0 {
-		// Keep the newest entries, like room entries: a bounded memory pull is
-		// only useful when what it bounds to is what happened most recently.
+		// Keep the newest entries; a bounded pull wants what's most recent.
 		q += " ORDER BY id DESC LIMIT ?"
 		args = append(args, f.Limit)
 		q = "SELECT * FROM (" + q + ") ORDER BY id"

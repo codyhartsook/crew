@@ -10,10 +10,7 @@ import (
 	"github.com/codyhartsook/multiplayer/internal/store"
 )
 
-// routingLogSchema records every roster a session was shown. It has no
-// "taken" column yet: nothing before delegation exists (phase 4) can observe
-// whether a suggestion was acted on, and guessing that shape now risks a
-// second migration to fix it. Adding the column later is additive.
+// routingLogSchema records every roster shown; no "taken" column yet.
 const routingLogSchema = `
 CREATE TABLE IF NOT EXISTS routing_log (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
