@@ -180,8 +180,38 @@ func TestDiscoverForWithNoRepoRootOnlyReadsGlobal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DiscoverFor() error = %v", err)
 	}
-	if len(reg.All()) != 1 {
-		t.Fatalf("All() = %+v, want only the global role", reg.All())
+	got, ok := reg.Get("reviewer")
+	if !ok || got.Scope != ScopeGlobal {
+		t.Errorf("Get(reviewer) = %+v, %v, want the global role", got, ok)
+	}
+}
+
+func TestDiscoverForFillsInEmbeddedDefaultsNotDefinedElsewhere(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	reg, err := DiscoverFor("")
+	if err != nil {
+		t.Fatalf("DiscoverFor() error = %v", err)
+	}
+	got, ok := reg.Get("tester")
+	if !ok || got.Scope != ScopeEmbedded {
+		t.Errorf("Get(tester) = %+v, %v, want the embedded default", got, ok)
+	}
+}
+
+func TestDiscoverForLetsARepoRoleOverrideTheEmbeddedDefault(t *testing.T) {
+	home, repoRoot := t.TempDir(), t.TempDir()
+	t.Setenv("HOME", home)
+	writeFile(t, RepoDir(repoRoot), "tester.toml", strings.Replace(testerTOML, "gpt-5.3-codex", "repo-model", 1))
+
+	reg, err := DiscoverFor(repoRoot)
+	if err != nil {
+		t.Fatalf("DiscoverFor() error = %v", err)
+	}
+	got, ok := reg.Get("tester")
+	if !ok || got.Scope != ScopeRepo || got.Render.Model != "repo-model" {
+		t.Errorf("Get(tester) = %+v, %v, want the repo definition to win over the embedded default", got, ok)
 	}
 }
 

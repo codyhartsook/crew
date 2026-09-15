@@ -3,6 +3,7 @@ package role
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -33,13 +34,13 @@ func Load(dir string, scope Scope) ([]Definition, error) {
 		return nil, fmt.Errorf("read %s: %w", dir, err)
 	}
 
+	fsys := os.DirFS(dir)
 	var defs []Definition
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), ".toml") {
 			continue
 		}
-		path := filepath.Join(dir, e.Name())
-		def, err := load(path, scope)
+		def, err := load(fsys, e.Name(), scope, filepath.Join(dir, e.Name()))
 		if err != nil {
 			return nil, err
 		}
@@ -49,14 +50,15 @@ func Load(dir string, scope Scope) ([]Definition, error) {
 	return defs, nil
 }
 
-func load(path string, scope Scope) (Definition, error) {
+// load decodes one definition out of fsys; displayPath need not be a real path.
+func load(fsys fs.FS, name string, scope Scope, displayPath string) (Definition, error) {
 	var def Definition
-	meta, err := toml.DecodeFile(path, &def)
+	meta, err := toml.DecodeFS(fsys, name, &def)
 	if err != nil {
-		return Definition{}, fmt.Errorf("%s: %w", path, err)
+		return Definition{}, fmt.Errorf("%s: %w", displayPath, err)
 	}
 	def.Scope = scope
-	def.Path = path
+	def.Path = displayPath
 	def.normalize()
 
 	if undecoded := meta.Undecoded(); len(undecoded) > 0 {
@@ -64,7 +66,7 @@ func load(path string, scope Scope) (Definition, error) {
 		for i, k := range undecoded {
 			keys[i] = k.String()
 		}
-		return Definition{}, fmt.Errorf("%s: unknown field(s): %s", path, strings.Join(keys, ", "))
+		return Definition{}, fmt.Errorf("%s: unknown field(s): %s", displayPath, strings.Join(keys, ", "))
 	}
 	if err := def.Validate(); err != nil {
 		return Definition{}, err
@@ -105,8 +107,8 @@ func Discover(repoDir, globalDir string) (*Registry, error) {
 	return reg, nil
 }
 
-// DiscoverFor is Discover given a repo root the caller already knows (empty
-// for none). The one glue every caller needs, kept in one place.
+// DiscoverFor is Discover given a known repo root (empty for none), with
+// embedded default roles filled in under anything repo or global defines.
 func DiscoverFor(repoRoot string) (*Registry, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -116,7 +118,22 @@ func DiscoverFor(repoRoot string) (*Registry, error) {
 	if repoRoot != "" {
 		repoDir = RepoDir(repoRoot)
 	}
-	return Discover(repoDir, GlobalDir(home))
+	reg, err := Discover(repoDir, GlobalDir(home))
+	if err != nil {
+		return nil, err
+	}
+
+	embedded, err := loadEmbedded()
+	if err != nil {
+		return nil, err
+	}
+	for _, d := range embedded {
+		if _, ok := reg.byName[d.Name]; ok {
+			continue
+		}
+		reg.byName[d.Name] = d
+	}
+	return reg, nil
 }
 
 // DiscoverFromDir is DiscoverFor, detecting the repo root from dir first.

@@ -46,11 +46,11 @@ func writeRoleFile(t *testing.T, dir, name, content string) {
 	}
 }
 
-func TestRolesReportsNoneDefined(t *testing.T) {
+func TestRolesFallsBackToTheEmbeddedDefaultWhenNoneAreDefined(t *testing.T) {
 	home, cwd := t.TempDir(), t.TempDir()
 	out := runRoles(t, home, cwd)
-	if !strings.Contains(out, "no roles defined") {
-		t.Errorf("output = %q, want a no-roles message", out)
+	if !strings.Contains(out, "tester") || !strings.Contains(out, "embedded") {
+		t.Errorf("output = %q, want the embedded tester default", out)
 	}
 }
 

@@ -7,12 +7,13 @@ import (
 	"strings"
 )
 
-// Scope distinguishes where a definition came from. Repo wins on collision.
+// Scope distinguishes where a definition came from. Priority: repo, global, embedded.
 type Scope string
 
 const (
-	ScopeRepo   Scope = "repo"
-	ScopeGlobal Scope = "global"
+	ScopeRepo     Scope = "repo"
+	ScopeGlobal   Scope = "global"
+	ScopeEmbedded Scope = "embedded"
 )
 
 // Harness names which agent CLI runs a role. "any" defers the choice.
