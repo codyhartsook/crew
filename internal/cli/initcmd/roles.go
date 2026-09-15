@@ -1,13 +1,13 @@
 package initcmd
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"io"
 	"os"
-	"strings"
 	"time"
+
+	"github.com/charmbracelet/huh"
 
 	"github.com/codyhartsook/multiplayer/internal/cli/cmdutil"
 	"github.com/codyhartsook/multiplayer/internal/detect"
@@ -18,7 +18,7 @@ import (
 
 // reviewRoles offers to activate discovered roles; it fails soft throughout,
 // since a role never blocks the hooks init exists to install.
-func reviewRoles(ctx context.Context, opts *cmdutil.Options, in io.Reader, out io.Writer, view initView, headless bool) {
+func reviewRoles(ctx context.Context, opts *cmdutil.Options, in io.Reader, out io.Writer, headless bool) {
 	if headless || !isTerminalReader(in) {
 		return
 	}
@@ -63,51 +63,47 @@ func reviewRoles(ctx context.Context, opts *cmdutil.Options, in io.Reader, out i
 		active[a.Role] = true
 	}
 
-	for _, name := range promptActivation(in, out, view, reg.All(), active) {
+	for _, name := range promptActivation(in, out, reg.All(), active) {
 		_ = rs.ActivateRole(ctx, &role.Activation{Room: target.Key, Role: name, ActivatedAt: time.Now().UTC()})
 	}
 }
 
-// promptActivation asks which inactive roles to turn on; pure enough aside
-// from the read/print to test without a real terminal.
-func promptActivation(in io.Reader, out io.Writer, view initView, defs []role.Definition, active map[string]bool) []string {
-	var candidates []role.Definition
+// inactiveRoles is defs minus whatever active already lists; nothing left to
+// offer once every discovered role is already on, so asking would be noise.
+func inactiveRoles(defs []role.Definition, active map[string]bool) []role.Definition {
+	var out []role.Definition
 	for _, d := range defs {
 		if !active[d.Name] {
-			candidates = append(candidates, d)
+			out = append(out, d)
 		}
 	}
+	return out
+}
+
+// promptActivation is an interactive checklist of the inactive roles; esc or
+// ctrl-c cancels the same as an empty selection, since a skipped role never
+// blocks the hooks init exists to install.
+func promptActivation(in io.Reader, out io.Writer, defs []role.Definition, active map[string]bool) []string {
+	candidates := inactiveRoles(defs, active)
 	if len(candidates) == 0 {
 		return nil
 	}
 
-	fmt.Fprintln(out, "\n"+view.heading("Roles"))
-	for _, d := range candidates {
-		fmt.Fprintf(out, "  %s %s (%s) %s\n", view.muted("·"), d.Name, d.Harness, d.Description)
+	options := make([]huh.Option[string], len(candidates))
+	for i, d := range candidates {
+		options[i] = huh.NewOption(fmt.Sprintf("%s (%s) %s", d.Name, d.Harness, d.Description), d.Name)
 	}
-	fmt.Fprint(out, "  activate which here? [names, comma separated, \"all\", or Enter to skip]: ")
 
-	line, _ := bufio.NewReader(in).ReadString('\n')
-	line = strings.TrimSpace(line)
-	if line == "" {
-		return nil
-	}
-	if strings.EqualFold(line, "all") {
-		names := make([]string, len(candidates))
-		for i, d := range candidates {
-			names[i] = d.Name
-		}
-		return names
-	}
-	known := map[string]bool{}
-	for _, d := range candidates {
-		known[d.Name] = true
-	}
 	var chosen []string
-	for _, part := range strings.Split(line, ",") {
-		if name := strings.TrimSpace(part); known[name] {
-			chosen = append(chosen, name)
-		}
+	field := huh.NewMultiSelect[string]().
+		Title("Roles").
+		Description("space to toggle, enter to activate").
+		Options(options...).
+		Value(&chosen)
+
+	form := huh.NewForm(huh.NewGroup(field)).WithInput(in).WithOutput(out).WithTheme(huh.ThemeCharm())
+	if err := form.Run(); err != nil {
+		return nil
 	}
 	return chosen
 }

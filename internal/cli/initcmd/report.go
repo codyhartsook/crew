@@ -7,6 +7,9 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 )
 
 // Setup finishes in milliseconds, so steps are held on screen long enough to
@@ -80,31 +83,52 @@ func (r report) pause(ctx context.Context, label string) {
 	}
 }
 
+// initView renders styled text via lipgloss, bound to the destination
+// writer. Color and pacing both need a terminal: a pipe, a test, or
+// NO_COLOR falls back to plain strings at full speed.
 type initView struct {
 	color   bool
 	animate bool
+
+	headingStyle lipgloss.Style
+	nameStyle    lipgloss.Style
+	successStyle lipgloss.Style
+	warningStyle lipgloss.Style
+	mutedStyle   lipgloss.Style
 }
 
-// newInitView reads what the destination can render. Color and pacing both
-// need a terminal, so a pipe, a test, or NO_COLOR gets plain text at full speed.
 func newInitView(out io.Writer) initView {
-	if os.Getenv("NO_COLOR") != "" || os.Getenv("TERM") == "dumb" {
-		return initView{}
+	color := isTerminal(out) && os.Getenv("NO_COLOR") == "" && os.Getenv("TERM") != "dumb"
+
+	r := lipgloss.NewRenderer(out)
+	if !color {
+		r.SetColorProfile(termenv.Ascii)
 	}
+	return initView{
+		color:        color,
+		animate:      color,
+		headingStyle: r.NewStyle().Bold(true).Foreground(lipgloss.Color("6")),
+		nameStyle:    r.NewStyle().Bold(true),
+		successStyle: r.NewStyle().Foreground(lipgloss.Color("2")),
+		warningStyle: r.NewStyle().Foreground(lipgloss.Color("3")),
+		mutedStyle:   r.NewStyle().Faint(true),
+	}
+}
+
+func isTerminal(out io.Writer) bool {
 	file, ok := out.(*os.File)
 	if !ok {
-		return initView{}
+		return false
 	}
 	info, err := file.Stat()
-	tty := err == nil && info.Mode()&os.ModeCharDevice != 0
-	return initView{color: tty, animate: tty}
+	return err == nil && info.Mode()&os.ModeCharDevice != 0
 }
 
-func (v initView) heading(text string) string { return v.style("1;36", text) }
-func (v initView) name(text string) string    { return v.style("1", text) }
-func (v initView) success(text string) string { return v.style("32", text) }
-func (v initView) warning(text string) string { return v.style("33", text) }
-func (v initView) muted(text string) string   { return v.style("2", text) }
+func (v initView) heading(text string) string { return v.headingStyle.Render(text) }
+func (v initView) name(text string) string    { return v.nameStyle.Render(text) }
+func (v initView) success(text string) string { return v.successStyle.Render(text) }
+func (v initView) warning(text string) string { return v.warningStyle.Render(text) }
+func (v initView) muted(text string) string   { return v.mutedStyle.Render(text) }
 
 func (v initView) bullet(s stepState) string {
 	switch s {
@@ -129,11 +153,4 @@ func (v initView) word(s stepState) string {
 	default:
 		return ""
 	}
-}
-
-func (v initView) style(code, text string) string {
-	if !v.color {
-		return text
-	}
-	return "\x1b[" + code + "m" + text + "\x1b[0m"
 }

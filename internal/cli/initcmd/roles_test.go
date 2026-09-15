@@ -14,57 +14,37 @@ func candidateDefs() []role.Definition {
 	}
 }
 
-func TestPromptActivationSkipsOnBlankAnswer(t *testing.T) {
-	var out strings.Builder
-	got := promptActivation(strings.NewReader("\n"), &out, initView{}, candidateDefs(), nil)
-	if got != nil {
-		t.Errorf("promptActivation() = %v, want none", got)
+func TestInactiveRolesOffersOnlyWhatIsNotActive(t *testing.T) {
+	got := inactiveRoles(candidateDefs(), map[string]bool{"tester": true})
+	if len(got) != 1 || got[0].Name != "reviewer" {
+		t.Errorf("inactiveRoles() = %v, want only reviewer", got)
 	}
 }
 
-func TestPromptActivationParsesACommaList(t *testing.T) {
-	var out strings.Builder
-	got := promptActivation(strings.NewReader("tester, reviewer\n"), &out, initView{}, candidateDefs(), nil)
-	if len(got) != 2 || got[0] != "tester" || got[1] != "reviewer" {
-		t.Errorf("promptActivation() = %v, want [tester reviewer]", got)
+func TestInactiveRolesReturnsNoneWhenEverythingIsActive(t *testing.T) {
+	active := map[string]bool{"tester": true, "reviewer": true}
+	if got := inactiveRoles(candidateDefs(), active); got != nil {
+		t.Errorf("inactiveRoles() = %v, want none", got)
 	}
 }
 
-func TestPromptActivationIgnoresUnknownNames(t *testing.T) {
-	var out strings.Builder
-	got := promptActivation(strings.NewReader("tester, ghost\n"), &out, initView{}, candidateDefs(), nil)
-	if len(got) != 1 || got[0] != "tester" {
-		t.Errorf("promptActivation() = %v, want only tester", got)
-	}
-}
-
-func TestPromptActivationAllSelectsEveryCandidate(t *testing.T) {
-	var out strings.Builder
-	got := promptActivation(strings.NewReader("all\n"), &out, initView{}, candidateDefs(), nil)
+func TestInactiveRolesWithNothingActiveOffersEverything(t *testing.T) {
+	got := inactiveRoles(candidateDefs(), nil)
 	if len(got) != 2 {
-		t.Errorf("promptActivation() = %v, want both roles", got)
+		t.Errorf("inactiveRoles() = %v, want both roles", got)
 	}
 }
 
 // Nothing left to prompt for once every discovered role is already active:
-// asking again would just be noise.
+// the interactive form never even starts, so nothing is printed.
 func TestPromptActivationSkipsWhenEverythingIsAlreadyActive(t *testing.T) {
 	var out strings.Builder
 	active := map[string]bool{"tester": true, "reviewer": true}
-	got := promptActivation(strings.NewReader("all\n"), &out, initView{}, candidateDefs(), active)
+	got := promptActivation(strings.NewReader(""), &out, candidateDefs(), active)
 	if got != nil {
 		t.Errorf("promptActivation() = %v, want none", got)
 	}
 	if out.Len() != 0 {
 		t.Errorf("output = %q, want nothing printed", out.String())
-	}
-}
-
-func TestPromptActivationOffersOnlyInactiveRoles(t *testing.T) {
-	var out strings.Builder
-	active := map[string]bool{"tester": true}
-	got := promptActivation(strings.NewReader("all\n"), &out, initView{}, candidateDefs(), active)
-	if len(got) != 1 || got[0] != "reviewer" {
-		t.Errorf("promptActivation() = %v, want only reviewer", got)
 	}
 }
