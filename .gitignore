@@ -35,3 +35,4 @@ go.work.sum
 /multiplayer
 /build/
 docs/context-management-plan.md
+docs/session-liveness-plan.md

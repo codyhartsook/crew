@@ -2,6 +2,7 @@ package prune
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -11,6 +12,7 @@ import (
 	"github.com/codyhartsook/multiplayer/internal/session"
 	"github.com/codyhartsook/multiplayer/internal/store"
 	"github.com/codyhartsook/multiplayer/internal/store/sqlitestore"
+	"github.com/codyhartsook/multiplayer/internal/thread"
 )
 
 func seeded(t *testing.T, sessions ...*session.Session) store.Store {
@@ -65,11 +67,88 @@ func TestDeadAmong(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := deadAmong([]*session.Session{tc.in}, table, "here", now)
+			got := deadAmong([]*session.Session{tc.in}, table, nil, "here", now)
 			if (len(got) == 1) != tc.dead {
 				t.Errorf("deadAmong = %v, want dead=%v", got, tc.dead)
 			}
 		})
+	}
+}
+
+// fakeThreadSource is a stand-in for a harness's thread.Source under test.
+type fakeThreadSource struct {
+	open map[string]thread.Thread
+	err  error
+}
+
+func (f fakeThreadSource) Open() (map[string]thread.Thread, error) { return f.open, f.err }
+
+func sourceFor(src thread.Source) func(session.Harness) thread.Source {
+	return func(session.Harness) thread.Source { return src }
+}
+
+// A thread source that says a session is still open overrides a pid that
+// looks dead: this is the missing-session bug, a live thread whose recorded
+// pid does not match a running process.
+func TestDeadAmongThreadSourceSaysOpenKeepsADeadPidAlive(t *testing.T) {
+	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
+	old := now.Add(-time.Hour)
+	s := sess("a", session.HarnessCodex, 999, "here", old) // pid 999 is not in the table
+	src := fakeThreadSource{open: map[string]thread.Thread{"a": {ID: "a"}}}
+
+	got := deadAmong([]*session.Session{s}, proc.Table{}, sourceFor(src), "here", now)
+	if len(got) != 0 {
+		t.Errorf("deadAmong = %v, want the session kept alive by its open thread", got)
+	}
+}
+
+// A thread source that says a session is absent overrides a pid that looks
+// alive: this is the ghost-session bug, a daemon pid that outlives every
+// thread it ever hosted.
+func TestDeadAmongThreadSourceSaysAbsentReapsALiveDaemonPid(t *testing.T) {
+	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
+	old := now.Add(-time.Hour)
+	table := proc.Table{100: {PID: 100, PPID: 1, Command: "codex"}}
+	s := sess("ghost", session.HarnessCodex, 100, "here", old)
+	// The source is usable (another codex session is open) but does not list this one.
+	src := fakeThreadSource{open: map[string]thread.Thread{"other": {ID: "other"}}}
+
+	got := deadAmong([]*session.Session{s}, table, sourceFor(src), "here", now)
+	if len(got) != 1 {
+		t.Errorf("deadAmong = %v, want the session with no open thread reaped", got)
+	}
+}
+
+// A source that cannot tell must fall back to the pid check rather than
+// reaping blind.
+func TestDeadAmongThreadSourceErrorFallsBackToPid(t *testing.T) {
+	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
+	old := now.Add(-time.Hour)
+	table := proc.Table{100: {PID: 100, PPID: 1, Command: "codex"}}
+	live := sess("a", session.HarnessCodex, 100, "here", old)
+	dead := sess("b", session.HarnessCodex, 999, "here", old)
+	src := fakeThreadSource{err: errors.New("probe failed")}
+
+	got := deadAmong([]*session.Session{live, dead}, table, sourceFor(src), "here", now)
+	if len(got) != 1 || got[0].ID != "b" {
+		t.Errorf("deadAmong = %v, want only the pid-dead session reaped", got)
+	}
+}
+
+// An empty open set must not be read as "nothing is open": an older codex
+// that writes no locks, or a different CODEX_HOME, would otherwise reap every
+// session of that harness at once.
+func TestDeadAmongThreadSourceEmptyFallsBackRatherThanReapingEverything(t *testing.T) {
+	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
+	old := now.Add(-time.Hour)
+	table := proc.Table{100: {PID: 100, PPID: 1, Command: "codex"}}
+	live := sess("a", session.HarnessCodex, 100, "here", old)
+	dead := sess("b", session.HarnessCodex, 999, "here", old)
+	src := fakeThreadSource{open: map[string]thread.Thread{}}
+
+	got := deadAmong([]*session.Session{live, dead}, table, sourceFor(src), "here", now)
+	if len(got) != 1 || got[0].ID != "b" {
+		t.Errorf("deadAmong = %v, want the pid check used instead of reaping everything", got)
 	}
 }
 
@@ -79,7 +158,7 @@ func TestDeadAmongEmptyTableReapsNothingUsable(t *testing.T) {
 	in := []*session.Session{sess("a", session.HarnessCodex, 100, "here", now.Add(-time.Hour))}
 	// deadAmong itself would call everything dead, which is why findDead
 	// refuses to run on an empty table at all.
-	if got := deadAmong(in, proc.Table{}, "here", now); len(got) != 1 {
+	if got := deadAmong(in, proc.Table{}, nil, "here", now); len(got) != 1 {
 		t.Fatalf("deadAmong on an empty table = %v, want it to report dead", got)
 	}
 }

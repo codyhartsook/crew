@@ -12,6 +12,7 @@ import (
 	"github.com/codyhartsook/multiplayer/internal/harness/codex"
 	"github.com/codyhartsook/multiplayer/internal/harness/notifier"
 	"github.com/codyhartsook/multiplayer/internal/session"
+	"github.com/codyhartsook/multiplayer/internal/thread"
 	"github.com/codyhartsook/multiplayer/internal/usage"
 )
 
@@ -46,6 +47,9 @@ type Spec struct {
 	Notify notifier.Notifier
 	// Usage samples this harness's local usage data, and is nil when unavailable.
 	Usage usage.Source
+	// Threads reports the conversations this harness has open, from its own
+	// records rather than the process table. Nil when the harness keeps none.
+	Threads thread.Source
 }
 
 var specs = []Spec{
@@ -80,6 +84,7 @@ var specs = []Spec{
 		Timeouts:  map[string]int{"SessionStart": 10, "UserPromptSubmit": 5, "PreToolUse": 3, "SessionEnd": 3},
 		Notify:    codex.Notify,
 		Usage:     usage.CodexSource{},
+		Threads:   thread.CodexSource{},
 	},
 }
 

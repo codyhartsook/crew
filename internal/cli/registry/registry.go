@@ -107,6 +107,7 @@ func Serve(ctx context.Context, opts *cmdutil.Options, cfg Config) error {
 	}
 	go broker.Run(ctx)
 	go newUsageCoordinator(st, log).run(ctx)
+	go newLivenessCoordinator(st, log).run(ctx)
 	go newDelegationCoordinator(st, log).run(ctx)
 	err = run(ctx, srv, ln, lifecycle)
 	if err == nil {

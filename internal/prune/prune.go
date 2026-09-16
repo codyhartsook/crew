@@ -16,6 +16,7 @@ import (
 	"github.com/codyhartsook/multiplayer/internal/proc"
 	"github.com/codyhartsook/multiplayer/internal/session"
 	"github.com/codyhartsook/multiplayer/internal/store"
+	"github.com/codyhartsook/multiplayer/internal/thread"
 )
 
 // deadReason is recorded against sessions closed by pruning rather than by the
@@ -54,20 +55,42 @@ func Dead(ctx context.Context, st Lister) ([]*session.Session, error) {
 	if len(table) == 0 {
 		return nil, errors.New("process table is empty; cannot tell which sessions are alive")
 	}
-	return deadAmong(active, table, detect.Hostname(), time.Now().UTC()), nil
+	return deadAmong(active, table, threadSourceFor, detect.Hostname(), time.Now().UTC()), nil
+}
+
+// threadSourceFor resolves a harness's thread source from the registry, if it
+// has one.
+func threadSourceFor(h session.Harness) thread.Source {
+	spec, ok := harness.For(h)
+	if !ok {
+		return nil
+	}
+	return spec.Threads
 }
 
 // deadAmong decides which sessions to reap. Kept separate from reading the
 // process table so the policy can be tested without one.
-func deadAmong(active []*session.Session, table proc.Table, host string, now time.Time) []*session.Session {
+func deadAmong(active []*session.Session, table proc.Table, sourceFor func(session.Harness) thread.Source, host string, now time.Time) []*session.Session {
+	live := liveThreadsByHarness(active, sourceFor)
+
 	var dead []*session.Session
 	for _, s := range active {
-		// A pid means nothing on another machine, and an unrecorded pid cannot
-		// be checked at all.
-		if s.PID == 0 || (s.Host != "" && s.Host != host) {
+		// A session on another machine cannot be checked at all, by pid or by
+		// thread, since both are local-only signals.
+		if s.Host != "" && s.Host != host {
 			continue
 		}
 		if now.Sub(s.LastSeen) < graceperiod {
+			continue
+		}
+		if open, ok := live[s.Harness]; ok {
+			if !open[s.ID] {
+				dead = append(dead, s)
+			}
+			continue
+		}
+		// No usable thread source for this harness: fall back to the pid check.
+		if s.PID == 0 {
 			continue
 		}
 		if !table.Running(s.PID, binaryOf(s.Harness)) {
@@ -75,6 +98,38 @@ func deadAmong(active []*session.Session, table proc.Table, host string, now tim
 		}
 	}
 	return dead
+}
+
+// liveThreadsByHarness asks each present harness's thread source once per
+// sweep what it has open. A harness missing from the result falls back to the
+// pid check: no source, an error, or an empty result all mean cannot tell, not
+// that everything died. Mirrors the empty-process-table guard above.
+func liveThreadsByHarness(active []*session.Session, sourceFor func(session.Harness) thread.Source) map[session.Harness]map[string]bool {
+	if sourceFor == nil {
+		return nil
+	}
+	live := map[session.Harness]map[string]bool{}
+	seen := map[session.Harness]bool{}
+	for _, s := range active {
+		if seen[s.Harness] {
+			continue
+		}
+		seen[s.Harness] = true
+		src := sourceFor(s.Harness)
+		if src == nil {
+			continue
+		}
+		open, err := src.Open()
+		if err != nil || len(open) == 0 {
+			continue
+		}
+		ids := make(map[string]bool, len(open))
+		for id := range open {
+			ids[id] = true
+		}
+		live[s.Harness] = ids
+	}
+	return live
 }
 
 // Ender is the store surface End needs.

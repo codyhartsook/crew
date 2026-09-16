@@ -168,11 +168,7 @@ func (r *Recorder) Record(ctx context.Context, harness session.Harness, p Payloa
 		return nil, errors.New("recorder has no store")
 	}
 
-	now := time.Now
-	if r.Now != nil {
-		now = r.Now
-	}
-	at := now().UTC()
+	at := r.at()
 
 	switch p.Event() {
 	case EventStart:
@@ -188,16 +184,37 @@ func (r *Recorder) Record(ctx context.Context, harness session.Harness, p Payloa
 	}
 }
 
+// at is the recorder's clock, injected so tests need not wait on one.
+func (r *Recorder) at() time.Time {
+	if r.Now != nil {
+		return r.Now().UTC()
+	}
+	return time.Now().UTC()
+}
+
 // recordStart registers a session and where it is working.
 func (r *Recorder) recordStart(ctx context.Context, harness session.Harness, p Payload, at time.Time) (*session.Session, error) {
-	sess := newSession(harness, p, at)
+	sess, detectErr := r.buildStart(ctx, harness, p, at)
+	return sess, errors.Join(r.Store.Upsert(ctx, sess), detectErr)
+}
 
-	// Location detection is best effort. A session outside a git checkout, or
-	// one whose git call fails, is still worth recording.
+// buildStart assembles a start record and detects where it is working, without
+// storing it. Location detection is best effort: a session outside a git
+// checkout, or one whose git call fails, is still worth recording.
+func (r *Recorder) buildStart(ctx context.Context, harness session.Harness, p Payload, at time.Time) (*session.Session, error) {
+	sess := newSession(harness, p, at)
 	loc, detectErr := r.detect(ctx, p.CWD)
 	applyLocation(sess, loc)
+	return sess, detectErr
+}
 
-	return sess, errors.Join(r.Store.Upsert(ctx, sess), detectErr)
+// Adopt assembles the session a start event would record, without storing it,
+// for a caller that learned of the session from a harness's own records rather
+// than from a hook. The pid and timestamps newSession infers from the calling
+// process do not apply to such a session, so they are the caller's to set
+// before it stores the result once.
+func (r *Recorder) Adopt(ctx context.Context, harness session.Harness, p Payload) (*session.Session, error) {
+	return r.buildStart(ctx, harness, p, r.at())
 }
 
 // recordEnd closes out a session. The common case touches no git: only the key
