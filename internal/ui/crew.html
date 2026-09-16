@@ -438,13 +438,17 @@ function buildTree(paths, home) {
     const folder = segs.slice(0, -1).join("/");
     let parent = root;
     if (folder) {
-      if (!root.children.has(folder)) {
-        root.children.set(folder, {
-          name: folder, path: home + "/" + folder, depth: 1, role: "folder",
+      // Keyed by the real parent path, not the name under home: a path outside
+      // home keeps its own absolute folder, so /private/tmp is not filed as
+      // ~/private/tmp and never collides with a folder of the same name.
+      const path = p.slice(0, p.length - place.length - 1);
+      if (!root.children.has(path)) {
+        root.children.set(path, {
+          name: folder, path, depth: 1, role: "folder",
           children: new Map(), parent: root,
         });
       }
-      parent = root.children.get(folder);
+      parent = root.children.get(path);
     }
     if (!parent.children.has(place)) {
       parent.children.set(place, {
@@ -593,9 +597,12 @@ function buildGraph() {
   const sessions = DATA.sessions.filter((s) => s.status === "active");
   const entries = DATA.entries;
 
+  // The graph is who is working and what is waiting. A room whose only trace is
+  // settled history keeps its place in the index, but a place nobody stands in
+  // and nothing waits on is not worth a node - the folder is often long gone.
   const paths = new Set();
   for (const s of sessions) paths.add(zonePath(s));
-  for (const e of entries) paths.add(roomPath(e.room));
+  for (const e of entries) if (isOpen(e)) paths.add(roomPath(e.room));
 
   const { home, exact: homeExact } = detectHome([...paths]);
   const root = buildTree([...paths], home);
