@@ -52,12 +52,12 @@ func roomsFor(ctx context.Context, st store.Store, event hook.Event, sess *sessi
 	case hook.EventStart:
 		// Reap sessions whose process is gone before reporting who is here.
 		prune.Quietly(ctx, st)
-		briefing, err := briefingFor(ctx, st, rs, sess)
+		intro, err := introFor(ctx, st, rs, sess)
 		if err != nil || sess == nil {
-			return briefing, err
+			return intro, err
 		}
 		roster, err := rosterFor(ctx, st, sess, room.For(sess.Place))
-		return joinContext(briefing, roster), err
+		return joinContext(intro, roster), err
 	case hook.EventPrompt:
 		// A turn is the only proof a session is still working, so it is what
 		// keeps last-seen meaning last active rather than started.
@@ -75,7 +75,10 @@ func roomsFor(ctx context.Context, st store.Store, event hook.Event, sess *sessi
 	}
 }
 
-func briefingFor(ctx context.Context, st store.Store, rs store.RoomStore, sess *session.Session) (string, error) {
+// introFor says which rooms a session arrived in and how to read them. It
+// acknowledges nothing: entries stay unread so the turn notice can offer them,
+// rather than every arrival paying for the whole backlog.
+func introFor(ctx context.Context, st store.Store, rs store.RoomStore, sess *session.Session) (string, error) {
 	if sess == nil {
 		return "", nil
 	}
@@ -99,18 +102,7 @@ func briefingFor(ctx context.Context, st store.Store, rs store.RoomStore, sess *
 	if err != nil {
 		return "", err
 	}
-
-	// Everything already in the room counts as delivered: the briefing shows it.
-	if len(entries) > 0 {
-		if err := rs.Ack(ctx, sess.Key(), entries[len(entries)-1].ID); err != nil {
-			return "", err
-		}
-	}
-	authors, err := rc.Authors(ctx)
-	if err != nil {
-		return "", err
-	}
-	return room.Briefing(here, entries, others, authors), nil
+	return room.Intro(here, entries, others), nil
 }
 
 // noticeFor injects a nudge when something is waiting, nothing otherwise. It

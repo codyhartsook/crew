@@ -164,6 +164,38 @@ func TestBriefingEmpty(t *testing.T) {
 	}
 }
 
+// Arrival costs the room's name, who is here and how to read - never the
+// entries themselves, which is what the turn notice is for.
+func TestIntroCarriesNoEntryBodies(t *testing.T) {
+	here := []room.Room{{Key: "/src/widget", Scope: room.ScopeWorktree, Name: "widget"}}
+	now := time.Now()
+	entries := []*room.Entry{
+		{ID: 1, Room: "/src/widget", Mode: room.ModeNote, Author: "codex:abcdef123", Body: "chose sqlite", CreatedAt: now},
+		{ID: 2, Room: "/src/widget", Mode: room.ModeRequest, Author: "claude:zzz", Body: "this leaks", CreatedAt: now},
+	}
+
+	out := room.Intro(here, entries, []string{"moss-otter (just now)"})
+	// A note never comes back from Unread, so the count is its only delivery.
+	for _, want := range []string{"crew room: widget (worktree)", "Also here: moss-otter",
+		"Holds 1 note, 1 open request.", "crew room"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("intro is missing %q:\n%s", want, out)
+		}
+	}
+	for _, unwanted := range []string{"chose sqlite", "this leaks", "### Notes", "### Open", "### Answered", "[1]", "[2]"} {
+		if strings.Contains(out, unwanted) {
+			t.Errorf("intro leaked entry detail %q:\n%s", unwanted, out)
+		}
+	}
+}
+
+func TestIntroEmpty(t *testing.T) {
+	here := []room.Room{{Key: "/src/widget", Scope: room.ScopeWorktree, Name: "widget"}}
+	if out := room.Intro(here, nil, nil); out != "" {
+		t.Errorf("intro on an empty room with nobody here = %q, want empty", out)
+	}
+}
+
 // A pooled slot's path is handed to the next lease, so the room must not be.
 func TestForSeparatesWorktreeRoomsByLease(t *testing.T) {
 	repo := &session.Repo{

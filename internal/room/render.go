@@ -37,6 +37,61 @@ func Briefing(rooms []Room, entries []*Entry, others []string, authors Authors) 
 	return out + "\n\n" + hint
 }
 
+// Intro is what a session gets on arrival: which rooms it is in, who else is
+// here, and how to read. It deliberately carries no entries - they stay unread
+// and surface through Notice, so a room's backlog costs a turn's nudge rather
+// than a session's context.
+func Intro(rooms []Room, entries []*Entry, others []string) string {
+	byRoom := group(entries)
+	var b strings.Builder
+
+	for _, r := range rooms {
+		live := byRoom[r.Key]
+		if len(live) == 0 && len(others) == 0 {
+			continue
+		}
+		fmt.Fprintf(&b, "## crew room: %s (%s)\n\n", r.Name, r.Scope)
+		if len(others) > 0 && r.Scope.Local() {
+			fmt.Fprintf(&b, "Also here: %s\n\n", strings.Join(others, ", "))
+		}
+		if held := holdings(live); held != "" {
+			fmt.Fprintf(&b, "%s\n\n", held)
+		}
+	}
+
+	out := strings.TrimSpace(b.String())
+	if out == "" {
+		return ""
+	}
+	return out + "\n\n" + hint
+}
+
+// holdings counts what a room has without reproducing any of it. Notes never
+// come back from Unread, so this line is the only thing telling an arriving
+// agent they are there at all.
+func holdings(entries []*Entry) string {
+	notes, open := 0, 0
+	for _, e := range entries {
+		switch {
+		case e.Mode == ModeNote:
+			notes++
+		case e.Open():
+			open++
+		}
+	}
+	var parts []string
+	if notes > 0 {
+		parts = append(parts, fmt.Sprintf("%d %s", notes, plural("note", "notes", notes)))
+	}
+	if open > 0 {
+		parts = append(parts, fmt.Sprintf("%d open %s", open, plural("request", "requests", open)))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return "Holds " + strings.Join(parts, ", ") + "."
+}
+
 // Notice is the one-line nudge a turn hook injects: enough to know something is
 // waiting, not the content itself. Reading stays the agent's decision.
 func Notice(entries []*Entry) string {
