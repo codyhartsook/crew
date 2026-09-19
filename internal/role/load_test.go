@@ -16,9 +16,6 @@ harness = "codex"
 memory = "role"
 instructions = "Run the suite."
 
-[triggers]
-prompt = ["run (the )?tests"]
-
 [render]
 model = "gpt-5.3-codex"
 `
@@ -166,8 +163,16 @@ func TestDiscoverForReadsBothScopesFromAKnownRepoRoot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DiscoverFor() error = %v", err)
 	}
-	if len(reg.All()) != 2 {
-		t.Fatalf("All() = %+v, want both roles", reg.All())
+	// Named rather than counted: DiscoverFor also merges the embedded roles,
+	// so a count breaks every time one is added.
+	for name, want := range map[string]Scope{"reviewer": ScopeGlobal, "tester": ScopeRepo} {
+		got, ok := reg.Get(name)
+		if !ok {
+			t.Fatalf("All() = %+v, want it to include %s", reg.All(), name)
+		}
+		if got.Scope != want {
+			t.Errorf("%s scope = %v, want %v", name, got.Scope, want)
+		}
 	}
 }
 

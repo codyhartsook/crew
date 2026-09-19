@@ -90,7 +90,8 @@ Either way, the role spawns headless with room auto-join disabled.`,
 				fmt.Fprintf(cmd.OutOrStdout(), "delegation %s queued for %s (%s)\n", d.ID, def.Name, h)
 				return nil
 			}
-			return runNow(cmd, ds, d, def, h, timeout)
+			cs, _ := rc.Store.(store.ChannelStore)
+			return runNow(cmd, ds, cs, d, def, h, timeout)
 		},
 	}
 
@@ -105,7 +106,9 @@ Either way, the role spawns headless with room auto-join disabled.`,
 }
 
 // runNow runs d synchronously for --wait; nothing is left to notify after.
-func runNow(cmd *cobra.Command, ds store.DelegationStore, d *delegation.Delegation, def role.Definition, h session.Harness, timeout time.Duration) error {
+// The requester is blocked here, so a question from the role cannot be
+// answered until its wait expires.
+func runNow(cmd *cobra.Command, ds store.DelegationStore, cs store.ChannelStore, d *delegation.Delegation, def role.Definition, h session.Harness, timeout time.Duration) error {
 	ctx := cmd.Context()
 	if started, err := ds.StartDelegation(ctx, d.ID); err != nil || !started {
 		if err == nil {
@@ -124,6 +127,7 @@ func runNow(cmd *cobra.Command, ds store.DelegationStore, d *delegation.Delegati
 
 	result, err := delegate.Run(spawnCtx, h, def, d.Prompt, d.Dir, env)
 	_ = ds.MarkNotified(ctx, d.ID)
+	_ = store.CloseAsks(ctx, ds, cs, d.ID)
 	if err != nil {
 		_ = ds.FailDelegation(ctx, d.ID, err.Error())
 		return err

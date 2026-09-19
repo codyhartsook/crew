@@ -4,10 +4,7 @@
 // file the hook can read: Claude to its transcript, Codex to its rollout.
 package usage
 
-import (
-	"fmt"
-	"time"
-)
+import "time"
 
 // Snapshot is what one session has spent. Zero fields mean "not known", which
 // is normal: a harness may not report a figure, and a missing one must never
@@ -26,28 +23,6 @@ type Snapshot struct {
 	CachedInputTokens int64     `json:"cached_input_tokens,omitempty"`
 	OutputTokens      int64     `json:"output_tokens,omitempty"`
 	UpdatedAt         time.Time `json:"updated_at,omitempty"`
-}
-
-// For does a one-shot read of a session's local usage data, keyed by the
-// harness's wire name ("claude" or "codex"). It is for retrying a session
-// whose usage was not yet known, not for incremental polling; use Source for
-// that.
-func For(harnessName, transcriptPath, sessionID string) (Snapshot, error) {
-	switch harnessName {
-	case "claude":
-		if transcriptPath == "" {
-			return Snapshot{}, fmt.Errorf("claude usage needs a transcript path")
-		}
-		return FromClaudeTranscript(transcriptPath)
-	case "codex":
-		path, err := FindCodexRollout(codexHome(), sessionID)
-		if err != nil {
-			return Snapshot{}, err
-		}
-		return FromCodexRollout(path)
-	default:
-		return Snapshot{}, fmt.Errorf("unknown harness %q", harnessName)
-	}
 }
 
 // Known reports whether there is anything worth recording.

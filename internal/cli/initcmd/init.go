@@ -80,7 +80,7 @@ the broker wakes live sessions when they have addressed entries.`,
 			}
 
 			out := cmd.OutOrStdout()
-			rep := newReport(out)
+			rep := newReport(out, verbose)
 			showDashboard := func(url string) {
 				err := maybeOpenDashboard(cmd.Context(), url, headless)
 				if headless {
@@ -144,7 +144,7 @@ the broker wakes live sessions when they have addressed entries.`,
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "report changes without writing")
 	cmd.Flags().BoolVar(&noSandbox, "no-sandbox-config", false, "skip the Codex sandbox grant")
 	cmd.Flags().StringVar(&addr, "addr", registry.DefaultAddr, "address for the local broker")
-	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "log every broker request")
+	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "list every setup step and log every broker request")
 	cmd.Flags().BoolVar(&headless, "headless", false, "do not open the dashboard")
 	return cmd
 }
@@ -161,7 +161,7 @@ type install struct {
 
 // install writes one harness's hooks, skill, and sandbox grant, reporting
 // each as it lands.
-func (r report) install(ctx context.Context, in install) error {
+func (r *report) install(ctx context.Context, in install) error {
 	spec := in.spec
 	name := string(spec.Harness)
 	configPath := filepath.Join(in.home, spec.ConfigPath)
@@ -215,6 +215,8 @@ func (r report) install(ctx context.Context, in install) error {
 	if sweptLegacy {
 		r.step(ctx, "legacy room skill", state(in.dryRun, true), "swept")
 	}
+
+	r.flush(ctx)
 
 	summary := "ready"
 	if changed || outcome == skill.Written || granted || sweptLegacy {

@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/codyhartsook/multiplayer/internal/cli/anchorcmd"
+	"github.com/codyhartsook/multiplayer/internal/cli/channelcmd"
 	"github.com/codyhartsook/multiplayer/internal/cli/clearcmd"
 	"github.com/codyhartsook/multiplayer/internal/cli/cmdutil"
 	"github.com/codyhartsook/multiplayer/internal/cli/dashboardcmd"
@@ -67,6 +68,8 @@ call records the git checkout, and the pool slot if there is one.`,
 		roomcmd.NewRemove(opts),
 		roomcmd.New(opts),
 		searchcmd.New(opts),
+		channelcmd.NewAsk(opts),
+		channelcmd.NewAnswer(opts),
 		clearcmd.New(opts),
 		prunecmd.New(opts),
 		rolecmd.New(opts),

@@ -52,42 +52,6 @@ func (m Memory) Valid() bool {
 	}
 }
 
-// TriggerMode decides whether a match only suggests, or blocks the call.
-type TriggerMode string
-
-const (
-	TriggerSuggest TriggerMode = "suggest"
-	TriggerEnforce TriggerMode = "enforce"
-)
-
-func (m TriggerMode) Valid() bool {
-	switch m {
-	case TriggerSuggest, TriggerEnforce:
-		return true
-	default:
-		return false
-	}
-}
-
-// ToolTrigger matches an exact tool call. Pattern matches the tool's input.
-type ToolTrigger struct {
-	Tool    string `toml:"tool" json:"tool"`
-	Pattern string `toml:"pattern" json:"pattern"`
-
-	// compiled once by Validate; avoids recompiling on every tool call.
-	compiled *regexp.Regexp
-}
-
-// Compiled returns the pattern Validate compiled, or nil if that never ran.
-func (t ToolTrigger) Compiled() *regexp.Regexp { return t.compiled }
-
-// Triggers is a definition's routing signal: Prompt is advisory, Tool is exact.
-type Triggers struct {
-	Prompt []string      `toml:"prompt" json:"prompt,omitempty"`
-	Tool   []ToolTrigger `toml:"tool" json:"tool,omitempty"`
-	Mode   TriggerMode   `toml:"mode" json:"mode"`
-}
-
 // Render is spawn config; each harness takes the fields that apply to it.
 type Render struct {
 	Model   string   `toml:"model" json:"model,omitempty"`
@@ -103,14 +67,13 @@ type Output struct {
 
 // Definition is one role, as read from a .crew/agents/*.toml file.
 type Definition struct {
-	Name         string   `toml:"name" json:"name"`
-	Description  string   `toml:"description" json:"description"`
-	Harness      Harness  `toml:"harness" json:"harness"`
-	Memory       Memory   `toml:"memory" json:"memory"`
-	Triggers     Triggers `toml:"triggers" json:"triggers"`
-	Render       Render   `toml:"render" json:"render"`
-	Output       Output   `toml:"output" json:"output"`
-	Instructions string   `toml:"instructions" json:"instructions"`
+	Name         string  `toml:"name" json:"name"`
+	Description  string  `toml:"description" json:"description"`
+	Harness      Harness `toml:"harness" json:"harness"`
+	Memory       Memory  `toml:"memory" json:"memory"`
+	Render       Render  `toml:"render" json:"render"`
+	Output       Output  `toml:"output" json:"output"`
+	Instructions string  `toml:"instructions" json:"instructions"`
 
 	// Scope and Path are filled in by the loader, not the file.
 	Scope Scope  `toml:"-" json:"scope"`
@@ -140,36 +103,8 @@ func (d *Definition) Validate() error {
 	if d.Instructions == "" {
 		problems = append(problems, "instructions is required")
 	}
-	if d.Triggers.Mode != "" && !d.Triggers.Mode.Valid() {
-		problems = append(problems, fmt.Sprintf("triggers.mode %q must be suggest or enforce", d.Triggers.Mode))
-	}
-	for _, p := range d.Triggers.Prompt {
-		if _, err := regexp.Compile(p); err != nil {
-			problems = append(problems, fmt.Sprintf("triggers.prompt %q: %v", p, err))
-		}
-	}
-	for i := range d.Triggers.Tool {
-		t := &d.Triggers.Tool[i]
-		if t.Tool == "" || t.Pattern == "" {
-			problems = append(problems, "triggers.tool entries need both tool and pattern")
-			continue
-		}
-		re, err := regexp.Compile(t.Pattern)
-		if err != nil {
-			problems = append(problems, fmt.Sprintf("triggers.tool %s pattern %q: %v", t.Tool, t.Pattern, err))
-			continue
-		}
-		t.compiled = re
-	}
 	if len(problems) == 0 {
 		return nil
 	}
 	return fmt.Errorf("%s: %s", d.Path, strings.Join(problems, "; "))
-}
-
-// normalize defaults an unset trigger mode to suggest.
-func (d *Definition) normalize() {
-	if d.Triggers.Mode == "" {
-		d.Triggers.Mode = TriggerSuggest
-	}
 }

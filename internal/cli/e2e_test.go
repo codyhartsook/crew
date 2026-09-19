@@ -174,6 +174,7 @@ func TestInitPreservesExistingSettings(t *testing.T) {
       {"hooks": [{"type": "command", "command": "some-other-tool init"}]}
     ],
     "PreToolUse": [
+	  {"hooks": [{"type": "command", "command": "\"/old/crew\" hook --harness claude --quiet"}]},
       {"matcher": "Bash", "hooks": [{"type": "command", "command": "guard"}]}
     ]
   }
@@ -197,8 +198,8 @@ func TestInitPreservesExistingSettings(t *testing.T) {
 	}
 
 	hooks := config["hooks"].(map[string]any)
-	if _, ok := hooks["PreToolUse"]; !ok {
-		t.Error("PreToolUse hooks were dropped")
+	if got := commandsFor(t, hooks, "PreToolUse"); len(got) != 1 || got[0] != "guard" {
+		t.Errorf("PreToolUse commands = %v, want only the unrelated hook", got)
 	}
 	starts := commandsFor(t, hooks, "SessionStart")
 	if len(starts) != 2 {
@@ -223,14 +224,22 @@ func TestInitIsIdempotent(t *testing.T) {
 	if !strings.Contains(out, "✓ codex integration ready") {
 		t.Errorf("second init output = %q, want it to report no change", out)
 	}
-	// Each hook is reported by name, and a reinstall reports it unchanged.
-	for _, event := range []string{"SessionStart", "UserPromptSubmit", "SessionEnd"} {
-		if !strings.Contains(out, event+" hook") {
-			t.Errorf("output does not name the %s hook:\n%s", event, out)
-		}
-	}
 	if !strings.Contains(out, "already current") {
 		t.Errorf("reinstall does not report hooks as current:\n%s", out)
+	}
+	// A reinstall changes nothing, so it collapses rather than listing every
+	// unchanged hook by name.
+	for _, event := range []string{"SessionStart", "UserPromptSubmit", "SessionEnd"} {
+		if strings.Contains(out, event+" hook") {
+			t.Errorf("reinstall listed the unchanged %s hook instead of collapsing:\n%s", event, out)
+		}
+	}
+	// Verbose is where the per-hook detail still lives.
+	verbose := runInit(t, home, "--codex", "-v")
+	for _, event := range []string{"SessionStart", "UserPromptSubmit", "SessionEnd"} {
+		if !strings.Contains(verbose, event+" hook") {
+			t.Errorf("verbose output does not name the %s hook:\n%s", event, verbose)
+		}
 	}
 	hooks := readHooks(t, filepath.Join(home, ".codex", "hooks.json"))
 	for _, event := range []string{"SessionStart", "SessionEnd"} {

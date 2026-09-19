@@ -3,7 +3,6 @@ package rolecmd
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -37,7 +36,7 @@ A discovered role is dormant until this location's room activates it, with
 			}
 			active := activeHere(cmd.Context(), opts)
 			if asJSON {
-				return writeJSON(cmd.OutOrStdout(), reg.All())
+				return cmdutil.WriteJSON(cmd.OutOrStdout(), reg.All())
 			}
 			return writeTable(cmd.OutOrStdout(), reg, active)
 		},
@@ -113,10 +112,4 @@ func writeTable(w io.Writer, reg *role.Registry, active map[string]bool) error {
 		}
 	}
 	return nil
-}
-
-func writeJSON(w io.Writer, defs []role.Definition) error {
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	return enc.Encode(defs)
 }

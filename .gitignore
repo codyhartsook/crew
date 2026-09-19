@@ -36,3 +36,4 @@ go.work.sum
 /build/
 docs/context-management-plan.md
 docs/session-liveness-plan.md
+docs/delegation-channel-plan.md

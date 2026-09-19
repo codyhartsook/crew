@@ -65,8 +65,8 @@ func TestRoleStore(t *testing.T) {
 	})
 }
 
-func TestRoutingStore(t *testing.T) {
-	storetest.RunRouting(t, func(t *testing.T) store.RoutingStore {
+func TestDelegationStore(t *testing.T) {
+	storetest.RunDelegations(t, func(t *testing.T) store.DelegationStore {
 		s, err := sqlitestore.Open(filepath.Join(t.TempDir(), "sessions.db"))
 		if err != nil {
 			t.Fatalf("Open: %v", err)
@@ -76,8 +76,8 @@ func TestRoutingStore(t *testing.T) {
 	})
 }
 
-func TestDelegationStore(t *testing.T) {
-	storetest.RunDelegations(t, func(t *testing.T) store.DelegationStore {
+func TestChannelStore(t *testing.T) {
+	storetest.RunChannel(t, func(t *testing.T) store.ChannelStore {
 		s, err := sqlitestore.Open(filepath.Join(t.TempDir(), "sessions.db"))
 		if err != nil {
 			t.Fatalf("Open: %v", err)
@@ -242,6 +242,69 @@ func TestOpenAddsAColumnMissingFromAnAlreadyCurrentDatabase(t *testing.T) {
 		t.Fatalf("second Open = %v, want idempotent", err)
 	}
 	again.Close()
+}
+
+// A version 9 database predates the back-channel. Delegations are durable data
+// there, so the upgrade must add the table and the column in place.
+func TestOpenMigratesAVersion9Database(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "v9.db")
+	ctx := context.Background()
+
+	s, err := sqlitestore.Open(path)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	now := time.Now().UTC()
+	if err := s.CreateDelegation(ctx, &delegation.Delegation{
+		ID: "d1", Room: "/repo", Dir: "/repo", Role: "tester", Harness: "codex",
+		Requester: "codex:launcher", Prompt: "run the tests", Status: delegation.StatusPending,
+		CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatalf("seed delegation: %v", err)
+	}
+	s.Close()
+
+	db, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatalf("open raw: %v", err)
+	}
+	for _, stmt := range []string{
+		`ALTER TABLE delegations DROP COLUMN child`,
+		`DROP TABLE channel_requests`,
+		`PRAGMA user_version = 9`,
+	} {
+		if _, err := db.Exec(stmt); err != nil {
+			t.Fatalf("rewind (%s): %v", stmt, err)
+		}
+	}
+	db.Close()
+
+	s, err = sqlitestore.Open(path)
+	if err != nil {
+		t.Fatalf("Open on a version 9 database: %v", err)
+	}
+	defer s.Close()
+
+	if _, err := s.GetDelegation(ctx, "d1"); err != nil {
+		t.Fatalf("GetDelegation after migration: %v", err)
+	}
+	if err := s.SetDelegationChild(ctx, "d1", "claude:spawned"); err != nil {
+		t.Fatalf("SetDelegationChild after migration: %v", err)
+	}
+	got, err := s.GetDelegation(ctx, "d1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Child != "claude:spawned" {
+		t.Errorf("Child = %q, want the restored column to hold what was written", got.Child)
+	}
+	id, err := s.Ask(ctx, "claude:spawned", "codex:launcher", "which config?")
+	if err != nil {
+		t.Fatalf("Ask after migration: %v", err)
+	}
+	if open, err := s.Inbox(ctx, "codex:launcher"); err != nil || len(open) != 1 || open[0].ID != id {
+		t.Errorf("Inbox = %+v, %v, want the request just asked", open, err)
+	}
 }
 
 // Opening the current schema repeatedly is safe.

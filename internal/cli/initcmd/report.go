@@ -45,30 +45,74 @@ func state(dryRun, changed bool) stepState {
 }
 
 // report renders the checklist: a section per harness, a step per hook.
+//
+// Steps are buffered rather than printed as they land. Re-running init is the
+// common case and changes nothing, so a run that reports every unchanged item
+// spends the reader's attention on news that is not there.
 type report struct {
-	out  io.Writer
-	view initView
+	out     io.Writer
+	view    initView
+	verbose bool
+	pending []pendingStep
 }
 
-func newReport(out io.Writer) report {
-	return report{out: out, view: newInitView(out)}
+// pendingStep is a step held back until the section knows what to show.
+type pendingStep struct {
+	label  string
+	state  stepState
+	detail string
+}
+
+func newReport(out io.Writer, verbose bool) *report {
+	return &report{out: out, view: newInitView(out), verbose: verbose}
 }
 
 // section opens a harness block with the file its hooks are written into.
-func (r report) section(name, path string) {
+func (r *report) section(name, path string) {
 	fmt.Fprintf(r.out, "\n  %s  %s\n", r.view.name(name), r.view.muted(path))
 }
 
-func (r report) step(ctx context.Context, label string, s stepState, detail string) {
+func (r *report) step(_ context.Context, label string, s stepState, detail string) {
+	r.pending = append(r.pending, pendingStep{label: label, state: s, detail: detail})
+}
+
+// flush prints the section's steps: everything that is news, and one line
+// standing in for whatever was already in place. Verbose prints all of it.
+func (r *report) flush(ctx context.Context) {
+	steps := r.pending
+	r.pending = nil
+
+	current := 0
+	for _, s := range steps {
+		if s.state == stepCurrent && !r.verbose {
+			current++
+			continue
+		}
+		r.write(ctx, s.label, s.state, s.detail)
+	}
+	if current > 0 {
+		r.write(ctx, "", stepCurrent, fmt.Sprintf("%d already current", current))
+	}
+}
+
+// write renders one line, pausing first so a step a person cares about stays
+// on screen long enough to read.
+func (r *report) write(ctx context.Context, label string, s stepState, detail string) {
 	r.pause(ctx, label)
+	// The stand-in line has no label to align against, and already reads as a
+	// sentence, so it takes neither the column nor the leading word.
+	if label == "" {
+		fmt.Fprintf(r.out, "    %s %s\n", r.view.bullet(s), r.view.muted(detail))
+		return
+	}
 	line := fmt.Sprintf("    %s %-*s %s", r.view.bullet(s), labelWidth, label, r.view.muted(r.view.word(s)+detail))
 	fmt.Fprintln(r.out, strings.TrimRight(line, " "))
 }
 
 // pause spins on the line the step is about to take, then clears it. Cosmetic,
 // so it gives up as soon as the command is interrupted.
-func (r report) pause(ctx context.Context, label string) {
-	if !r.view.animate {
+func (r *report) pause(ctx context.Context, label string) {
+	if !r.view.animate || label == "" {
 		return
 	}
 	defer fmt.Fprint(r.out, "\r\x1b[2K")

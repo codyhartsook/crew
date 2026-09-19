@@ -70,8 +70,7 @@ func TestPayloadEvent(t *testing.T) {
 		"session_end":        hook.EventEnd,
 		"UserPromptSubmit":   hook.EventPrompt,
 		"user_prompt_submit": hook.EventPrompt,
-		"PreToolUse":         hook.EventPreToolUse,
-		"pre_tool_use":       hook.EventPreToolUse,
+		"PreToolUse":         hook.EventOther,
 		"Stop":               hook.EventOther,
 		"":                   hook.EventOther,
 	}

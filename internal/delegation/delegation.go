@@ -21,10 +21,13 @@ type Delegation struct {
 	ID   string `json:"id"`
 	Room string `json:"room"`
 	// Dir is where to spawn and resolve roles; a pooled Room key is not a path.
-	Dir       string    `json:"dir"`
-	Role      string    `json:"role"`
-	Harness   string    `json:"harness"`
-	Requester string    `json:"requester"`
+	Dir       string `json:"dir"`
+	Role      string `json:"role"`
+	Harness   string `json:"harness"`
+	Requester string `json:"requester"`
+	// Child is the session key the spawned role runs as, written by its own
+	// SessionStart hook.
+	Child     string    `json:"child,omitempty"`
 	Prompt    string    `json:"prompt"`
 	Status    Status    `json:"status"`
 	Result    string    `json:"result,omitempty"`

@@ -21,6 +21,10 @@ type DelegationStore interface {
 
 	FailDelegation(ctx context.Context, id, errMsg string) error
 
+	// SetDelegationChild records the session key the spawned role runs as.
+	// Without it neither party can address the other.
+	SetDelegationChild(ctx context.Context, id, sessionKey string) error
+
 	// MarkNotified records that the requester was told, so it shows once.
 	MarkNotified(ctx context.Context, id string) error
 }

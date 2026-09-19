@@ -76,9 +76,6 @@ func (c *Context) Close() {
 // Keys names every room this location belongs to.
 func (c *Context) Keys() []string { return room.Keys(c.Here) }
 
-// Has reports whether a room key is one of the rooms we are in.
-func (c *Context) Has(key string) bool { return slices.Contains(c.Keys(), key) }
-
 // Contains reports whether a session is working in one of these rooms.
 func (c *Context) Contains(s *session.Session) bool { return inRooms(s, c.Keys()) }
 

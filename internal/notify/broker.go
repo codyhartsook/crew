@@ -6,28 +6,28 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/codyhartsook/multiplayer/internal/channel"
 	"github.com/codyhartsook/multiplayer/internal/harness"
-	"github.com/codyhartsook/multiplayer/internal/prune"
 	"github.com/codyhartsook/multiplayer/internal/room"
 	"github.com/codyhartsook/multiplayer/internal/session"
 	"github.com/codyhartsook/multiplayer/internal/store"
-	"github.com/codyhartsook/multiplayer/internal/usage"
 )
 
 // DefaultInterval is how often the broker sweeps. Local SQLite reads are cheap,
 // and a short interval keeps Claude channel delivery responsive.
 const DefaultInterval = time.Second
 
-// MaintainInterval bounds how often a sweep also reaps dead sessions and
-// retries unknown usage. Costlier than a list read, so it runs less often.
-const MaintainInterval = time.Minute
-
 // Reader is the store surface the broker needs.
 type Reader interface {
 	Ender
 	List(ctx context.Context, f store.Filter) ([]*session.Session, error)
 	Unread(ctx context.Context, sessionKey string) ([]*room.Entry, error)
-	SetUsage(ctx context.Context, key string, u *usage.Snapshot) error
+}
+
+// Asker is the optional back-channel surface. A store without one simply never
+// wakes anyone for a question.
+type Asker interface {
+	Inbox(ctx context.Context, self channel.Addr) ([]*channel.Request, error)
 }
 
 // Broker wakes sessions that have entries addressed to them and have not been
@@ -49,22 +49,27 @@ type Broker struct {
 	// restart is harmless: a session with genuinely unread entries is woken
 	// once more, which is true rather than noisy.
 	woken map[string]int64
+	// asks is the same store when it carries the back-channel, and wokenAsk is
+	// the woken cursor for it: request ids are their own sequence.
+	asks     Asker
+	wokenAsk map[string]int64
 	// notify is the harness call, injected so tests do not shell out.
 	notify notifyFunc
-	// lastMaintain is when prune/usage retry last ran; zero runs them now.
-	lastMaintain time.Time
 }
 
 func NewBroker(st Reader, log *slog.Logger, interval time.Duration) *Broker {
 	if interval <= 0 {
 		interval = DefaultInterval
 	}
+	asks, _ := st.(Asker)
 	return &Broker{
 		store:    st,
 		log:      log,
 		interval: interval,
 		trigger:  make(chan struct{}, 1),
 		woken:    map[string]int64{},
+		asks:     asks,
+		wokenAsk: map[string]int64{},
 		notify:   harness.NotifySession,
 	}
 }
@@ -96,11 +101,6 @@ func (b *Broker) Run(ctx context.Context) {
 }
 
 func (b *Broker) sweep(ctx context.Context) {
-	if time.Since(b.lastMaintain) >= MaintainInterval {
-		b.maintain(ctx)
-		b.lastMaintain = time.Now()
-	}
-
 	sessions, err := b.store.List(ctx, store.Filter{Status: session.StatusActive})
 	if err != nil {
 		b.log.Error("notify sweep", "err", err)
@@ -123,6 +123,9 @@ func (b *Broker) sweep(ctx context.Context) {
 		if err := b.sweepSession(ctx, s, authors); err != nil {
 			b.log.Warn("notify", "session", s.Key(), "err", err)
 		}
+		if err := b.sweepAsks(ctx, s); err != nil {
+			b.log.Warn("notify ask", "session", s.Key(), "err", err)
+		}
 	}
 	// Drop cursors for sessions that ended, so the map cannot grow without
 	// bound and a reused key starts clean.
@@ -131,34 +134,9 @@ func (b *Broker) sweep(ctx context.Context) {
 			delete(b.woken, key)
 		}
 	}
-}
-
-// maintain reaps sessions whose process is gone and retries unknown usage.
-func (b *Broker) maintain(ctx context.Context) {
-	dead, err := prune.Dead(ctx, b.store)
-	if err != nil {
-		b.log.Warn("prune", "err", err)
-	} else if n, err := prune.End(ctx, b.store, dead, time.Now().UTC()); err != nil {
-		b.log.Warn("prune end", "err", err)
-	} else if n > 0 {
-		b.log.Info("pruned dead sessions", "count", n)
-	}
-
-	active, err := b.store.List(ctx, store.Filter{Status: session.StatusActive})
-	if err != nil {
-		b.log.Warn("usage retry list", "err", err)
-		return
-	}
-	for _, s := range active {
-		if s.Usage != nil {
-			continue
-		}
-		snap, err := usage.For(string(s.Harness), s.Meta["transcript_path"], s.ID)
-		if err != nil || !snap.Known() {
-			continue
-		}
-		if err := b.store.SetUsage(ctx, s.Key(), &snap); err != nil {
-			b.log.Warn("usage retry set", "session", s.Key(), "err", err)
+	for key := range b.wokenAsk {
+		if !live[key] {
+			delete(b.wokenAsk, key)
 		}
 	}
 }
@@ -177,6 +155,28 @@ func (b *Broker) sweepSession(ctx context.Context, s *session.Session, authors r
 	}
 	b.woken[s.Key()] = newest
 	b.log.Info("woke session", "session", s.Key(), "entries", len(unread), "through", newest)
+	return nil
+}
+
+// sweepAsks wakes a session a delegated role is blocked on. Separate cursor
+// from the room's: the role cannot re-ask, so the question must land.
+func (b *Broker) sweepAsks(ctx context.Context, s *session.Session) error {
+	if b.asks == nil || b.wokenAsk == nil {
+		return nil
+	}
+	open, err := b.asks.Inbox(ctx, channel.Addr(s.Key()))
+	if err != nil || len(open) == 0 {
+		return err
+	}
+	newest := open[len(open)-1].ID
+	if b.wokenAsk[s.Key()] >= newest {
+		return nil
+	}
+	if err := deliver(ctx, b.store, b.notify, s, channel.Notice(open)); err != nil {
+		return err
+	}
+	b.wokenAsk[s.Key()] = newest
+	b.log.Info("woke session for a question", "session", s.Key(), "requests", len(open), "through", newest)
 	return nil
 }
 

@@ -109,7 +109,7 @@ func TestInstallAdoptsAnUnmarkedCopy(t *testing.T) {
 // agents to run a command that is gone. One you edited is still yours.
 func TestRemoveLegacy(t *testing.T) {
 	skills := t.TempDir()
-	old := filepath.Join(skills, legacyNames[0])
+	old := filepath.Join(skills, legacyName)
 	path := filepath.Join(old, "SKILL.md")
 	if _, err := Install(path, false); err != nil {
 		t.Fatal(err)

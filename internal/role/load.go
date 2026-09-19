@@ -59,8 +59,6 @@ func load(fsys fs.FS, name string, scope Scope, displayPath string) (Definition,
 	}
 	def.Scope = scope
 	def.Path = displayPath
-	def.normalize()
-
 	if undecoded := meta.Undecoded(); len(undecoded) > 0 {
 		keys := make([]string, len(undecoded))
 		for i, k := range undecoded {

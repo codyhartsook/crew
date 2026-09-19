@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"sync"
 	"syscall"
 	"time"
 
@@ -83,7 +84,18 @@ func Serve(ctx context.Context, opts *cmdutil.Options, cfg Config) error {
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	var background sync.WaitGroup
+	start := func(run func(context.Context)) {
+		background.Add(1)
+		go func() {
+			defer background.Done()
+			run(ctx)
+		}()
+	}
+	defer func() {
+		cancel()
+		background.Wait()
+	}()
 	roomDir := func(key string) (string, error) { return documents.Dir(filepath.Dir(path), key) }
 	srv := &http.Server{
 		Handler: api.New(st, log,
@@ -105,10 +117,10 @@ func Serve(ctx context.Context, opts *cmdutil.Options, cfg Config) error {
 	if err := notify.ListenSignals(ctx, notify.SocketPath(path), broker.Trigger); err != nil {
 		log.Warn("notification signals unavailable; using polling", "err", err)
 	}
-	go broker.Run(ctx)
-	go newUsageCoordinator(st, log).run(ctx)
-	go newLivenessCoordinator(st, log).run(ctx)
-	go newDelegationCoordinator(st, log).run(ctx)
+	start(broker.Run)
+	start(newUsageCoordinator(st, log).run)
+	start(newLivenessCoordinator(st, log).run)
+	start(newDelegationCoordinator(st, log).run)
 	err = run(ctx, srv, ln, lifecycle)
 	if err == nil {
 		lifecycle.Info("broker stopped")

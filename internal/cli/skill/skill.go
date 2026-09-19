@@ -25,10 +25,8 @@ const Name = "crew-rooms"
 // can tell its own previous output from something you edited.
 const markerFile = ".installed"
 
-// legacyNames are directories this tool installed the skill under before the
-// command was renamed. Left behind they would keep telling agents to run a
-// command that no longer exists.
-var legacyNames = []string{"multiplayer-rooms"}
+// legacyName is where this tool installed the skill before it was renamed.
+const legacyName = "multiplayer-rooms"
 
 // Outcome is what happened to a skill file.
 type Outcome int
@@ -126,26 +124,22 @@ func digest(b []byte) string {
 // RemoveLegacy deletes skills installed under an earlier name, reporting
 // whether anything went. One you edited is yours and is left alone.
 func RemoveLegacy(skillsDir string, dryRun bool) (bool, error) {
-	removed := false
-	for _, name := range legacyNames {
-		dir := filepath.Join(skillsDir, name)
-		content, err := os.ReadFile(filepath.Join(dir, "SKILL.md"))
-		if os.IsNotExist(err) {
-			continue
-		}
-		if err != nil {
-			return removed, fmt.Errorf("read %s: %w", dir, err)
-		}
-		if !Ours(filepath.Join(dir, "SKILL.md"), content) {
-			continue
-		}
-		removed = true
-		if dryRun {
-			continue
-		}
+	dir := filepath.Join(skillsDir, legacyName)
+	path := filepath.Join(dir, "SKILL.md")
+	content, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("read %s: %w", dir, err)
+	}
+	if !Ours(path, content) {
+		return false, nil
+	}
+	if !dryRun {
 		if err := os.RemoveAll(dir); err != nil {
-			return removed, fmt.Errorf("remove %s: %w", dir, err)
+			return true, fmt.Errorf("remove %s: %w", dir, err)
 		}
 	}
-	return removed, nil
+	return true, nil
 }

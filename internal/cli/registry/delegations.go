@@ -26,14 +26,19 @@ const staleRunningTimeout = 2 * delegationTimeout
 // delegationCoordinator runs fire-and-forget delegations from any repo.
 type delegationCoordinator struct {
 	store store.DelegationStore
+	// chans is the same store when it carries the back-channel.
+	chans store.ChannelStore
 	log   *slog.Logger
 
 	mu      sync.Mutex
 	running map[string]bool
+	workers sync.WaitGroup
 }
 
 func newDelegationCoordinator(st store.DelegationStore, log *slog.Logger) *delegationCoordinator {
-	return &delegationCoordinator{store: st, log: log, running: map[string]bool{}}
+	c := &delegationCoordinator{store: st, log: log, running: map[string]bool{}}
+	c.chans, _ = st.(store.ChannelStore)
+	return c
 }
 
 func (c *delegationCoordinator) run(ctx context.Context) {
@@ -43,6 +48,7 @@ func (c *delegationCoordinator) run(ctx context.Context) {
 		c.sweep(ctx)
 		select {
 		case <-ctx.Done():
+			c.workers.Wait()
 			return
 		case <-t.C:
 		}
@@ -68,7 +74,11 @@ func (c *delegationCoordinator) sweep(ctx context.Context) {
 			}
 			continue
 		}
-		go c.execute(ctx, d)
+		c.workers.Add(1)
+		go func() {
+			defer c.workers.Done()
+			c.execute(ctx, d)
+		}()
 	}
 	c.reapStale(ctx)
 }
@@ -87,7 +97,9 @@ func (c *delegationCoordinator) reapStale(ctx context.Context) {
 		}
 		if err := c.store.FailDelegation(ctx, d.ID, "orphaned: the process running this was gone for longer than it should ever take"); err != nil {
 			c.log.Warn("reap stale delegation", "id", d.ID, "err", err)
+			continue
 		}
+		c.closeAsks(ctx, d)
 	}
 }
 
@@ -118,7 +130,7 @@ func (c *delegationCoordinator) execute(ctx context.Context, d *delegation.Deleg
 
 	def, err := delegate.ResolveIn(ctx, d.Dir, d.Role)
 	if err != nil {
-		c.fail(ctx, d.ID, err)
+		c.fail(ctx, d, err)
 		return
 	}
 	env := []string{
@@ -131,16 +143,24 @@ func (c *delegationCoordinator) execute(ctx context.Context, d *delegation.Deleg
 
 	result, err := delegate.Run(spawnCtx, session.Harness(d.Harness), def, d.Prompt, d.Dir, env)
 	if err != nil {
-		c.fail(ctx, d.ID, err)
+		c.fail(ctx, d, err)
 		return
 	}
 	if err := c.store.CompleteDelegation(ctx, d.ID, result); err != nil {
 		c.log.Warn("complete delegation", "id", d.ID, "err", err)
 	}
+	c.closeAsks(ctx, d)
 }
 
-func (c *delegationCoordinator) fail(ctx context.Context, id string, cause error) {
-	if err := c.store.FailDelegation(ctx, id, cause.Error()); err != nil {
-		c.log.Warn("fail delegation", "id", id, "err", err)
+func (c *delegationCoordinator) closeAsks(ctx context.Context, d *delegation.Delegation) {
+	if err := store.CloseAsks(ctx, c.store, c.chans, d.ID); err != nil {
+		c.log.Warn("close delegation questions", "id", d.ID, "err", err)
 	}
+}
+
+func (c *delegationCoordinator) fail(ctx context.Context, d *delegation.Delegation, cause error) {
+	if err := c.store.FailDelegation(ctx, d.ID, cause.Error()); err != nil {
+		c.log.Warn("fail delegation", "id", d.ID, "err", err)
+	}
+	c.closeAsks(ctx, d)
 }

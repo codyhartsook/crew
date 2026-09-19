@@ -38,19 +38,19 @@ func commands(t *testing.T, hooks map[string]any, event string) []string {
 func TestMergeHooksSweepsRetiredEvents(t *testing.T) {
 	hooks := hookMap(t, `{
 	  "SessionStart":     [{"hooks": [{"type":"command","command":"\"/old/mp\" hook --harness codex --quiet"}]}],
-	  "UserPromptSubmit": [
+	  "PreToolUse": [
 	    {"hooks": [{"type":"command","command":"\"/old/mp\" hook --harness codex --quiet"}]},
 	    {"hooks": [{"type":"command","command":"someone-else --watch"}]}
 	  ],
 	  "Stop":             [{"hooks": [{"type":"command","command":"\"/old/mp\" hook --harness codex --quiet"}]}]
 	}`)
 
-	// UserPromptSubmit is managed but no longer tracked: sweep it.
+	// PreToolUse is managed but no longer installed: sweep it.
 	got := Merge(hooks, map[string]int{"SessionStart": 10}, "/new/mp", "codex")
 
-	ups := commands(t, got, "UserPromptSubmit")
-	if len(ups) != 1 || ups[0] != "someone-else --watch" {
-		t.Errorf("UserPromptSubmit = %v, want only the unrelated hook", ups)
+	pre := commands(t, got, "PreToolUse")
+	if len(pre) != 1 || pre[0] != "someone-else --watch" {
+		t.Errorf("PreToolUse = %v, want only the unrelated hook", pre)
 	}
 	starts := commands(t, got, "SessionStart")
 	if len(starts) != 1 || starts[0] != `"/new/mp" hook --harness codex --quiet` {
@@ -151,7 +151,7 @@ func TestInstalledIgnoresForeignEntries(t *testing.T) {
 	}
 }
 
-// init walks Events to report a hook per line, so order matters.
+// Merge walks Events in order; retired events remain so their hooks are swept.
 func TestEventsIsAnOrderedCopy(t *testing.T) {
 	got := Events()
 	want := []string{"SessionStart", "UserPromptSubmit", "PreToolUse", "SessionEnd"}

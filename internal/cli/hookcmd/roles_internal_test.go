@@ -60,18 +60,14 @@ func TestRosterInjectsActiveRolesWithDescriptions(t *testing.T) {
 	if !strings.Contains(out, "tester") || !strings.Contains(out, "Runs the full test suite") {
 		t.Errorf("output = %q, want the tester roster with its description", out)
 	}
-
-	log, err := st.RoutingLog(ctx, repo)
-	if err != nil {
-		t.Fatalf("RoutingLog: %v", err)
-	}
-	if len(log) != 1 || len(log[0].Roles) != 1 || log[0].Roles[0] != "tester" {
-		t.Errorf("RoutingLog = %+v, want one decision naming tester", log)
+	for _, want := range []string{"Managing your context is important", "crew delegate <role>", "Delegate early"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output = %q, want delegation guidance %q", out, want)
+		}
 	}
 }
 
-// Advisory means silent when there is nothing to suggest: no active roles
-// anywhere here should cost no context and log no decision.
+// No active roles anywhere here should cost no context.
 func TestRosterIsSilentWithNoActiveRoles(t *testing.T) {
 	ctx := context.Background()
 	home, repo := t.TempDir(), t.TempDir()
@@ -93,15 +89,8 @@ func TestRosterIsSilentWithNoActiveRoles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("roomsFor: %v", err)
 	}
-	if strings.Contains(out, "Active roles") {
+	if strings.Contains(out, "Managing your context") {
 		t.Errorf("output = %q, want no roster with nothing activated", out)
-	}
-	log, err := st.RoutingLog(ctx, repo)
-	if err != nil {
-		t.Fatalf("RoutingLog: %v", err)
-	}
-	if len(log) != 0 {
-		t.Errorf("RoutingLog = %+v, want no decisions logged", log)
 	}
 }
 
@@ -137,10 +126,8 @@ func TestRosterFallsBackToNameWithNoDefinition(t *testing.T) {
 	}
 }
 
-// A worktree session belongs to two rooms - its own and the main repo's -
-// which can activate different roles. The routing log must attribute each
-// role to the room that actually activated it, not lump both under one.
-func TestRosterLogsEachRoomsRosterSeparately(t *testing.T) {
+// A worktree session belongs to two rooms, whose active roles share one roster.
+func TestRosterCombinesRolesAcrossRooms(t *testing.T) {
 	ctx := context.Background()
 	home, worktree, mainRepo := t.TempDir(), t.TempDir(), t.TempDir()
 	t.Setenv("HOME", home)
@@ -171,21 +158,5 @@ func TestRosterLogsEachRoomsRosterSeparately(t *testing.T) {
 	}
 	if !strings.Contains(out, "tester") || !strings.Contains(out, "reviewer") {
 		t.Errorf("output = %q, want both rooms' roles in the roster", out)
-	}
-
-	worktreeLog, err := st.RoutingLog(ctx, worktree)
-	if err != nil {
-		t.Fatalf("RoutingLog(worktree): %v", err)
-	}
-	if len(worktreeLog) != 1 || len(worktreeLog[0].Roles) != 1 || worktreeLog[0].Roles[0] != "tester" {
-		t.Errorf("RoutingLog(worktree) = %+v, want only tester", worktreeLog)
-	}
-
-	mainRepoLog, err := st.RoutingLog(ctx, mainRepo)
-	if err != nil {
-		t.Fatalf("RoutingLog(mainRepo): %v", err)
-	}
-	if len(mainRepoLog) != 1 || len(mainRepoLog[0].Roles) != 1 || mainRepoLog[0].Roles[0] != "reviewer" {
-		t.Errorf("RoutingLog(mainRepo) = %+v, want only reviewer", mainRepoLog)
 	}
 }

@@ -25,6 +25,7 @@ func RunDelegations(t *testing.T, newStore DelegationFactory) {
 		"ListFiltersByRequesterAndUnnotified": testDelegationListFilters,
 		"MarkNotified":                        testDelegationMarkNotified,
 		"DirRoundTripsSeparatelyFromRoom":     testDelegationDirRoundTrips,
+		"SetChild":                            testDelegationSetChild,
 	}
 	for name, fn := range tests {
 		t.Run(name, func(t *testing.T) { fn(t, newStore) })
@@ -211,5 +212,29 @@ func testDelegationMarkNotified(t *testing.T, newStore DelegationFactory) {
 	}
 	if !got.Notified {
 		t.Error("Notified = false, want true")
+	}
+}
+
+func testDelegationSetChild(t *testing.T, newStore DelegationFactory) {
+	s := newStore(t)
+	ctx := context.Background()
+	if err := s.CreateDelegation(ctx, newDelegation("d1", "/repo", "tester", "codex:launcher")); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := s.GetDelegation(ctx, "d1"); err != nil || got.Child != "" {
+		t.Fatalf("GetDelegation = %+v, %v, want no child yet", got, err)
+	}
+	if err := s.SetDelegationChild(ctx, "d1", "claude:spawned"); err != nil {
+		t.Fatalf("SetDelegationChild: %v", err)
+	}
+	got, err := s.GetDelegation(ctx, "d1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Child != "claude:spawned" {
+		t.Errorf("Child = %q, want claude:spawned", got.Child)
+	}
+	if err := s.SetDelegationChild(ctx, "d1", ""); err == nil {
+		t.Error("SetDelegationChild with no key = nil, want an error")
 	}
 }

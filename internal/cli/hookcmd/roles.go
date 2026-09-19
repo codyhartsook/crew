@@ -2,31 +2,25 @@ package hookcmd
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/codyhartsook/multiplayer/internal/role"
 	"github.com/codyhartsook/multiplayer/internal/room"
-	"github.com/codyhartsook/multiplayer/internal/routing"
 	"github.com/codyhartsook/multiplayer/internal/session"
 	"github.com/codyhartsook/multiplayer/internal/store"
 )
 
-// rosterFor is tier 1 routing: active roles as advisory context, logged once
-// per room so a multi-room session attributes each role correctly.
+// rosterFor injects active delegation agents across the session's rooms.
 func rosterFor(ctx context.Context, st store.Store, sess *session.Session, here []room.Room) (string, error) {
 	rs, ok := st.(store.RoleStore)
 	if !ok || sess == nil {
 		return "", nil
 	}
-	rl, hasRouting := st.(store.RoutingStore)
 
 	seen := map[string]bool{}
 	var names []string
-	var logErr error
 	for _, r := range here {
 		active, err := rs.ActiveRoles(ctx, r.Key)
 		if err != nil {
@@ -35,37 +29,6 @@ func rosterFor(ctx context.Context, st store.Store, sess *session.Session, here 
 		if len(active) == 0 {
 			continue
 		}
-		roomNames := make([]string, len(active))
-		for i, a := range active {
-			roomNames[i] = a.Role
-			if !seen[a.Role] {
-				seen[a.Role] = true
-				names = append(names, a.Role)
-			}
-		}
-		if hasRouting {
-			d := &routing.Decision{Room: r.Key, Session: sess.Key(), Roles: roomNames, CreatedAt: time.Now().UTC()}
-			if err := rl.LogRouting(ctx, d); err != nil {
-				logErr = errors.Join(logErr, err)
-			}
-		}
-	}
-	if len(names) == 0 {
-		return "", logErr
-	}
-	sort.Strings(names)
-	return rosterText(names, discoverRoles(sess)), logErr
-}
-
-// activeRoleNames is every role active across here, deduplicated.
-func activeRoleNames(ctx context.Context, rs store.RoleStore, here []room.Room) ([]string, error) {
-	seen := map[string]bool{}
-	var names []string
-	for _, r := range here {
-		active, err := rs.ActiveRoles(ctx, r.Key)
-		if err != nil {
-			return nil, err
-		}
 		for _, a := range active {
 			if !seen[a.Role] {
 				seen[a.Role] = true
@@ -73,21 +36,11 @@ func activeRoleNames(ctx context.Context, rs store.RoleStore, here []room.Room) 
 			}
 		}
 	}
-	return names, nil
-}
-
-// defsFor resolves each name to its definition, dropping any now missing.
-func defsFor(names []string, reg *role.Registry) []role.Definition {
-	if reg == nil {
-		return nil
+	if len(names) == 0 {
+		return "", nil
 	}
-	var defs []role.Definition
-	for _, name := range names {
-		if def, ok := reg.Get(name); ok {
-			defs = append(defs, def)
-		}
-	}
-	return defs
+	sort.Strings(names)
+	return rosterText(names, discoverRoles(sess)), nil
 }
 
 // discoverRoles reads definitions for the roster. A failure is not worth
@@ -106,7 +59,10 @@ func discoverRoles(sess *session.Session) *role.Registry {
 
 func rosterText(names []string, reg *role.Registry) string {
 	var b strings.Builder
-	b.WriteString("Active roles here:\n")
+	b.WriteString("Managing your context is important. The following delegation agents can be spawned to handle self-contained work in a separate context and return a focused result.\n\n")
+	b.WriteString("Delegate early when investigation, testing, or another bounded task would consume substantial context here:\n\n")
+	b.WriteString("`crew delegate <role> \"<task with scope and expected result>\"`\n\n")
+	b.WriteString("Available delegation agents:\n")
 	for _, name := range names {
 		if reg != nil {
 			if def, ok := reg.Get(name); ok {
@@ -116,6 +72,7 @@ func rosterText(names []string, reg *role.Registry) string {
 		}
 		fmt.Fprintf(&b, "- %s\n", name)
 	}
+	b.WriteString("\nKeep tightly coupled implementation and integration decisions in this session.")
 	return strings.TrimRight(b.String(), "\n")
 }
 

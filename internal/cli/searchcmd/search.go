@@ -2,7 +2,6 @@
 package searchcmd
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -44,16 +43,23 @@ why the obvious approach does not work.`,
 			if err != nil {
 				return err
 			}
+			out := cmd.OutOrStdout()
+			// An empty room list means unfiltered in the store, so a
+			// non-member must never reach the query.
+			if len(keys) == 0 {
+				if asJSON {
+					return cmdutil.WriteJSON(out, []*room.Entry{})
+				}
+				fmt.Fprintln(out, "no rooms here for this session")
+				return nil
+			}
 			q := room.Query{Text: strings.Join(args, " "), Rooms: keys, Limit: searchLimit}
 			entries, err := rc.Rooms.Search(cmd.Context(), q)
 			if err != nil {
 				return err
 			}
-			out := cmd.OutOrStdout()
 			if asJSON {
-				enc := json.NewEncoder(out)
-				enc.SetIndent("", "  ")
-				return enc.Encode(entries)
+				return cmdutil.WriteJSON(out, entries)
 			}
 			if len(entries) == 0 {
 				fmt.Fprintf(out, "nothing matching %q\n", q.Text)

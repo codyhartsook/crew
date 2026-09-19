@@ -30,7 +30,7 @@ const timeFormat = time.RFC3339Nano
 
 // SchemaVersion is the store layout this binary understands. Raise it whenever
 // a migration changes what older binaries can safely assume.
-const SchemaVersion = 9
+const SchemaVersion = 10
 
 const schema = `
 CREATE TABLE IF NOT EXISTS sessions (
@@ -140,13 +140,15 @@ var additive = map[int][]string{
 	8: {
 		roleActivationSchema,
 		roleActivationIndex,
-		routingLogSchema,
-		routingLogIndex,
 	},
 	9: {
 		delegationSchema,
 		delegationIndexStatus,
 		delegationIndexRequester,
+	},
+	10: {
+		channelSchema,
+		channelIndex,
 	},
 }
 
@@ -211,7 +213,7 @@ func migrate(db *sql.DB) error {
 		return fmt.Errorf("crew now requires a fresh version %d database: move the unversioned database aside and restart", SchemaVersion)
 	}
 
-	if _, err := db.ExecContext(ctx, schema+roomSchema+roleMemorySchema+roleActivationSchema+routingLogSchema+delegationSchema); err != nil {
+	if _, err := db.ExecContext(ctx, schema+roomSchema+roleMemorySchema+roleActivationSchema+delegationSchema+channelSchema); err != nil {
 		return fmt.Errorf("apply schema: %w", err)
 	}
 	if _, err := db.ExecContext(ctx, aliasIndex); err != nil {
@@ -220,12 +222,18 @@ func migrate(db *sql.DB) error {
 	if err := backfillAliases(ctx, db); err != nil {
 		return err
 	}
-	if _, err := db.ExecContext(ctx, roomIndexes+roleMemoryIndex+roleActivationIndex+routingLogIndex+delegationIndexStatus+delegationIndexRequester); err != nil {
+	if _, err := db.ExecContext(ctx, roomIndexes+roleMemoryIndex+roleActivationIndex+delegationIndexStatus+delegationIndexRequester+channelIndex); err != nil {
 		return fmt.Errorf("create indexes: %w", err)
 	}
 	// A database from an earlier build may have delegations without dir;
 	// CREATE TABLE IF NOT EXISTS above won't add it, so check separately.
 	if err := ensureColumn(ctx, db, "delegations", "dir", `ALTER TABLE delegations ADD COLUMN dir TEXT NOT NULL DEFAULT ''`); err != nil {
+		return err
+	}
+	// child, likewise: a database migrated from before version 9 creates
+	// delegations from the current DDL, which already has the column, so the
+	// version 10 step cannot add it unconditionally.
+	if err := ensureColumn(ctx, db, "delegations", "child", delegationChildColumn); err != nil {
 		return err
 	}
 	// PRAGMA takes no parameters; the value is a constant.

@@ -1,7 +1,6 @@
 package usage
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"io/fs"
@@ -29,28 +28,6 @@ type codexTokens struct {
 	InputTokens       int64 `json:"input_tokens"`
 	CachedInputTokens int64 `json:"cached_input_tokens"`
 	OutputTokens      int64 `json:"output_tokens"`
-}
-
-// FromCodexRollout reads a thread's spend from its rollout file. The last
-// token_count event carries everything, so later events overwrite earlier ones
-// rather than accumulating.
-func FromCodexRollout(path string) (Snapshot, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return Snapshot{}, fmt.Errorf("read rollout: %w", err)
-	}
-	defer f.Close()
-
-	var s Snapshot
-	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 0, 64*1024), 8*1024*1024)
-	for sc.Scan() {
-		consumeCodexLine(sc.Bytes(), &s)
-	}
-	if err := sc.Err(); err != nil {
-		return Snapshot{}, fmt.Errorf("scan rollout: %w", err)
-	}
-	return s, nil
 }
 
 func consumeCodexLine(raw []byte, s *Snapshot) bool {

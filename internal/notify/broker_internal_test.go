@@ -4,25 +4,27 @@ import (
 	"context"
 	"io"
 	"log/slog"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/codyhartsook/multiplayer/internal/channel"
 	"github.com/codyhartsook/multiplayer/internal/harness/notifier"
 	"github.com/codyhartsook/multiplayer/internal/room"
 	"github.com/codyhartsook/multiplayer/internal/session"
 	"github.com/codyhartsook/multiplayer/internal/store"
-	"github.com/codyhartsook/multiplayer/internal/usage"
 )
 
 type fakeReader struct {
 	sessions []*session.Session
 	unread   map[string][]*room.Entry
+	inbox    map[string][]*channel.Request
 	asked    []string
 	ended    []string
-	usageSet map[string]*usage.Snapshot
+}
+
+func (f *fakeReader) Inbox(_ context.Context, self channel.Addr) ([]*channel.Request, error) {
+	return f.inbox[string(self)], nil
 }
 
 func (f *fakeReader) List(context.Context, store.Filter) ([]*session.Session, error) {
@@ -39,14 +41,6 @@ func (f *fakeReader) End(_ context.Context, key string, _ time.Time, _ string) e
 	return nil
 }
 
-func (f *fakeReader) SetUsage(_ context.Context, key string, u *usage.Snapshot) error {
-	if f.usageSet == nil {
-		f.usageSet = map[string]*usage.Snapshot{}
-	}
-	f.usageSet[key] = u
-	return nil
-}
-
 func entries(ids ...int64) []*room.Entry {
 	out := make([]*room.Entry, 0, len(ids))
 	for _, id := range ids {
@@ -58,7 +52,8 @@ func entries(ids ...int64) []*room.Entry {
 func testBroker(f *fakeReader, w notifyFunc) *Broker {
 	return &Broker{
 		store: f, log: slog.New(slog.NewTextHandler(io.Discard, nil)),
-		woken: map[string]int64{}, notify: w, lastMaintain: time.Now(),
+		woken: map[string]int64{}, asks: f, wokenAsk: map[string]int64{},
+		notify: w,
 	}
 }
 
@@ -181,47 +176,6 @@ func TestWakeTextNamesTheEntry(t *testing.T) {
 	}
 }
 
-func TestMaintainRetriesUnknownUsage(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("CODEX_HOME", home)
-	dir := filepath.Join(home, "sessions", "2026", "09", "02")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	rollout := filepath.Join(dir, "rollout-2026-09-02T13-00-13-01a05f19-7894-7b62-be69-92260048f107.jsonl")
-	line := `{"type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":3000,"cached_input_tokens":2500,"output_tokens":90},"last_token_usage":{"input_tokens":1200,"cached_input_tokens":1100,"output_tokens":40},"model_context_window":258400}}}`
-	if err := os.WriteFile(rollout, []byte(line+"\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	s := sess(session.HarnessCodex, "01a05f19-7831-78a1-9f95-11cd7a51f258")
-	f := &fakeReader{sessions: []*session.Session{s}}
-	b := &Broker{store: f, log: slog.New(slog.NewTextHandler(io.Discard, nil)), woken: map[string]int64{}}
-
-	b.maintain(context.Background())
-
-	got, ok := f.usageSet[s.Key()]
-	if !ok {
-		t.Fatal("usage was not retried")
-	}
-	if got.ContextUsed != 1200 || got.InputTokens != 3000 {
-		t.Errorf("snapshot = %+v, want context 1200, input 3000", got)
-	}
-}
-
-func TestMaintainSkipsSessionsWithKnownUsage(t *testing.T) {
-	s := sess(session.HarnessCodex, "t1")
-	s.Usage = &usage.Snapshot{InputTokens: 1}
-	f := &fakeReader{sessions: []*session.Session{s}}
-	b := &Broker{store: f, log: slog.New(slog.NewTextHandler(io.Discard, nil)), woken: map[string]int64{}}
-
-	b.maintain(context.Background())
-
-	if len(f.usageSet) != 0 {
-		t.Errorf("usageSet = %v, want no retries for a session with known usage", f.usageSet)
-	}
-}
-
 // A woken agent should not have to look up who wrote to it, and an unnamed
 // sender must still degrade to something readable rather than a raw key.
 func TestWakeTextNamesTheSender(t *testing.T) {
@@ -238,5 +192,36 @@ func TestWakeTextNamesTheSender(t *testing.T) {
 	}
 	if !strings.Contains(unnamed, "codex other") {
 		t.Errorf("unnamed sender lost its fallback: %q", unnamed)
+	}
+}
+
+// A delegated role cannot re-ask, so its question must wake the requester -
+// once, and again only for a newer question.
+func TestSweepWakesForAWaitingQuestion(t *testing.T) {
+	f := &fakeReader{
+		sessions: []*session.Session{sess(session.HarnessCodex, "t1")},
+		inbox: map[string][]*channel.Request{
+			"codex:t1": {{ID: 1, From: "claude:role", To: "codex:t1", Body: "which config?"}},
+		},
+	}
+	var texts []string
+	b := testBroker(f, func(_ context.Context, _ *session.Session, text string) error {
+		texts = append(texts, text)
+		return nil
+	})
+
+	b.sweep(context.Background())
+	b.sweep(context.Background())
+	if len(texts) != 1 {
+		t.Fatalf("woke %d times for the same question, want 1", len(texts))
+	}
+	if !strings.Contains(texts[0], "which config?") || !strings.Contains(texts[0], "crew answer") {
+		t.Errorf("wake text = %q, want the question and how to answer it", texts[0])
+	}
+
+	f.inbox["codex:t1"] = append(f.inbox["codex:t1"], &channel.Request{ID: 2, From: "claude:role", To: "codex:t1", Body: "and the fixture?"})
+	b.sweep(context.Background())
+	if len(texts) != 2 {
+		t.Fatalf("woke %d times, want 2 after a second question", len(texts))
 	}
 }

@@ -154,6 +154,9 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
 	return nil
 }
 
+// Entries treats an empty Rooms list as unfiltered: the API and dashboard list
+// every room that way. A caller with a membership-derived list must check it
+// for empty first, as roomcmd and searchcmd do.
 func (s *Store) Entries(ctx context.Context, f room.Filter) ([]*room.Entry, error) {
 	var (
 		where []string
@@ -296,6 +299,8 @@ func scanEntry(sc scanner) (*room.Entry, error) {
 	return &e, nil
 }
 
+// Search treats an empty Rooms list as unfiltered, as Entries does; see there.
+//
 // Search matches with LIKE rather than a full-text index. A room holds
 // hundreds of rows, not millions, so a scan is instant - and an FTS table would
 // need keeping in step with the rows, which is the drift a single source of

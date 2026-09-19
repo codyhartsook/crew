@@ -2,10 +2,8 @@
 package rolememcmd
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"strings"
 	"time"
@@ -101,7 +99,7 @@ func read(cmd *cobra.Command, rc *roomctx.Context, roomKey, memRole string, asJS
 		return err
 	}
 	if asJSON {
-		return writeJSON(cmd.OutOrStdout(), entries)
+		return cmdutil.WriteJSON(cmd.OutOrStdout(), entries)
 	}
 	if len(entries) == 0 {
 		fmt.Fprintf(cmd.OutOrStdout(), "%s: no memory yet\n", memRole)
@@ -111,10 +109,4 @@ func read(cmd *cobra.Command, rc *roomctx.Context, roomKey, memRole string, asJS
 		fmt.Fprintf(cmd.OutOrStdout(), "[%d] %s\n%s\n\n", e.ID, e.CreatedAt.Format(time.RFC3339), e.Body)
 	}
 	return nil
-}
-
-func writeJSON(w io.Writer, v any) error {
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	return enc.Encode(v)
 }

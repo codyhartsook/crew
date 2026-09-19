@@ -75,15 +75,12 @@ func (o *Options) StoreDir() (string, error) {
 	return filepath.Dir(path), nil
 }
 
-// autoJoinDefault is overridden by CREW_AUTO_JOIN.
-const autoJoinDefault = true
-
 // AutoJoinEnabled reports whether a session should auto-join its rooms.
 // CREW_AUTO_JOIN=0 marks a delegated role deliberately not a member.
 func AutoJoinEnabled() bool {
 	switch os.Getenv(EnvAutoJoin) {
 	case "":
-		return autoJoinDefault
+		return true
 	case "0", "false", "no":
 		return false
 	default:

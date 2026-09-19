@@ -38,7 +38,7 @@ correction instead. Removal is permanent.`,
 			if err != nil {
 				return err
 			}
-			if !rc.Has(target.Room) {
+			if !slices.Contains(rc.Keys(), target.Room) {
 				return fmt.Errorf("entry [%d] is not in this room", id)
 			}
 			author, err := rc.Author(cmd.Context(), as)

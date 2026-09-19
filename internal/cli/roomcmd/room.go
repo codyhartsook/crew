@@ -3,9 +3,7 @@
 package roomcmd
 
 import (
-	"encoding/json"
 	"fmt"
-	"io"
 
 	"github.com/spf13/cobra"
 
@@ -42,6 +40,15 @@ func New(opts *cmdutil.Options) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			// An empty room list means unfiltered in the store, so a
+			// non-member must never reach the query.
+			if len(keys) == 0 {
+				if asJSON {
+					return cmdutil.WriteJSON(cmd.OutOrStdout(), []*room.Entry{})
+				}
+				fmt.Fprintf(cmd.OutOrStdout(), "%s: no rooms here for this session\n", rc.Here[0].Name)
+				return nil
+			}
 			entries, err := rc.Rooms.Entries(cmd.Context(), room.Filter{Rooms: keys, Limit: last})
 			if err != nil {
 				return err
@@ -57,7 +64,7 @@ func New(opts *cmdutil.Options) *cobra.Command {
 				return rc.Rooms.Ack(cmd.Context(), self, entries[len(entries)-1].ID)
 			}
 			if asJSON {
-				if err := writeJSON(cmd.OutOrStdout(), entries); err != nil {
+				if err := cmdutil.WriteJSON(cmd.OutOrStdout(), entries); err != nil {
 					return err
 				}
 				return ack()
@@ -83,10 +90,4 @@ func New(opts *cmdutil.Options) *cobra.Command {
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of a briefing")
 	cmd.Flags().IntVar(&last, "last", 0, "show only the newest N entries")
 	return cmd
-}
-
-func writeJSON(w io.Writer, v any) error {
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	return enc.Encode(v)
 }

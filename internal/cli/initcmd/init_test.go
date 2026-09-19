@@ -62,7 +62,7 @@ func TestInitViewStaysPlainOutsideATerminal(t *testing.T) {
 // Captured output must skip both the color and the spinner.
 func TestReportStaysPlainAndInstantOffATerminal(t *testing.T) {
 	var out strings.Builder
-	rep := newReport(&out)
+	rep := newReport(&out, true)
 	if rep.view.animate {
 		t.Error("a captured writer is being animated")
 	}
@@ -72,6 +72,7 @@ func TestReportStaysPlainAndInstantOffATerminal(t *testing.T) {
 	rep.step(context.Background(), "SessionStart hook", stepDone, "10s timeout")
 	rep.step(context.Background(), "SessionEnd hook", stepCurrent, "5s timeout")
 	rep.step(context.Background(), "room skill", stepPlanned, "~/.claude/skills/crew-rooms")
+	rep.flush(context.Background())
 	if elapsed := time.Since(start); elapsed > stepPause {
 		t.Errorf("rendering took %s, want no pacing off a terminal", elapsed)
 	}
@@ -85,6 +86,27 @@ func TestReportStaysPlainAndInstantOffATerminal(t *testing.T) {
 	}
 	if strings.Contains(out.String(), "\x1b[") {
 		t.Error("captured output carries escape codes")
+	}
+}
+
+// Re-running init is the common case and changes nothing, so the unchanged
+// items collapse to one line rather than a screen of news that is not there.
+func TestReportCollapsesUnchangedSteps(t *testing.T) {
+	var out strings.Builder
+	rep := newReport(&out, false)
+	rep.section("Claude Code", "~/.claude/settings.json")
+	rep.step(context.Background(), "SessionStart hook", stepDone, "10s timeout")
+	rep.step(context.Background(), "UserPromptSubmit hook", stepCurrent, "5s timeout")
+	rep.step(context.Background(), "SessionEnd hook", stepCurrent, "5s timeout")
+	rep.step(context.Background(), "room skill", stepCurrent, "~/.claude/skills/crew-rooms")
+	rep.flush(context.Background())
+
+	// What changed still gets its own line; the rest becomes a count.
+	want := "\n  Claude Code  ~/.claude/settings.json\n" +
+		"    ✓ SessionStart hook      10s timeout\n" +
+		"    · 3 already current\n"
+	if got := out.String(); got != want {
+		t.Errorf("report =\n%q\nwant\n%q", got, want)
 	}
 }
 

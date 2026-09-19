@@ -7,55 +7,6 @@ import (
 	"testing"
 )
 
-// Context occupancy is the newest request's whole input, cache included: a
-// cached token still fills the window. Totals accumulate over every message.
-func TestFromClaudeTranscript(t *testing.T) {
-	got, err := FromClaudeTranscript(filepath.Join("testdata", "claude.jsonl"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := Snapshot{
-		Model:             "claude-opus-5",
-		ContextWindow:     1_000_000,
-		ContextUsed:       1000, // 5 + 900 + 95, the last message only
-		InputTokens:       1050, // (10+0+40) + (5+900+95)
-		CachedInputTokens: 900,  // cache reads only
-		OutputTokens:      300,  // 100 + 200
-	}
-	if got != want {
-		t.Errorf("snapshot =\n %+v\nwant\n %+v", got, want)
-	}
-}
-
-// A rollout states totals on every token_count event, so the last one wins
-// rather than summing into a figure several times too large.
-func TestFromCodexRollout(t *testing.T) {
-	got, err := FromCodexRollout(filepath.Join("testdata", "codex.jsonl"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := Snapshot{
-		Model:             "gpt-x-codex",
-		ContextWindow:     258400,
-		ContextUsed:       1200,
-		InputTokens:       3000,
-		CachedInputTokens: 2500,
-		OutputTokens:      90,
-	}
-	if got != want {
-		t.Errorf("snapshot =\n %+v\nwant\n %+v", got, want)
-	}
-}
-
-func TestMissingFileIsAnError(t *testing.T) {
-	if _, err := FromClaudeTranscript("testdata/nope.jsonl"); err == nil {
-		t.Error("a missing transcript should be an error")
-	}
-	if _, err := FromCodexRollout("testdata/nope.jsonl"); err == nil {
-		t.Error("a missing rollout should be an error")
-	}
-}
-
 // An unknown figure must never read as zero spend, or an agent with no usage
 // recorded would look like the emptiest one and win every routing decision.
 func TestHeadroomSaysWhenItCannotTell(t *testing.T) {

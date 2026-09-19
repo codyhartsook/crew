@@ -11,6 +11,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
+	"github.com/codyhartsook/multiplayer/internal/channel"
 	"github.com/codyhartsook/multiplayer/internal/delegation"
 	"github.com/codyhartsook/multiplayer/internal/store/sqlitestore"
 )
@@ -121,5 +122,36 @@ func TestReapStaleLeavesThisProcessesOwnClaimAlone(t *testing.T) {
 	}
 	if got.Status != delegation.StatusRunning {
 		t.Errorf("Status = %q, want it left running: this process still claims it", got.Status)
+	}
+}
+
+// A role that dies mid-question must leave nothing open, or its requester is
+// nagged forever about an answer nobody will read.
+func TestReapStaleClosesTheChildsOpenQuestion(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "sessions.db")
+	st, err := sqlitestore.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+
+	newTestDelegation(t, st, "orphan")
+	if err := st.SetDelegationChild(ctx, "orphan", "claude:role"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.Ask(ctx, "claude:role", "codex:a", "which config?"); err != nil {
+		t.Fatal(err)
+	}
+	backdate(t, path, "orphan", staleRunningTimeout+time.Minute)
+
+	testCoordinator(st).reapStale(ctx)
+
+	open, err := st.Inbox(ctx, channel.Addr("codex:a"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(open) != 0 {
+		t.Errorf("Inbox = %+v, want the dead role's question closed", open)
 	}
 }

@@ -1,4 +1,4 @@
-# Context management
+# Architecture
 
 Crew's organizing constraint is agent context, not storage. Every channel below
 costs some agent's context window. The cost scales with how many agents a
@@ -12,12 +12,18 @@ message reaches, so the bar for using a channel scales the same way.
 |---|---|---|---|
 | Room post | every participant, now and later | Highest | Changes another agent's work |
 | Delegation result | one launcher | Medium, schema-bounded | The answer, nothing else |
+| Ask/answer | one requester, blocking | Low, one question | Context only the requester has |
 | Role memory | one role, pulled on demand | Lowest | Anything useful to that role next time |
 | Notice | one agent, no payload | Near zero | Unread work exists |
 
-The room is the most expensive channel in the system: a post enters the
-briefing of every agent that joins afterward, forever. It is for cross-agent
-knowledge, not for recording work.
+The room is the most expensive channel in the system: a post is durable and
+reaches every agent that works here afterward. It is for cross-agent knowledge,
+not for recording work.
+
+Arrival is deliberately cheap. A session start injects the room's name, who else
+is here, and a count of what it holds, never the entries and never an
+acknowledgement. They stay unread so the turn notice can offer them: a backlog
+costs one line per turn until someone reads it, not a screen on every arrival.
 
 ## Shape
 
@@ -55,9 +61,35 @@ flowchart TB
 ```
 
 Role agents are deliberately outside the room. They are spawned with auto-join
-disabled, so they never receive the room briefing and never post into it. Room
-membership enforcement already denies their reads and writes, so the isolation
-needs no new guard.
+disabled, so they never join it and never post into it.
+
+That isolation covers writes only. Reads are not gated: a non-member's
+accessible-room list is empty, and the entry and search queries read an empty
+room filter as no filter rather than no results, so a spawned role running
+`crew room` sees every room. A gap to close in those queries, not a property to
+rely on.
+
+## Presence
+
+Who is here decides the roster, room membership, and who a request can be
+addressed to.
+
+A process id is not a session identity. One harness process hosts many
+conversations: a Claude process spans every session `/clear` creates, a Codex
+process holds its user thread alongside its subagent and review threads, and an
+app-server daemon outlives all of them. Judging a session by its pid keeps dead
+conversations active forever and misses live ones.
+
+So liveness comes from each harness's own records. Codex publishes a flock-held
+writer lock per open thread, and the thread's rollout says whether a person
+drives it or whether it is an internal subagent. Claude keeps no equivalent but
+is one conversation per terminal process, so the pid check is right there. A
+harness reporting nothing usable falls back to the pid check rather than having
+its sessions reaped.
+
+The registry reconciles both ways on a timer: a session whose conversation is
+closed ends, a live one it never saw is adopted. Last-seen comes from the
+conversation file, since the prompt hook only fires on a user turn.
 
 ## Routing
 
@@ -70,64 +102,18 @@ Four decisions, in order:
 1. Delegate at all, or do the work inline
 2. Which role
 3. Which harness, where the role allows more than one
-4. Sync, blocking the launcher, or async into the room
+4. Wait for the result, or queue the work
 
-### Signal quality
-
-Routing accuracy is bounded by the signal available at each point.
-
-| Point | Signal | Reliability |
-|---|---|---|
-| UserPromptSubmit | Prose intent | Low, paraphrase defeats patterns |
-| PreToolUse | Structured tool input | High, exact match on commands and paths |
-| SessionStart | Identity only, no task | N/A, carries roster and role memory |
-
-Match on structured input wherever it exists. Classifying prose
-deterministically is where this design fails.
-
-### Tiers
-
-```mermaid
-flowchart LR
-    prompt([Work arrives]) --> roster
-
-    roster["Tier 1: roster injection<br/>always on, free<br/>agent chooses"]
-    tool["Tier 2: structured interception<br/>PreToolUse deny on exact patterns<br/>opt-in per role"]
-    adj["Tier 3: adjudication<br/>LLM call behind a prefilter<br/>opt-in, latency cost"]
-
-    roster -->|agent delegated| done([Delegated])
-    roster -->|agent went inline| tool
-    tool -->|pattern hit| done
-    tool -->|ambiguous candidate| adj
-    adj -->|match| done
-    tool -->|no match| inline([Inline, correctly])
-    adj -->|no match| inline
-```
-
-Tier 1 injects the room's active roles and lets the agent match. It costs
-nothing, needs no patterns, and reinforces the harnesses' own description-based
-delegation rather than fighting it. It is advisory, so it is sometimes ignored.
-
-Tier 2 catches exactly that case: the agent decided to run the full suite
-inline, and the tool call is an exact match. Deny with a reason is supported
-identically on both harnesses. It needs a carve-out so targeted work passes
-through, since blocking every invocation of a command is worse than not routing
-at all.
-
-Tier 3 is the escape hatch for prose that matters. Gate it behind a cheap
-deterministic prefilter so latency is paid only on candidates, or run it async
-and surface the suggestion on the next notice. The router can shell out to
-whichever harness binary is already installed, so it needs no separate key.
+At SessionStart, crew injects the room's active delegation agents, their
+descriptions, and the command that spawns one. The notice tells the main agent
+to protect its context by delegating bounded investigation and testing early.
+The main agent sees the full user request and makes the semantic decision;
+crew does not classify prompt text or intercept tool calls.
 
 ### Configuration
 
-Routing rules are data carried in role definitions, never logic in hooks. Adding
-a role is adding a file, which is where the dynamism comes from. A hook stays a
-generic matcher over the active roster.
-
-Every routing decision and whether the agent took it should be recorded from the
-start. It is the only way to tell a useful rule from an annoying one, and it is
-the dataset a learned router would need later.
+Roles are data, never hook logic. Adding a role is adding a file, and activating
+it adds that role to the room's next SessionStart roster.
 
 ## Delegation
 
@@ -166,6 +152,19 @@ Three destinations, by lifetime and audience:
 
 Both harnesses can enforce the output schema: Claude with --json-schema, Codex
 with --output-schema. Use it. An instruction to "be concise" is not a bound.
+
+### Asking back
+
+A delegated role gets a task and no context. `crew ask "<question>"` posts a
+request addressed to its requester and blocks until `crew answer <id> "<body>"`
+writes one, bounded by a wait that fits inside the spawn timeout. Unanswered,
+the role reports what it could not determine rather than guessing.
+
+Requests live in their own table, addressed and readable only through the
+recipient's inbox; the room stays broadcast-only. Delivery is asymmetric by
+necessity: the requester is a live session the broker can wake, while nothing
+can wake a headless spawn, so the role polls. A finished delegation closes
+whatever its role left open.
 
 ## Memory
 

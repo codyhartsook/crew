@@ -68,8 +68,12 @@ func roomsFor(ctx context.Context, st store.Store, event hook.Event, sess *sessi
 		if err != nil {
 			return roomNotice, err
 		}
+		askNotice, err := askNoticeFor(ctx, st, sessionKey)
+		if err != nil {
+			return joinContext(roomNotice, askNotice), err
+		}
 		delegationNotice, err := delegationNoticeFor(ctx, st, sessionKey)
-		return joinContext(roomNotice, delegationNotice), err
+		return joinContext(roomNotice, askNotice, delegationNotice), err
 	default:
 		return "", nil
 	}

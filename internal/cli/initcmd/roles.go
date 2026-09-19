@@ -95,9 +95,10 @@ func promptActivation(in io.Reader, out io.Writer, defs []role.Definition, activ
 	}
 
 	var chosen []string
+	// No Description: huh renders its own key help below the list, and a second
+	// hand-written one only contradicts it.
 	field := huh.NewMultiSelect[string]().
 		Title("Roles").
-		Description("space to toggle, enter to activate").
 		Options(options...).
 		Value(&chosen)
 

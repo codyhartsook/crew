@@ -2,7 +2,6 @@
 package lscmd
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
@@ -55,7 +54,7 @@ func New(opts *cmdutil.Options) *cobra.Command {
 				return err
 			}
 			if asJSON {
-				return writeJSONList(cmd.OutOrStdout(), sessions)
+				return cmdutil.WriteJSON(cmd.OutOrStdout(), sessions)
 			}
 			return writeTable(cmd.OutOrStdout(), opts.Human, sessions)
 		},
@@ -72,12 +71,6 @@ func New(opts *cmdutil.Options) *cobra.Command {
 	cmd.Flags().IntVar(&filter.Limit, "limit", 0, "max sessions to show")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "emit JSON instead of a table")
 	return cmd
-}
-
-func writeJSONList(w io.Writer, sessions []*session.Session) error {
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	return enc.Encode(sessions)
 }
 
 // sessionColumns is what ls shows. An agent addresses agents by alias, so the

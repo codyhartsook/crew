@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS delegations (
     role       TEXT NOT NULL,
     harness    TEXT NOT NULL,
     requester  TEXT NOT NULL,
+    child      TEXT NOT NULL DEFAULT '',
     prompt     TEXT NOT NULL,
     status     TEXT NOT NULL,
     result     TEXT NOT NULL DEFAULT '',
@@ -29,6 +30,9 @@ CREATE TABLE IF NOT EXISTS delegations (
 );
 `
 
+// delegationChildColumn carries a version 9 database forward.
+const delegationChildColumn = `ALTER TABLE delegations ADD COLUMN child TEXT NOT NULL DEFAULT ''`
+
 const delegationIndexStatus = `
 CREATE INDEX IF NOT EXISTS delegations_status ON delegations(status);
 `
@@ -37,7 +41,7 @@ const delegationIndexRequester = `
 CREATE INDEX IF NOT EXISTS delegations_requester ON delegations(requester, notified);
 `
 
-const delegationColumns = `id, room, dir, role, harness, requester, prompt, status, result, error, notified, created_at, updated_at`
+const delegationColumns = `id, room, dir, role, harness, requester, child, prompt, status, result, error, notified, created_at, updated_at`
 
 var _ store.DelegationStore = (*Store)(nil)
 
@@ -47,10 +51,10 @@ func (s *Store) CreateDelegation(ctx context.Context, d *delegation.Delegation) 
 	}
 	const q = `
 INSERT INTO delegations (` + delegationColumns + `)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 	_, err := s.db.ExecContext(ctx, q,
-		d.ID, d.Room, d.Dir, d.Role, d.Harness, d.Requester, d.Prompt, string(d.Status),
+		d.ID, d.Room, d.Dir, d.Role, d.Harness, d.Requester, d.Child, d.Prompt, string(d.Status),
 		d.Result, d.Error, d.Notified, formatTime(d.CreatedAt), formatTime(d.UpdatedAt))
 	if err != nil {
 		return fmt.Errorf("create delegation %s: %w", d.ID, err)
@@ -142,6 +146,18 @@ func (s *Store) FailDelegation(ctx context.Context, id, errMsg string) error {
 	return nil
 }
 
+// SetDelegationChild records the session key the spawned role runs as.
+func (s *Store) SetDelegationChild(ctx context.Context, id, sessionKey string) error {
+	if id == "" || sessionKey == "" {
+		return errors.New("set delegation child: id and session key are required")
+	}
+	const q = `UPDATE delegations SET child = ?, updated_at = ? WHERE id = ?`
+	if _, err := s.db.ExecContext(ctx, q, sessionKey, formatTime(time.Now()), id); err != nil {
+		return fmt.Errorf("set delegation %s child: %w", id, err)
+	}
+	return nil
+}
+
 func (s *Store) MarkNotified(ctx context.Context, id string) error {
 	const q = `UPDATE delegations SET notified = 1 WHERE id = ?`
 	if _, err := s.db.ExecContext(ctx, q, id); err != nil {
@@ -158,7 +174,7 @@ func scanDelegation(sc scanner) (*delegation.Delegation, error) {
 		createdAt string
 		updatedAt string
 	)
-	err := sc.Scan(&d.ID, &d.Room, &d.Dir, &d.Role, &d.Harness, &d.Requester, &d.Prompt,
+	err := sc.Scan(&d.ID, &d.Room, &d.Dir, &d.Role, &d.Harness, &d.Requester, &d.Child, &d.Prompt,
 		&status, &d.Result, &d.Error, &notified, &createdAt, &updatedAt)
 	if err != nil {
 		return nil, err

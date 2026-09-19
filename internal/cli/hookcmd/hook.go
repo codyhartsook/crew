@@ -100,19 +100,13 @@ func runHook(cmd *cobra.Command, opts *cmdutil.Options, harnessFlag string) erro
 	sessionKey := sessionKeyFrom(h, payload)
 	recordUsage(ctx, st, h, payload, sessionKey)
 
-	if payload.Event() == hook.EventPreToolUse {
-		deny, reason, enforceErr := enforceFor(ctx, st, sessionKey, payload)
-		if writeErr := writeDecision(cmd.OutOrStdout(), deny, reason); writeErr != nil {
-			enforceErr = errors.Join(enforceErr, writeErr)
-		}
-		return errors.Join(recordErr, enforceErr)
-	}
+	childErr := recordDelegationChild(ctx, st, payload.Event(), sessionKey)
 
 	injected, roomErr := roomsFor(ctx, st, payload.Event(), sess, sessionKey)
 	if writeErr := writeContext(cmd.OutOrStdout(), payload.Event(), injected); writeErr != nil {
 		roomErr = errors.Join(roomErr, writeErr)
 	}
-	return errors.Join(recordErr, roomErr)
+	return errors.Join(recordErr, childErr, roomErr)
 }
 
 func resolveHarness(flag string) (session.Harness, error) {
@@ -145,11 +139,11 @@ func logMissingCapabilities(opts *cmdutil.Options, st store.Store) {
 	if _, ok := st.(store.RoleStore); !ok {
 		missing = append(missing, "roles")
 	}
-	if _, ok := st.(store.RoutingStore); !ok {
-		missing = append(missing, "routing")
-	}
 	if _, ok := st.(store.DelegationStore); !ok {
 		missing = append(missing, "delegation")
+	}
+	if _, ok := st.(store.ChannelStore); !ok {
+		missing = append(missing, "channel")
 	}
 	if len(missing) > 0 {
 		logHookLine(opts, "store missing capabilities: "+strings.Join(missing, ", "))
