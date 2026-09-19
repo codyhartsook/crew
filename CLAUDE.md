@@ -1,5 +1,3 @@
-@AGENTS.md
+## Project Guidelines
 
-# Claude Code
-
-The project guidance above lives in `AGENTS.md`
+* Always use concise comments, avoid verbosity

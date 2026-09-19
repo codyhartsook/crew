@@ -1,3 +1,3 @@
 ## Project Guidelines
 
-* always use concise comments, avoid verbosity
+* Always use concise comments, avoid verbosity
