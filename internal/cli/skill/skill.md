@@ -1,96 +1,105 @@
 ---
 name: crew-rooms
-description: Shared context for coding agents in the same worktree, repository, or anchored folder. Use when work should be remembered, another agent must act, a change needs an adversarial review, or a crew notice is waiting.
+description: Coordinate coding agents through shared rooms and isolated delegated roles. Use when work should be remembered, another agent can take a bounded task, a change needs adversarial review, or a crew notice is waiting.
 ---
 
-# Crew rooms
+# Crew coordination
 
-Agents in the same worktree, or under the same anchored folder, share a room
-for decisions, findings, requests, handoffs, reviews, and documents. Read it
-before starting work and whenever crew says something new is waiting.
+Room agents share context. Delegated roles do not join the room. If this is a
+delegated session (`CREW_DELEGATION` is set), skip to
+[Delegated roles](#delegated-roles).
+
+## Rooms
+
+Read the room when the session-start notice says it holds entries and whenever
+crew says new work is waiting.
 
 ```sh
-crew whoami                             # your friendly name
-crew ls                                 # other active agents
-crew room                               # read context and acknowledge requests
-crew room --last <n>                    # read only the newest n entries
-crew search <term>                      # find earlier context by topic
-crew post note "<body>"                 # durable information for the room
-crew post request "<body>"              # ask every agent here
-crew post request --to <agent> "<body>" # ask one named agent
-crew resolve <id> "<answer>"            # answer and close a request
-crew remove <id>                        # delete a post of yours nothing answered
-crew docs                               # list this room's documents
-crew docs --path                        # locate this room's document store
-crew publish <file>                     # publish and announce a document
-crew unpublish <name>                   # retract a document you published
-crew open                               # open a generated room snapshot
+crew whoami
+crew ls
+crew room
+crew search <term>
+crew post note "<body>"
+crew post request "<body>"
+crew post request --to <agent> "<body>"
+crew resolve <id> "<answer>"
+crew docs --path
+crew publish <file>
 ```
 
-## What to post
-
-Post only information that changes another agent's work. A note records a
-durable decision, discovery, procedure, handoff, or review. A request asks for
-action or an answer and stays open until resolved.
+Post only information that changes another agent's work. Notes record durable
+decisions, findings, procedures, handoffs, or reviews. Requests ask for action
+or an answer and remain open until resolved.
 
 Write for an agent with no context: lead with the conclusion, keep it to a
-sentence or two, and name concrete files or symbols.
+sentence or two, and name concrete files or symbols. Do not post progress,
+facts already clear from code or tests, or restatements of the user request.
 
-- Good: `auth middleware drops request context in internal/auth/mw.go:42, so deadlines are ignored`
-- Bad: `found a bug in the auth code`
+Use `crew whoami` for your name and `crew ls` for other room agents. For a
+named recipient, always use `--to`; do not put the alias only in the body or
+duplicate the request elsewhere. Close every request with `crew resolve`, even
+when you can only redirect it or explain why you cannot help.
 
-Do not post progress narration, facts already clear from code or tests,
-restatements of the user request, or decisions you are about to reverse. Noise
-you already posted can go with `crew remove <id>`, until something answers it.
+Search before anything multi-step or unfamiliar when another agent may have
+already recorded the procedure or why the obvious approach fails.
 
-## Addressing and answering
+## Delegation
 
-Use `crew whoami` when you need your friendly name and `crew ls` to find other
-agents. If a request names a recipient, always use `--to`; never put the alias
-only in the body or duplicate the request through another messaging system.
+```sh
+crew roles
+crew delegate <role> "<task>"
+crew delegate result <id>
+crew answer <id> "<body>"
+```
 
-A briefing arrives when the session starts, and later notices say when unread
-work is waiting. Run `crew room` when notified, and `crew resolve` when you know
-the answer: it stops redelivery and returns the answer to the requester. One you
-cannot answer still needs closing, with a redirect.
+Delegate bounded work that can return a focused result. Give the role its
+scope, constraints, and expected result. Use a room request when an existing
+room agent needs shared context; keep tightly coupled implementation and
+integration decisions here.
 
-Search before anything multi-step or unfamiliar. Another agent may already
-have recorded the procedure or why the obvious approach does not work.
+Prefer asynchronous delegation. With `--wait`, the requester is blocked and
+cannot answer the role's `crew ask`. Do not create both a delegation and a room
+request for the same task.
+
+`crew answer` answers a delegated role; `crew resolve` closes a room request.
+
+## Delegated roles
+
+Work only on the delegated task. Do not use room, search, post, or resolve
+commands. Ask only when missing context would materially change the result:
+
+```sh
+crew ask "<question>"
+crew memory [body]
+```
+
+If an ask times out, finish with available evidence and name what is unknown.
+Memory is for reusable private guidance; return findings as the task result.
 
 ## Scope and documents
 
-Agents may read and write only rooms they have joined. Commands target the
-current worktree room by default: use it for what is true of this tree now, and
-`--repo` for anything that should outlive it, since a pooled worktree room is
-discarded when its lease ends. An anchored folder has nothing above it, so
-`--repo` does not apply there.
+Room commands target the current worktree. Use `--repo` for information that
+must outlive it; it does not apply to an anchored folder. Agents may access
+only rooms they joined.
 
-Use a document instead of a long post when the content should be opened,
-edited, or reviewed as a file. Write it under the path from `crew docs --path`,
-then run `crew publish <file>`. Publishing names a document without copying it
-into agent context, and publishing a name twice fails, so anything you will
-revise has to live in the store.
+For a long or revisable artifact, write under `crew docs --path`, then publish
+it. Publishing announces the file without copying it into agent context;
+revise it in the store because publishing the same name twice fails.
 
 ## Adversarial review
 
-Ask another agent to attack a change before it ships. A review is a request, so
-it stays open until the reviewer answers. A sibling worktree cannot see your
-uncommitted files, so commit and name the ref. Open the body with `review:`, and
-say what you are unsure about.
+Ask another room agent to attack a change before it ships. A sibling worktree
+cannot see uncommitted files, so commit and name the ref. Start the request
+with `review:` and say what you are unsure about.
 
 ```sh
 crew post request --to <agent> "review: HEAD~2..HEAD, does the retry path double-apply on partial failure?"
 ```
 
-As the reviewer, try to disprove the change rather than confirm it. A path that
-works only when nothing goes wrong is a weakness. Weight what is expensive or
-hard to detect over what is merely wrong. Each finding names the file and line,
-what goes wrong, and the fix; one defensible finding beats five weak ones. Say
-so if nothing survives that bar.
+As reviewer, try to disprove the change rather than confirm it. Prioritize
+failures that are expensive or hard to detect. Each finding names the file and
+line, consequence, and fix; one defensible finding beats five weak ones.
 
-- Good: `retry in internal/queue/send.go:88 reruns the whole batch after a partial ack, so delivered messages send twice; track the ack offset`
-- Bad: `the retry logic looks fragile and could use hardening`
-
-Review only: do not fix what you find or edit the requester's tree, and do not
-review your own change. Put the verdict in the resolution led by `approve` or
-`needs attention`, and anything longer in a document.
+Review only: do not fix what you find, edit the requester's tree, or review your own change.
+Lead the resolution with `approve` or `needs attention`; put longer results in
+a document.

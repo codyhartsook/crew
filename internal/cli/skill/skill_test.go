@@ -21,6 +21,22 @@ func TestSkillKeepsAgentOperatingContext(t *testing.T) {
 	}
 }
 
+func TestSkillKeepsDelegationContract(t *testing.T) {
+	for _, want := range []string{
+		"Delegated roles do not join the room",
+		"crew delegate <role>",
+		"crew delegate result <id>",
+		"crew ask",
+		"crew answer",
+		"With `--wait`",
+		"cannot answer",
+	} {
+		if !strings.Contains(string(doc), want) {
+			t.Errorf("skill is missing %q", want)
+		}
+	}
+}
+
 // Delegating a review is only worth it if the reviewer attacks the change and
 // hands the verdict back, rather than quietly fixing the author's tree.
 func TestSkillKeepsAdversarialReviewStance(t *testing.T) {
