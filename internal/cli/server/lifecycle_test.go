@@ -1,4 +1,4 @@
-package registry_test
+package server_test
 
 import (
 	"context"
@@ -9,13 +9,13 @@ import (
 	"testing"
 
 	"github.com/codyhartsook/multiplayer/internal/cli/cmdutil"
-	"github.com/codyhartsook/multiplayer/internal/cli/registry"
+	"github.com/codyhartsook/multiplayer/internal/cli/server"
 )
 
 func TestServeLogsLifecycle(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	root := t.TempDir()
-	err := registry.Serve(ctx, &cmdutil.Options{DB: filepath.Join(root, "sessions.db")}, registry.Config{
+	err := server.Serve(ctx, &cmdutil.Options{DB: filepath.Join(root, "sessions.db")}, server.Config{
 		Addr: "127.0.0.1:0", Log: io.Discard, OnReady: func(string) { cancel() },
 	})
 	if err != nil {

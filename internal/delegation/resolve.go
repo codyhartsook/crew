@@ -1,6 +1,4 @@
-// Package delegate resolves a role and runs it headless, returning its
-// bounded result. Used by both a --wait launcher and the broker.
-package delegate
+package delegation
 
 import (
 	"context"

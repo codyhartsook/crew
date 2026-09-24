@@ -1,5 +1,4 @@
-// Package searchcmd finds room entries by topic.
-package searchcmd
+package cli
 
 import (
 	"fmt"
@@ -15,7 +14,7 @@ import (
 // searchLimit caps each half of a result set.
 const searchLimit = 15
 
-func New(opts *cmdutil.Options) *cobra.Command {
+func newSearch(opts *cmdutil.Options) *cobra.Command {
 	var (
 		asJSON bool
 	)

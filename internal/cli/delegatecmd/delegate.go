@@ -14,7 +14,6 @@ import (
 
 	"github.com/codyhartsook/multiplayer/internal/cli/cmdutil"
 	"github.com/codyhartsook/multiplayer/internal/cli/roomctx"
-	"github.com/codyhartsook/multiplayer/internal/delegate"
 	"github.com/codyhartsook/multiplayer/internal/delegation"
 	"github.com/codyhartsook/multiplayer/internal/role"
 	"github.com/codyhartsook/multiplayer/internal/session"
@@ -45,11 +44,11 @@ Either way, the role spawns headless with room auto-join disabled.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			roleName, task := args[0], strings.Join(args[1:], " ")
 
-			def, err := delegate.Resolve(cmd.Context(), roleName)
+			def, err := delegation.Resolve(cmd.Context(), roleName)
 			if err != nil {
 				return err
 			}
-			h, err := delegate.PickHarness(def, harnessFlag)
+			h, err := delegation.PickHarness(def, harnessFlag)
 			if err != nil {
 				return err
 			}
@@ -125,7 +124,7 @@ func runNow(cmd *cobra.Command, ds store.DelegationStore, cs store.ChannelStore,
 	spawnCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	result, err := delegate.Run(spawnCtx, h, def, d.Prompt, d.Dir, env)
+	result, err := delegation.Run(spawnCtx, h, def, d.Prompt, d.Dir, env)
 	_ = ds.MarkNotified(ctx, d.ID)
 	_ = store.CloseAsks(ctx, ds, cs, d.ID)
 	if err != nil {

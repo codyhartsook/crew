@@ -1,4 +1,4 @@
-package registry
+package server
 
 import (
 	"context"
@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/codyhartsook/multiplayer/internal/cli/cmdutil"
-	"github.com/codyhartsook/multiplayer/internal/delegate"
 	"github.com/codyhartsook/multiplayer/internal/delegation"
 	"github.com/codyhartsook/multiplayer/internal/session"
 	"github.com/codyhartsook/multiplayer/internal/store"
@@ -128,7 +127,7 @@ func (c *delegationCoordinator) release(id string) {
 func (c *delegationCoordinator) execute(ctx context.Context, d *delegation.Delegation) {
 	defer c.release(d.ID)
 
-	def, err := delegate.ResolveIn(ctx, d.Dir, d.Role)
+	def, err := delegation.ResolveIn(ctx, d.Dir, d.Role)
 	if err != nil {
 		c.fail(ctx, d, err)
 		return
@@ -141,7 +140,7 @@ func (c *delegationCoordinator) execute(ctx context.Context, d *delegation.Deleg
 	spawnCtx, cancel := context.WithTimeout(ctx, delegationTimeout)
 	defer cancel()
 
-	result, err := delegate.Run(spawnCtx, session.Harness(d.Harness), def, d.Prompt, d.Dir, env)
+	result, err := delegation.Run(spawnCtx, session.Harness(d.Harness), def, d.Prompt, d.Dir, env)
 	if err != nil {
 		c.fail(ctx, d, err)
 		return

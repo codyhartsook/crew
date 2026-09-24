@@ -1,4 +1,4 @@
-package roomdoc_test
+package documents_test
 
 import (
 	"context"
@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/codyhartsook/multiplayer/internal/rolemem"
+	"github.com/codyhartsook/multiplayer/internal/documents"
+	"github.com/codyhartsook/multiplayer/internal/role"
 	"github.com/codyhartsook/multiplayer/internal/room"
-	"github.com/codyhartsook/multiplayer/internal/roomdoc"
 	"github.com/codyhartsook/multiplayer/internal/session"
 	"github.com/codyhartsook/multiplayer/internal/store/sqlitestore"
 )
@@ -43,7 +43,7 @@ func TestSnapshotExcludesRoleMemory(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.WriteMemory(ctx, &rolemem.Entry{
+	if err := st.WriteMemory(ctx, &role.MemoryEntry{
 		Room: r.Key, Role: "tester", Author: sess.Key(),
 		Body: "a private finding", CreatedAt: time.Now(),
 	}); err != nil {
@@ -55,7 +55,7 @@ func TestSnapshotExcludesRoleMemory(t *testing.T) {
 	if err := os.MkdirAll(documentDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := roomdoc.Write(ctx, st, st, documentDir, r); err != nil {
+	if _, err := documents.WriteTranscript(ctx, st, st, documentDir, r); err != nil {
 		t.Fatalf("Write: %v", err)
 	}
 

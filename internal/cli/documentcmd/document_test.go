@@ -47,7 +47,7 @@ func TestPublishAndOpen(t *testing.T) {
 		t.Fatal(err)
 	}
 	opts := &cmdutil.Options{DB: db}
-	publish := NewPublish(opts)
+	publish := newPublish(opts)
 	publish.SetArgs([]string{source})
 	publish.SetOut(new(bytes.Buffer))
 	if err := publish.Execute(); err != nil {
@@ -62,7 +62,7 @@ func TestPublishAndOpen(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "plan.md")); err != nil {
 		t.Fatalf("published document: %v", err)
 	}
-	open := NewOpen(opts)
+	open := newOpen(opts)
 	open.SetArgs([]string{"--no-open"})
 	open.SetOut(new(bytes.Buffer))
 	if err := open.Execute(); err != nil {
@@ -104,7 +104,7 @@ func TestHumanCanPublishToExplicitRoom(t *testing.T) {
 		t.Fatal(err)
 	}
 	opts := &cmdutil.Options{DB: db}
-	publish := NewPublish(opts)
+	publish := newPublish(opts)
 	publish.SetArgs([]string{"--room", foreign, source})
 	publish.SetOut(new(bytes.Buffer))
 	if err := publish.Execute(); err != nil {

@@ -1,4 +1,4 @@
-package ui_test
+package server
 
 import (
 	"io"
@@ -10,7 +10,6 @@ import (
 
 	"github.com/codyhartsook/multiplayer/internal/api"
 	"github.com/codyhartsook/multiplayer/internal/store/sqlitestore"
-	"github.com/codyhartsook/multiplayer/internal/ui"
 )
 
 func TestHandlersServePages(t *testing.T) {
@@ -18,8 +17,8 @@ func TestHandlersServePages(t *testing.T) {
 		handler http.Handler
 		title   string
 	}{
-		"dashboard": {ui.Handler(), "crew context"},
-		"table":     {ui.Table(), "crew"},
+		"dashboard": {dashboardPage(), "crew context"},
+		"table":     {tablePage(), "crew"},
 	}
 	for name, page := range pages {
 		h, title := page.handler, page.title
@@ -73,8 +72,8 @@ func TestUIDoesNotShadowAPI(t *testing.T) {
 	t.Cleanup(func() { st.Close() })
 
 	srv := httptest.NewServer(api.New(st, nil,
-		api.WithUI(ui.Handler()),
-		api.WithTableUI(ui.Table()),
+		api.WithUI(dashboardPage()),
+		api.WithTableUI(tablePage()),
 	).Handler())
 	t.Cleanup(srv.Close)
 

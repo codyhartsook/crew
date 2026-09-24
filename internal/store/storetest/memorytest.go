@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/codyhartsook/multiplayer/internal/rolemem"
+	"github.com/codyhartsook/multiplayer/internal/role"
 	"github.com/codyhartsook/multiplayer/internal/store"
 )
 
@@ -28,17 +28,17 @@ func RunMemory(t *testing.T, newStore MemoryFactory) {
 	}
 }
 
-func memEntry(room, role, body string) *rolemem.Entry {
-	return &rolemem.Entry{
+func memEntry(room, roleName, body string) *role.MemoryEntry {
+	return &role.MemoryEntry{
 		Room:      room,
-		Role:      role,
+		Role:      roleName,
 		Author:    "codex:a",
 		Body:      body,
 		CreatedAt: time.Date(2026, 8, 31, 12, 0, 0, 0, time.UTC),
 	}
 }
 
-func mustWriteMemory(t *testing.T, s store.MemoryStore, e *rolemem.Entry) *rolemem.Entry {
+func mustWriteMemory(t *testing.T, s store.MemoryStore, e *role.MemoryEntry) *role.MemoryEntry {
 	t.Helper()
 	if err := s.WriteMemory(context.Background(), e); err != nil {
 		t.Fatalf("WriteMemory: %v", err)
@@ -60,7 +60,7 @@ func testMemoryWriteMonotonic(t *testing.T, newStore MemoryFactory) {
 
 func testMemoryWriteValidates(t *testing.T, newStore MemoryFactory) {
 	s := newStore(t)
-	cases := []*rolemem.Entry{
+	cases := []*role.MemoryEntry{
 		{Role: "tester", Body: "x"},     // no room
 		{Room: "/repo", Body: "x"},      // no role
 		{Room: "/repo", Role: "tester"}, // no body
@@ -79,7 +79,7 @@ func testMemoryReadFilters(t *testing.T, newStore MemoryFactory) {
 	mustWriteMemory(t, s, memEntry("/repo-a", "reviewer", "a-reviewer"))
 	mustWriteMemory(t, s, memEntry("/repo-b", "tester", "b-tester"))
 
-	got, err := s.ReadMemory(context.Background(), rolemem.Filter{Room: "/repo-a", Role: "tester"})
+	got, err := s.ReadMemory(context.Background(), role.MemoryFilter{Room: "/repo-a", Role: "tester"})
 	if err != nil {
 		t.Fatalf("ReadMemory: %v", err)
 	}
@@ -94,7 +94,7 @@ func testMemoryReadOrder(t *testing.T, newStore MemoryFactory) {
 	mustWriteMemory(t, s, memEntry("/repo", "tester", "second"))
 	mustWriteMemory(t, s, memEntry("/repo", "tester", "third"))
 
-	got, err := s.ReadMemory(context.Background(), rolemem.Filter{Room: "/repo", Role: "tester"})
+	got, err := s.ReadMemory(context.Background(), role.MemoryFilter{Room: "/repo", Role: "tester"})
 	if err != nil {
 		t.Fatalf("ReadMemory: %v", err)
 	}
@@ -109,7 +109,7 @@ func testMemoryReadLimit(t *testing.T, newStore MemoryFactory) {
 	mustWriteMemory(t, s, memEntry("/repo", "tester", "second"))
 	mustWriteMemory(t, s, memEntry("/repo", "tester", "third"))
 
-	got, err := s.ReadMemory(context.Background(), rolemem.Filter{Room: "/repo", Role: "tester", Limit: 2})
+	got, err := s.ReadMemory(context.Background(), role.MemoryFilter{Room: "/repo", Role: "tester", Limit: 2})
 	if err != nil {
 		t.Fatalf("ReadMemory: %v", err)
 	}
@@ -125,7 +125,7 @@ func testMemoryRoleIsolation(t *testing.T, newStore MemoryFactory) {
 	mustWriteMemory(t, s, memEntry("/repo", "tester", "tester-secret"))
 	mustWriteMemory(t, s, memEntry("/repo", "reviewer", "reviewer-secret"))
 
-	got, err := s.ReadMemory(context.Background(), rolemem.Filter{Room: "/repo", Role: "tester"})
+	got, err := s.ReadMemory(context.Background(), role.MemoryFilter{Room: "/repo", Role: "tester"})
 	if err != nil {
 		t.Fatalf("ReadMemory: %v", err)
 	}

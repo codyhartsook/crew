@@ -1,5 +1,4 @@
-// Package anchorcmd marks a plain folder as a room root.
-package anchorcmd
+package cli
 
 import (
 	"encoding/json"
@@ -13,7 +12,7 @@ import (
 	"github.com/codyhartsook/multiplayer/internal/detect"
 )
 
-func New(_ *cmdutil.Options) *cobra.Command {
+func newAnchor(_ *cmdutil.Options) *cobra.Command {
 	var name string
 
 	cmd := &cobra.Command{

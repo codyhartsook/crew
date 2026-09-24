@@ -12,16 +12,16 @@ import (
 
 	"github.com/codyhartsook/multiplayer/internal/cli/cmdutil"
 	"github.com/codyhartsook/multiplayer/internal/cli/roomctx"
-	"github.com/codyhartsook/multiplayer/internal/rolemem"
+	"github.com/codyhartsook/multiplayer/internal/role"
 )
 
 func New(opts *cmdutil.Options) *cobra.Command {
 	var (
-		role   string
-		toRepo bool
-		as     string
-		asJSON bool
-		last   int
+		roleName string
+		toRepo   bool
+		as       string
+		asJSON   bool
+		last     int
 	)
 
 	cmd := &cobra.Command{
@@ -59,7 +59,7 @@ delegation exists.`,
 				return err
 			}
 
-			memRole := rolemem.Key(roleIdentity(role), author)
+			memRole := role.MemoryKey(roleIdentity(roleName), author)
 			if len(args) == 0 {
 				return read(cmd, rc, target.Key, memRole, asJSON, last)
 			}
@@ -67,7 +67,7 @@ delegation exists.`,
 		},
 	}
 
-	cmd.Flags().StringVar(&role, "role", "", "role identity to key memory on [$"+cmdutil.EnvRole+"]")
+	cmd.Flags().StringVar(&roleName, "role", "", "role identity to key memory on [$"+cmdutil.EnvRole+"]")
 	cmd.Flags().BoolVar(&toRepo, "repo", false, "target the repository room")
 	cmd.Flags().StringVar(&as, "as", "", "session key, if not inferable")
 	_ = cmd.Flags().MarkHidden("as")
@@ -85,7 +85,7 @@ func roleIdentity(role string) string {
 }
 
 func write(cmd *cobra.Command, rc *roomctx.Context, roomKey, memRole, author, body string) error {
-	e := &rolemem.Entry{Room: roomKey, Role: memRole, Author: author, Body: body, CreatedAt: time.Now().UTC()}
+	e := &role.MemoryEntry{Room: roomKey, Role: memRole, Author: author, Body: body, CreatedAt: time.Now().UTC()}
 	if err := rc.Memory.WriteMemory(cmd.Context(), e); err != nil {
 		return err
 	}
@@ -94,7 +94,7 @@ func write(cmd *cobra.Command, rc *roomctx.Context, roomKey, memRole, author, bo
 }
 
 func read(cmd *cobra.Command, rc *roomctx.Context, roomKey, memRole string, asJSON bool, last int) error {
-	entries, err := rc.Memory.ReadMemory(cmd.Context(), rolemem.Filter{Room: roomKey, Role: memRole, Limit: last})
+	entries, err := rc.Memory.ReadMemory(cmd.Context(), role.MemoryFilter{Room: roomKey, Role: memRole, Limit: last})
 	if err != nil {
 		return err
 	}

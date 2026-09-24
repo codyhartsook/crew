@@ -1,5 +1,4 @@
-// Package servecmd runs the registry in the foreground.
-package servecmd
+package cli
 
 import (
 	"fmt"
@@ -7,10 +6,10 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/codyhartsook/multiplayer/internal/cli/cmdutil"
-	"github.com/codyhartsook/multiplayer/internal/cli/registry"
+	"github.com/codyhartsook/multiplayer/internal/cli/server"
 )
 
-func New(opts *cmdutil.Options) *cobra.Command {
+func newServe(opts *cmdutil.Options) *cobra.Command {
 	var (
 		addr    string
 		verbose bool
@@ -26,7 +25,7 @@ opening the database directly.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			out := cmd.OutOrStdout()
-			return registry.Serve(cmd.Context(), opts, registry.Config{
+			return server.Serve(cmd.Context(), opts, server.Config{
 				Addr:    addr,
 				Verbose: verbose,
 				Log:     cmd.ErrOrStderr(),
@@ -38,7 +37,7 @@ opening the database directly.`,
 		},
 	}
 
-	cmd.Flags().StringVar(&addr, "addr", registry.DefaultAddr, "address to listen on")
+	cmd.Flags().StringVar(&addr, "addr", server.DefaultAddr, "address to listen on")
 	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "log every request")
 	return cmd
 }

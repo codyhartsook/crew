@@ -11,7 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/codyhartsook/multiplayer/internal/cli/cmdutil"
-	"github.com/codyhartsook/multiplayer/internal/cli/registry"
+	"github.com/codyhartsook/multiplayer/internal/cli/server"
 )
 
 func New(opts *cmdutil.Options) *cobra.Command {
@@ -36,7 +36,7 @@ func New(opts *cmdutil.Options) *cobra.Command {
 			}
 
 			baseURL := "http://" + addr
-			if !registry.IsUp(cmd.Context(), baseURL) {
+			if !server.IsUp(cmd.Context(), baseURL) {
 				return fmt.Errorf("dashboard is not running; start it with crew init")
 			}
 			fmt.Fprintf(out, "dashboard  %s\n", baseURL)
@@ -44,7 +44,7 @@ func New(opts *cmdutil.Options) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&addr, "addr", registry.DefaultAddr, "address of the local broker")
+	cmd.Flags().StringVar(&addr, "addr", server.DefaultAddr, "address of the local broker")
 	cmd.Flags().BoolVar(&noOpen, "no-open", false, "do not open the dashboard")
 	return cmd
 }

@@ -12,7 +12,7 @@ import (
 	"github.com/codyhartsook/multiplayer/internal/room"
 )
 
-func NewUnpublish(opts *cmdutil.Options) *cobra.Command {
+func newUnpublish(opts *cmdutil.Options) *cobra.Command {
 	var target targetFlags
 	cmd := &cobra.Command{
 		Use:   "unpublish <name>",

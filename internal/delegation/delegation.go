@@ -1,4 +1,4 @@
-// Package delegation is a delegated task: what was asked, and what came back.
+// Package delegation is a delegated task and the headless run that serves it.
 package delegation
 
 import (

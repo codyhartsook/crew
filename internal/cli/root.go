@@ -1,5 +1,5 @@
-// Package cli assembles the crew command line. Each command lives in its
-// own package; this one only wires them to the root and the global flags.
+// Package cli assembles the crew command line. Small commands live here;
+// larger ones have their own package.
 package cli
 
 import (
@@ -8,9 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/codyhartsook/multiplayer/internal/cli/anchorcmd"
 	"github.com/codyhartsook/multiplayer/internal/cli/channelcmd"
-	"github.com/codyhartsook/multiplayer/internal/cli/clearcmd"
 	"github.com/codyhartsook/multiplayer/internal/cli/cmdutil"
 	"github.com/codyhartsook/multiplayer/internal/cli/dashboardcmd"
 	"github.com/codyhartsook/multiplayer/internal/cli/delegatecmd"
@@ -18,14 +16,10 @@ import (
 	"github.com/codyhartsook/multiplayer/internal/cli/hookcmd"
 	"github.com/codyhartsook/multiplayer/internal/cli/initcmd"
 	"github.com/codyhartsook/multiplayer/internal/cli/lscmd"
-	"github.com/codyhartsook/multiplayer/internal/cli/prunecmd"
 	"github.com/codyhartsook/multiplayer/internal/cli/rolecmd"
 	"github.com/codyhartsook/multiplayer/internal/cli/rolememcmd"
 	"github.com/codyhartsook/multiplayer/internal/cli/roomcmd"
-	"github.com/codyhartsook/multiplayer/internal/cli/searchcmd"
-	"github.com/codyhartsook/multiplayer/internal/cli/servecmd"
 	"github.com/codyhartsook/multiplayer/internal/cli/uninstallcmd"
-	"github.com/codyhartsook/multiplayer/internal/cli/whoamicmd"
 	"github.com/codyhartsook/multiplayer/internal/version"
 )
 
@@ -55,23 +49,20 @@ call records the git checkout, and the pool slot if there is one.`,
 	root.AddCommand(
 		hookcmd.New(opts),
 		lscmd.New(opts),
-		whoamicmd.New(opts),
-		anchorcmd.New(opts),
-		servecmd.New(opts),
+		newWhoami(opts),
+		newAnchor(opts),
+		newServe(opts),
 		dashboardcmd.New(opts),
-		documentcmd.NewDocs(opts),
-		documentcmd.NewPublish(opts),
-		documentcmd.NewUnpublish(opts),
-		documentcmd.NewOpen(opts),
+		documentcmd.New(opts),
 		roomcmd.NewPost(opts),
 		roomcmd.NewResolve(opts),
 		roomcmd.NewRemove(opts),
 		roomcmd.New(opts),
-		searchcmd.New(opts),
+		newSearch(opts),
 		channelcmd.NewAsk(opts),
 		channelcmd.NewAnswer(opts),
-		clearcmd.New(opts),
-		prunecmd.New(opts),
+		newClear(opts),
+		newPrune(opts),
 		rolecmd.New(opts),
 		rolememcmd.New(opts),
 		delegatecmd.New(opts),

@@ -1,4 +1,4 @@
-package registry
+package server
 
 import (
 	"context"
@@ -10,12 +10,12 @@ import (
 	"github.com/codyhartsook/multiplayer/internal/cli/roomctx"
 	"github.com/codyhartsook/multiplayer/internal/detect"
 	"github.com/codyhartsook/multiplayer/internal/harness"
+	"github.com/codyhartsook/multiplayer/internal/harness/thread"
 	"github.com/codyhartsook/multiplayer/internal/hook"
 	"github.com/codyhartsook/multiplayer/internal/prune"
 	"github.com/codyhartsook/multiplayer/internal/room"
 	"github.com/codyhartsook/multiplayer/internal/session"
 	"github.com/codyhartsook/multiplayer/internal/store"
-	"github.com/codyhartsook/multiplayer/internal/thread"
 )
 
 // livenessInterval is longer than the usage ticker: this sweep flocks every

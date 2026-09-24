@@ -30,7 +30,7 @@ func (f *targetFlags) bind(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&f.roomKey, "room", "", "exact room ID (local human shells only)")
 }
 
-func NewDocs(opts *cmdutil.Options) *cobra.Command {
+func New(opts *cmdutil.Options) *cobra.Command {
 	var (
 		target targetFlags
 		path   bool
@@ -38,7 +38,7 @@ func NewDocs(opts *cmdutil.Options) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "docs",
 		Aliases: []string{"documents"},
-		Short:   "List documents in this room",
+		Short:   "List, publish or open this room's documents",
 		Long:    "Lists this room's documents. A shell without an agent identity is treated as the local person.",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -76,10 +76,11 @@ func NewDocs(opts *cmdutil.Options) *cobra.Command {
 	}
 	target.bind(cmd)
 	cmd.Flags().BoolVar(&path, "path", false, "print only the document directory")
+	cmd.AddCommand(newPublish(opts), newUnpublish(opts), newOpen(opts))
 	return cmd
 }
 
-func NewPublish(opts *cmdutil.Options) *cobra.Command {
+func newPublish(opts *cmdutil.Options) *cobra.Command {
 	var target targetFlags
 	cmd := &cobra.Command{
 		Use:   "publish <file>",

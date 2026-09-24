@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/codyhartsook/multiplayer/internal/rolemem"
+	"github.com/codyhartsook/multiplayer/internal/role"
 	"github.com/codyhartsook/multiplayer/internal/store"
 )
 
@@ -28,7 +28,7 @@ CREATE INDEX IF NOT EXISTS role_memory_room_role ON role_memory(room, role);
 
 var _ store.MemoryStore = (*Store)(nil)
 
-func (s *Store) WriteMemory(ctx context.Context, e *rolemem.Entry) error {
+func (s *Store) WriteMemory(ctx context.Context, e *role.MemoryEntry) error {
 	if e == nil {
 		return errors.New("write memory: nil entry")
 	}
@@ -55,7 +55,7 @@ VALUES (?, ?, ?, ?, ?)`
 	return nil
 }
 
-func (s *Store) ReadMemory(ctx context.Context, f rolemem.Filter) ([]*rolemem.Entry, error) {
+func (s *Store) ReadMemory(ctx context.Context, f role.MemoryFilter) ([]*role.MemoryEntry, error) {
 	var (
 		where []string
 		args  []any
@@ -88,10 +88,10 @@ func (s *Store) ReadMemory(ctx context.Context, f rolemem.Filter) ([]*rolemem.En
 	}
 	defer rows.Close()
 
-	out := []*rolemem.Entry{}
+	out := []*role.MemoryEntry{}
 	for rows.Next() {
 		var (
-			e         rolemem.Entry
+			e         role.MemoryEntry
 			createdAt string
 		)
 		if err := rows.Scan(&e.ID, &e.Room, &e.Role, &e.Author, &e.Body, &createdAt); err != nil {

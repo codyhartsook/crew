@@ -1,7 +1,7 @@
-// Package ui serves the read-only registry web interface: one self-contained
-// HTML file compiled into the binary, reading the same /v1/sessions endpoint
-// any other client would.
-package ui
+package server
+
+// Each page is one self-contained HTML file compiled into the binary, reading
+// the same /v1/sessions endpoint any other client would.
 
 import (
 	_ "embed"
@@ -14,16 +14,16 @@ var indexHTML []byte
 //go:embed crew.html
 var crewHTML []byte
 
-// Handler serves the dashboard: a force-directed graph of where agents are
+// dashboardPage serves the dashboard: a force-directed graph of where agents are
 // working, home at the centre and one ring per depth.
-func Handler() http.Handler {
+func dashboardPage() http.Handler {
 	return page(crewHTML)
 }
 
-// Table serves the older row-per-session view at /table. The ring is better
+// tablePage serves the older row-per-session view at /table. The ring is better
 // for noticing, a table is better for reading, and the table costs nothing to
 // keep.
-func Table() http.Handler {
+func tablePage() http.Handler {
 	return page(indexHTML)
 }
 

@@ -1,5 +1,4 @@
-// Package whoamicmd prints this agent's friendly name.
-package whoamicmd
+package cli
 
 import (
 	"fmt"
@@ -10,7 +9,7 @@ import (
 	"github.com/codyhartsook/multiplayer/internal/cli/roomctx"
 )
 
-func New(opts *cmdutil.Options) *cobra.Command {
+func newWhoami(opts *cmdutil.Options) *cobra.Command {
 	return &cobra.Command{
 		Use:     "whoami",
 		Aliases: []string{"me"},

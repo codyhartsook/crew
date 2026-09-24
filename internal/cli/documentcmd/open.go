@@ -8,10 +8,10 @@ import (
 
 	"github.com/codyhartsook/multiplayer/internal/cli/cmdutil"
 	"github.com/codyhartsook/multiplayer/internal/cli/roomctx"
-	"github.com/codyhartsook/multiplayer/internal/roomdoc"
+	"github.com/codyhartsook/multiplayer/internal/documents"
 )
 
-func NewOpen(opts *cmdutil.Options) *cobra.Command {
+func newOpen(opts *cmdutil.Options) *cobra.Command {
 	var (
 		target targetFlags
 		noOpen bool
@@ -35,7 +35,7 @@ func NewOpen(opts *cmdutil.Options) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			path, err := roomdoc.Write(cmd.Context(), rc.Store, rc.Rooms, dir, r)
+			path, err := documents.WriteTranscript(cmd.Context(), rc.Store, rc.Rooms, dir, r)
 			if err != nil {
 				return err
 			}

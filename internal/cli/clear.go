@@ -1,5 +1,4 @@
-// Package clearcmd deletes the entries in a room.
-package clearcmd
+package cli
 
 import (
 	"fmt"
@@ -12,7 +11,7 @@ import (
 	"github.com/codyhartsook/multiplayer/internal/room"
 )
 
-func New(opts *cmdutil.Options) *cobra.Command {
+func newClear(opts *cmdutil.Options) *cobra.Command {
 	var (
 		confirm  bool
 		alsoRepo bool

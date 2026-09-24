@@ -1,5 +1,4 @@
-// Package prunecmd ends sessions whose agent process is gone.
-package prunecmd
+package cli
 
 import (
 	"fmt"
@@ -11,7 +10,7 @@ import (
 	"github.com/codyhartsook/multiplayer/internal/prune"
 )
 
-func New(opts *cmdutil.Options) *cobra.Command {
+func newPrune(opts *cmdutil.Options) *cobra.Command {
 	var dryRun bool
 
 	cmd := &cobra.Command{

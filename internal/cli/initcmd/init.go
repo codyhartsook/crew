@@ -16,7 +16,7 @@ import (
 	"github.com/codyhartsook/multiplayer/internal/cli/cmdutil"
 	"github.com/codyhartsook/multiplayer/internal/cli/dashboardcmd"
 	"github.com/codyhartsook/multiplayer/internal/cli/hookconfig"
-	"github.com/codyhartsook/multiplayer/internal/cli/registry"
+	"github.com/codyhartsook/multiplayer/internal/cli/server"
 	"github.com/codyhartsook/multiplayer/internal/cli/skill"
 	"github.com/codyhartsook/multiplayer/internal/harness"
 	"github.com/codyhartsook/multiplayer/internal/harness/codex"
@@ -116,7 +116,7 @@ the broker wakes live sessions when they have addressed entries.`,
 			// Someone else is already serving, so this command has nothing
 			// left to do. Say that plainly: the same tick that means "now
 			// serving" below would otherwise read as if init stayed up.
-			if registry.IsUp(cmd.Context(), baseURL) {
+			if server.IsUp(cmd.Context(), baseURL) {
 				fmt.Fprintf(out, "  %s broker already running at %s\n", rep.view.success("✓"), baseURL)
 				fmt.Fprintln(out, "  "+rep.view.muted("started by another process, so init is exiting rather than serving"))
 				fmt.Fprintln(out, "  "+rep.view.muted("stop the foreground `crew init` with Ctrl-C before starting another"))
@@ -124,7 +124,7 @@ the broker wakes live sessions when they have addressed entries.`,
 				printInitNextSteps(out, rep.view, headless)
 				return nil
 			}
-			return registry.Serve(cmd.Context(), opts, registry.Config{
+			return server.Serve(cmd.Context(), opts, server.Config{
 				Addr:    addr,
 				Verbose: verbose,
 				Log:     cmd.ErrOrStderr(),
@@ -143,7 +143,7 @@ the broker wakes live sessions when they have addressed entries.`,
 	cmd.Flags().StringVar(&binary, "binary", "", "binary path to record (default: this binary)")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "report changes without writing")
 	cmd.Flags().BoolVar(&noSandbox, "no-sandbox-config", false, "skip the Codex sandbox grant")
-	cmd.Flags().StringVar(&addr, "addr", registry.DefaultAddr, "address for the local broker")
+	cmd.Flags().StringVar(&addr, "addr", server.DefaultAddr, "address for the local broker")
 	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "list every setup step and log every broker request")
 	cmd.Flags().BoolVar(&headless, "headless", false, "do not open the dashboard")
 	return cmd

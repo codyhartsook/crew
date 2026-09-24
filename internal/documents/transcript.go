@@ -1,13 +1,13 @@
-// Package roomdoc builds a room's generated transcript from the store, so the
-// dashboard and the CLI produce the same file rather than each their own.
-package roomdoc
+package documents
+
+// The dashboard and the CLI both build a room transcript here, so they write
+// the same file.
 
 import (
 	"context"
 	"errors"
 	"path/filepath"
 
-	"github.com/codyhartsook/multiplayer/internal/documents"
 	"github.com/codyhartsook/multiplayer/internal/room"
 	"github.com/codyhartsook/multiplayer/internal/session"
 	"github.com/codyhartsook/multiplayer/internal/store"
@@ -25,14 +25,14 @@ type Rooms interface {
 	Members(ctx context.Context, roomKey string) ([]*room.Membership, error)
 }
 
-// Write regenerates r's transcript beside its documents and returns its path.
+// WriteTranscript regenerates r's transcript beside its documents and returns its path.
 // documentDir is the room's document directory.
-func Write(ctx context.Context, sessions Sessions, rooms Rooms, documentDir string, r room.Room) (string, error) {
+func WriteTranscript(ctx context.Context, sessions Sessions, rooms Rooms, documentDir string, r room.Room) (string, error) {
 	entries, err := rooms.Entries(ctx, room.Filter{Rooms: []string{r.Key}})
 	if err != nil {
 		return "", err
 	}
-	docs, err := documents.List(documentDir)
+	docs, err := List(documentDir)
 	if err != nil {
 		return "", err
 	}
@@ -44,8 +44,8 @@ func Write(ctx context.Context, sessions Sessions, rooms Rooms, documentDir stri
 	if err != nil {
 		return "", err
 	}
-	body := room.Snapshot(r, entries, who, documents.Names(docs), named)
-	return documents.WriteSnapshot(filepath.Dir(documentDir), body)
+	body := room.Snapshot(r, entries, who, Names(docs), named)
+	return WriteSnapshot(filepath.Dir(documentDir), body)
 }
 
 // participants names the sessions listening to the room. A membership whose

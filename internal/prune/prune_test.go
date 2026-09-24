@@ -8,11 +8,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/codyhartsook/multiplayer/internal/harness/thread"
 	"github.com/codyhartsook/multiplayer/internal/proc"
 	"github.com/codyhartsook/multiplayer/internal/session"
 	"github.com/codyhartsook/multiplayer/internal/store"
 	"github.com/codyhartsook/multiplayer/internal/store/sqlitestore"
-	"github.com/codyhartsook/multiplayer/internal/thread"
 )
 
 func seeded(t *testing.T, sessions ...*session.Session) store.Store {

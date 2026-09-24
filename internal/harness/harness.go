@@ -11,8 +11,8 @@ import (
 	"github.com/codyhartsook/multiplayer/internal/harness/claude"
 	"github.com/codyhartsook/multiplayer/internal/harness/codex"
 	"github.com/codyhartsook/multiplayer/internal/harness/notifier"
+	"github.com/codyhartsook/multiplayer/internal/harness/thread"
 	"github.com/codyhartsook/multiplayer/internal/session"
-	"github.com/codyhartsook/multiplayer/internal/thread"
 	"github.com/codyhartsook/multiplayer/internal/usage"
 )
 

@@ -1,6 +1,6 @@
-// Package registry runs the local API, dashboard and notification broker.
+// Package server runs the local API, dashboard and notification broker.
 // serve, init and dashboard all need it, so it sits beside them.
-package registry
+package server
 
 import (
 	"context"
@@ -23,7 +23,6 @@ import (
 	"github.com/codyhartsook/multiplayer/internal/documents"
 	"github.com/codyhartsook/multiplayer/internal/notify"
 	"github.com/codyhartsook/multiplayer/internal/store/sqlitestore"
-	"github.com/codyhartsook/multiplayer/internal/ui"
 	"github.com/codyhartsook/multiplayer/internal/version"
 )
 
@@ -99,8 +98,8 @@ func Serve(ctx context.Context, opts *cmdutil.Options, cfg Config) error {
 	roomDir := func(key string) (string, error) { return documents.Dir(filepath.Dir(path), key) }
 	srv := &http.Server{
 		Handler: api.New(st, log,
-			api.WithUI(ui.Handler()),
-			api.WithTableUI(ui.Table()),
+			api.WithUI(dashboardPage()),
+			api.WithTableUI(tablePage()),
 			api.WithDocuments(roomDir),
 			api.WithRoomOpener(openDirectory),
 		).Handler(),

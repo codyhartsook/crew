@@ -24,7 +24,7 @@ crew post request "<body>"
 crew post request --to <agent> "<body>"
 crew resolve <id> "<answer>"
 crew docs --path
-crew publish <file>
+crew docs publish <file>
 ```
 
 Post only information that changes another agent's work. Notes record durable
