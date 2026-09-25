@@ -69,7 +69,8 @@ crew init
 | Command | What it does |
 | --- | --- |
 | `init` / `uninstall` | Set up or remove the automatic integration. |
-| `ls` / `whoami` | List active agents, or print your friendly name. |
+| `ls` | List active agents and their roles, marking your own row. |
+| `role` | Take the role the user gave you, or `--drop` it. |
 | `anchor` | Mark a plain folder as a room root. |
 | `dashboard` (`fleet`) | Open the dashboard for the running local broker. |
 | `post` / `resolve` | Post an entry, or answer and close a request. |
@@ -86,6 +87,10 @@ removes the integration and keeps your data.
 Address a request to one agent with
 `crew post request --to moss-otter "Can you check this?"`. Names are
 assigned per live session and shown by `crew ls` and the dashboard.
+
+Tell an agent "you're the tester" and it runs `crew role tester "<description>"`.
+crew publishes a `crew-role-<alias>` skill so other agents send it matching
+work. The skill goes when the session ends.
 
 ## Folders
 

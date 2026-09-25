@@ -25,9 +25,7 @@ const BriefingLimit = 12
 type Context struct {
 	Store store.Store
 	Rooms store.RoomStore
-	// Memory is nil when the store does not support role memory.
-	Memory store.MemoryStore
-	Here   []room.Room
+	Here  []room.Room
 
 	// close releases the store this context opened; nil when a caller
 	// assembled the Context around a store it already owns.
@@ -50,6 +48,16 @@ func Open(ctx context.Context, opts *cmdutil.Options, cwd string) (*Context, err
 		return nil, errors.New("this store does not support rooms")
 	}
 
+	here := room.For(placeFor(ctx, cwd))
+	if len(here) == 0 {
+		st.Close()
+		return nil, errors.New("no room here")
+	}
+	return &Context{Store: st, Rooms: rooms, Here: here, close: func() { st.Close() }}, nil
+}
+
+// placeFor detects where cwd is, falling back to the bare directory.
+func placeFor(ctx context.Context, cwd string) session.Place {
 	place := session.Place{CWD: cwd}
 	if found, _ := detect.New().Detect(ctx, cwd); found != nil {
 		place = *found
@@ -57,13 +65,7 @@ func Open(ctx context.Context, opts *cmdutil.Options, cwd string) (*Context, err
 			place.CWD = cwd
 		}
 	}
-	here := room.For(place)
-	if len(here) == 0 {
-		st.Close()
-		return nil, errors.New("no room here")
-	}
-	mem, _ := st.(store.MemoryStore)
-	return &Context{Store: st, Rooms: rooms, Memory: mem, Here: here, close: func() { st.Close() }}, nil
+	return place
 }
 
 // Close releases the store, if this context opened one.
@@ -115,13 +117,10 @@ func (c *Context) Author(ctx context.Context, as string) (string, error) {
 	return ResolveAuthor(ctx, c.Store, c.Keys())
 }
 
-// Accessible joins the agent (unless CREW_AUTO_JOIN=0, a delegated role
-// staying deliberately out) and returns its rooms.
+// Accessible joins the agent and returns its rooms.
 func (c *Context) Accessible(ctx context.Context, sessionKey string) ([]string, error) {
-	if cmdutil.AutoJoinEnabled() {
-		if err := Join(ctx, c.Rooms, sessionKey, c.Here); err != nil {
-			return nil, err
-		}
+	if err := Join(ctx, c.Rooms, sessionKey, c.Here); err != nil {
+		return nil, err
 	}
 	memberships, err := c.Rooms.Rooms(ctx, sessionKey)
 	if err != nil {
@@ -167,19 +166,29 @@ func (c *Context) Entry(ctx context.Context, id int64) (*room.Entry, error) {
 	return found[0], nil
 }
 
-// Others names the active sessions in these rooms, excluding self.
+// Others names the other active sessions here, with their roles.
 func (c *Context) Others(ctx context.Context, self string) ([]string, error) {
 	active, err := c.Store.List(ctx, store.Filter{Status: session.StatusActive})
 	if err != nil {
 		return nil, err
 	}
 	keys := c.Keys()
+	roles := map[string]string{}
+	if rs, ok := c.Store.(store.RoleStore); ok {
+		held, err := rs.Roles(ctx, store.RoleFilter{Rooms: keys, ActiveOnly: true})
+		if err != nil {
+			return nil, err
+		}
+		for _, r := range held {
+			roles[r.SessionKey] = r.Name + ", "
+		}
+	}
 	var out []string
 	for _, s := range active {
 		if s.Key() == self || !inRooms(s, keys) {
 			continue
 		}
-		out = append(out, fmt.Sprintf("%s (%s)", room.Display(s), room.Ago(s.LastSeen)))
+		out = append(out, fmt.Sprintf("%s (%s%s)", room.Display(s), roles[s.Key()], room.Ago(s.LastSeen)))
 	}
 	return out, nil
 }

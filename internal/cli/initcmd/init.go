@@ -109,7 +109,6 @@ the broker wakes live sessions when they have addressed entries.`,
 			if dryRun {
 				return nil
 			}
-			reviewRoles(cmd.Context(), opts, cmd.InOrStdin(), out, headless)
 
 			fmt.Fprintln(out)
 			baseURL := "http://" + addr
@@ -197,8 +196,8 @@ func (r *report) install(ctx context.Context, in install) error {
 		r.step(ctx, "sandbox write access", state(in.dryRun, granted), tilde(in.home, in.storeDir))
 	}
 
-	skillPath := filepath.Join(in.home, spec.SkillsDir, skill.Name, "SKILL.md")
-	outcome, err := skill.Install(skillPath, in.dryRun)
+	skillPath := filepath.Join(spec.SkillsPath(in.home), skill.Name, "SKILL.md")
+	outcome, err := skill.Install(skillPath, skill.Doc(), in.dryRun)
 	if err != nil {
 		return fmt.Errorf("%s skill: %w", name, err)
 	}
@@ -208,7 +207,7 @@ func (r *report) install(ctx context.Context, in install) error {
 		r.step(ctx, "room skill", state(in.dryRun, outcome == skill.Written), tilde(in.home, filepath.Dir(skillPath)))
 	}
 
-	sweptLegacy, err := skill.RemoveLegacy(filepath.Join(in.home, spec.SkillsDir), in.dryRun)
+	sweptLegacy, err := skill.RemoveLegacy(spec.SkillsPath(in.home), in.dryRun)
 	if err != nil {
 		return fmt.Errorf("%s skill: %w", name, err)
 	}

@@ -118,8 +118,9 @@ func Serve(ctx context.Context, opts *cmdutil.Options, cfg Config) error {
 	}
 	start(broker.Run)
 	start(newUsageCoordinator(st, log).run)
-	start(newLivenessCoordinator(st, log).run)
-	start(newDelegationCoordinator(st, log).run)
+	liveness := newLivenessCoordinator(st, log)
+	liveness.skillsHome, _ = os.UserHomeDir()
+	start(liveness.run)
 	err = run(ctx, srv, ln, lifecycle)
 	if err == nil {
 		lifecycle.Info("broker stopped")

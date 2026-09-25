@@ -5,6 +5,7 @@ package harness
 
 import (
 	"os"
+	"path/filepath"
 	"slices"
 	"time"
 
@@ -33,8 +34,10 @@ type Spec struct {
 	// ConfigRoot the key within it holding the hook map.
 	ConfigPath string
 	ConfigRoot string
-	// SkillsDir is the harness's global skills directory, relative to home.
+	// SkillsDir is the harness's global skills directory, relative to home,
+	// unless SkillsEnv names a variable holding its parent instead.
 	SkillsDir string
+	SkillsEnv string
 	// SandboxTOML is the config whose sandbox needs write access to the store.
 	// Empty for a harness that does not sandbox.
 	SandboxTOML string
@@ -78,6 +81,7 @@ var specs = []Spec{
 		ConfigPath:  ".codex/hooks.json",
 		ConfigRoot:  "hooks",
 		SkillsDir:   ".codex/skills",
+		SkillsEnv:   "CODEX_HOME",
 		SandboxTOML: ".codex/config.toml",
 		// Codex clamps SessionEnd to three seconds and warns above it.
 		EndBudget: 2500 * time.Millisecond,
@@ -86,6 +90,14 @@ var specs = []Spec{
 		Usage:     usage.CodexSource{},
 		Threads:   thread.CodexSource{},
 	},
+}
+
+// SkillsPath is the global skills directory under home, honoring SkillsEnv.
+func (s Spec) SkillsPath(home string) string {
+	if dir := os.Getenv(s.SkillsEnv); s.SkillsEnv != "" && dir != "" {
+		return filepath.Join(dir, "skills")
+	}
+	return filepath.Join(home, s.SkillsDir)
 }
 
 // Specs lists every supported harness, in a stable order.

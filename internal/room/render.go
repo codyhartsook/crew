@@ -37,11 +37,9 @@ func Briefing(rooms []Room, entries []*Entry, others []string, authors Authors) 
 	return out + "\n\n" + hint
 }
 
-// Intro is what a session gets on arrival: which rooms it is in, who else is
-// here, and how to read. It deliberately carries no entries - they stay unread
-// and surface through Notice, so a room's backlog costs a turn's nudge rather
-// than a session's context.
-func Intro(rooms []Room, entries []*Entry, others []string) string {
+// Intro is what a session gets on arrival: its alias, rooms, who else is here,
+// and how to read. No entries, so a backlog costs a turn's nudge, not context.
+func Intro(self string, rooms []Room, entries []*Entry, others []string) string {
 	byRoom := group(entries)
 	var b strings.Builder
 
@@ -62,6 +60,9 @@ func Intro(rooms []Room, entries []*Entry, others []string) string {
 	out := strings.TrimSpace(b.String())
 	if out == "" {
 		return ""
+	}
+	if self != "" {
+		out = "You are " + self + ".\n\n" + out
 	}
 	return out + "\n\n" + hint
 }

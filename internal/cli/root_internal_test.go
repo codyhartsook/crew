@@ -20,7 +20,7 @@ func TestPublicCommands(t *testing.T) {
 	root := New()
 	// remove is public: retracting your own post is the agent's job, not
 	// machinery, and hiding it only kept it out of help.
-	for _, name := range []string{"init", "uninstall", "ls", "whoami", "dashboard", "room", "post", "resolve", "remove", "search", "docs", "roles", "memory", "delegate"} {
+	for _, name := range []string{"init", "uninstall", "ls", "dashboard", "room", "post", "resolve", "remove", "search", "docs", "role"} {
 		cmd, _, err := root.Find([]string{name})
 		if err != nil || cmd.Name() != name || cmd.Hidden {
 			t.Errorf("public command %q = (%v, %v)", name, cmd, err)
@@ -32,7 +32,7 @@ func TestPublicCommands(t *testing.T) {
 			t.Errorf("docs subcommand %q = (%v, %v)", name, cmd, err)
 		}
 	}
-	for _, name := range []string{"get", "inbox", "install", "join", "leave", "open", "pick", "promote", "rm", "publish", "review", "state", "stop", "unpublish", "version"} {
+	for _, name := range []string{"get", "inbox", "install", "join", "leave", "open", "pick", "promote", "rm", "publish", "review", "state", "stop", "unpublish", "version", "whoami", "roles", "memory", "delegate", "ask", "answer"} {
 		if cmd, _, err := root.Find([]string{name}); err == nil && cmd.Name() == name {
 			t.Errorf("removed command %q is still available", name)
 		}

@@ -6,8 +6,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/codyhartsook/multiplayer/internal/cli/cmdutil"
 	"github.com/codyhartsook/multiplayer/internal/cli/roomctx"
+	"github.com/codyhartsook/multiplayer/internal/cli/skill"
 	"github.com/codyhartsook/multiplayer/internal/detect"
 	"github.com/codyhartsook/multiplayer/internal/harness"
 	"github.com/codyhartsook/multiplayer/internal/harness/thread"
@@ -33,6 +33,8 @@ type livenessCoordinator struct {
 	store store.Store
 	log   *slog.Logger
 	host  string
+	// skillsHome is where role skills live; empty skips the sync, as in tests.
+	skillsHome string
 }
 
 func newLivenessCoordinator(st store.Store, log *slog.Logger) *livenessCoordinator {
@@ -56,7 +58,18 @@ func (c *livenessCoordinator) run(ctx context.Context) {
 
 func (c *livenessCoordinator) sweep(ctx context.Context) {
 	c.reap(ctx)
+	c.syncRoles(ctx)
 	c.reconcileThreads(ctx)
+}
+
+// syncRoles clears crashed holders' skills and writes ones a sandbox blocked.
+func (c *livenessCoordinator) syncRoles(ctx context.Context) {
+	if c.skillsHome == "" {
+		return
+	}
+	if err := skill.SyncRoles(ctx, c.skillsHome, c.store); err != nil {
+		c.log.Warn("liveness role skills", "err", err)
+	}
 }
 
 // reap ends sessions the prune rule finds dead, thread-aware where a harness
@@ -168,9 +181,6 @@ func (c *livenessCoordinator) register(ctx context.Context, h session.Harness, t
 // join adds an adopted session to the room for its place, the same as the
 // prompt hook does for a session whose SessionStart actually fired.
 func (c *livenessCoordinator) join(ctx context.Context, sess *session.Session) error {
-	if !cmdutil.AutoJoinEnabled() {
-		return nil
-	}
 	rs, ok := c.store.(store.RoomStore)
 	if !ok {
 		return nil

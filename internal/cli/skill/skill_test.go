@@ -9,11 +9,13 @@ import (
 
 func TestSkillKeepsAgentOperatingContext(t *testing.T) {
 	for _, want := range []string{
-		"crew whoami",
 		"crew ls",
 		"always use `--to`",
 		"Search before anything multi-step",
 		"Write for an agent with no context",
+		"crew role <name> \"<description>\"",
+		"for the other agents deciding what to hand you",
+		"check it before you send",
 	} {
 		if !strings.Contains(string(doc), want) {
 			t.Errorf("skill is missing %q", want)
@@ -21,23 +23,7 @@ func TestSkillKeepsAgentOperatingContext(t *testing.T) {
 	}
 }
 
-func TestSkillKeepsDelegationContract(t *testing.T) {
-	for _, want := range []string{
-		"Delegated roles do not join the room",
-		"crew delegate <role>",
-		"crew delegate result <id>",
-		"crew ask",
-		"crew answer",
-		"With `--wait`",
-		"cannot answer",
-	} {
-		if !strings.Contains(string(doc), want) {
-			t.Errorf("skill is missing %q", want)
-		}
-	}
-}
-
-// Delegating a review is only worth it if the reviewer attacks the change and
+// Handing off a review is only worth it if the reviewer attacks the change and
 // hands the verdict back, rather than quietly fixing the author's tree.
 func TestSkillKeepsAdversarialReviewStance(t *testing.T) {
 	for _, want := range []string{
@@ -58,10 +44,10 @@ func TestInstallPreservesLocalEdits(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "SKILL.md")
 
-	if got, err := Install(path, false); err != nil || got != Written {
+	if got, err := Install(path, doc, false); err != nil || got != Written {
 		t.Fatalf("first init = (%v, %v), want written", got, err)
 	}
-	if got, err := Install(path, false); err != nil || got != Unchanged {
+	if got, err := Install(path, doc, false); err != nil || got != Unchanged {
 		t.Fatalf("re-init unchanged = (%v, %v), want unchanged", got, err)
 	}
 
@@ -72,7 +58,7 @@ func TestInstallPreservesLocalEdits(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, markerFile), []byte(digest([]byte("an older generated skill"))), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := Install(path, false); err != nil || got != Written {
+	if got, err := Install(path, doc, false); err != nil || got != Written {
 		t.Fatalf("replacing our own older output = (%v, %v), want written", got, err)
 	}
 
@@ -81,7 +67,7 @@ func TestInstallPreservesLocalEdits(t *testing.T) {
 	if err := os.WriteFile(path, edited, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	got, err := Install(path, false)
+	got, err := Install(path, doc, false)
 	if err != nil || got != Preserved {
 		t.Fatalf("re-init over an edit = (%v, %v), want preserved", got, err)
 	}
@@ -103,7 +89,7 @@ func TestInstallAdoptsAnUnmarkedCopy(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got, err := Install(path, false); err != nil || got != Unchanged {
+	if got, err := Install(path, doc, false); err != nil || got != Unchanged {
 		t.Fatalf("init over an identical unmarked copy = (%v, %v), want unchanged", got, err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, markerFile)); err != nil {
@@ -116,7 +102,7 @@ func TestInstallAdoptsAnUnmarkedCopy(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, markerFile), []byte(digest([]byte("pretend this is an older generated version"))), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := Install(path, false); err != nil || got != Written {
+	if got, err := Install(path, doc, false); err != nil || got != Written {
 		t.Fatalf("update = (%v, %v), want written", got, err)
 	}
 }
@@ -127,7 +113,7 @@ func TestRemoveLegacy(t *testing.T) {
 	skills := t.TempDir()
 	old := filepath.Join(skills, legacyName)
 	path := filepath.Join(old, "SKILL.md")
-	if _, err := Install(path, false); err != nil {
+	if _, err := Install(path, doc, false); err != nil {
 		t.Fatal(err)
 	}
 

@@ -8,16 +8,12 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/codyhartsook/multiplayer/internal/cli/channelcmd"
 	"github.com/codyhartsook/multiplayer/internal/cli/cmdutil"
 	"github.com/codyhartsook/multiplayer/internal/cli/dashboardcmd"
-	"github.com/codyhartsook/multiplayer/internal/cli/delegatecmd"
 	"github.com/codyhartsook/multiplayer/internal/cli/documentcmd"
 	"github.com/codyhartsook/multiplayer/internal/cli/hookcmd"
 	"github.com/codyhartsook/multiplayer/internal/cli/initcmd"
 	"github.com/codyhartsook/multiplayer/internal/cli/lscmd"
-	"github.com/codyhartsook/multiplayer/internal/cli/rolecmd"
-	"github.com/codyhartsook/multiplayer/internal/cli/rolememcmd"
 	"github.com/codyhartsook/multiplayer/internal/cli/roomcmd"
 	"github.com/codyhartsook/multiplayer/internal/cli/uninstallcmd"
 	"github.com/codyhartsook/multiplayer/internal/version"
@@ -49,7 +45,6 @@ call records the git checkout, and the pool slot if there is one.`,
 	root.AddCommand(
 		hookcmd.New(opts),
 		lscmd.New(opts),
-		newWhoami(opts),
 		newAnchor(opts),
 		newServe(opts),
 		dashboardcmd.New(opts),
@@ -57,15 +52,11 @@ call records the git checkout, and the pool slot if there is one.`,
 		roomcmd.NewPost(opts),
 		roomcmd.NewResolve(opts),
 		roomcmd.NewRemove(opts),
+		newRole(opts),
 		roomcmd.New(opts),
 		newSearch(opts),
-		channelcmd.NewAsk(opts),
-		channelcmd.NewAnswer(opts),
 		newClear(opts),
 		newPrune(opts),
-		rolecmd.New(opts),
-		rolememcmd.New(opts),
-		delegatecmd.New(opts),
 		initcmd.New(opts),
 		uninstallcmd.New(opts),
 	)

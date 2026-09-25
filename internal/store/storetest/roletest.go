@@ -5,106 +5,147 @@ import (
 	"testing"
 	"time"
 
-	"github.com/codyhartsook/multiplayer/internal/role"
+	"github.com/codyhartsook/multiplayer/internal/session"
 	"github.com/codyhartsook/multiplayer/internal/store"
 )
 
-// RoleFactory builds an empty role store for one subtest.
-type RoleFactory func(t *testing.T) store.RoleStore
+// RoleBackend holds sessions and roles, since "active only" joins them.
+type RoleBackend interface {
+	store.Store
+	store.RoleStore
+}
 
-// RunRoles executes the role activation conformance suite against an
-// implementation.
+// RoleFactory builds an empty role store for one subtest.
+type RoleFactory func(t *testing.T) RoleBackend
+
+// RunRoles executes the role conformance suite against an implementation.
 func RunRoles(t *testing.T, newStore RoleFactory) {
 	t.Helper()
 	tests := map[string]func(*testing.T, RoleFactory){
-		"ActivateValidates":             testActivateValidates,
-		"ActivateTwiceKeepsFirstTime":   testActivateIdempotent,
-		"DeactivateRemovesIt":           testDeactivate,
-		"DeactivateUnknownIsNotAnError": testDeactivateUnknown,
-		"ActiveRolesScopedToRoom":       testActiveRolesScoped,
+		"AssignReplaces":  testAssignReplaces,
+		"AssignValidates": testAssignValidates,
+		"Drop":            testDrop,
+		"ActiveOnly":      testRolesActiveOnly,
+		"RoomFilter":      testRolesRoomFilter,
 	}
 	for name, fn := range tests {
 		t.Run(name, func(t *testing.T) { fn(t, newStore) })
 	}
 }
 
-func activation(room, roleName string, at time.Time) *role.Activation {
-	return &role.Activation{Room: room, Role: roleName, ActivatedAt: at}
+func role(key, roomKey, name string) *store.Role {
+	return &store.Role{
+		SessionKey: key, Room: roomKey, Name: name,
+		Description: "Runs the suite. Send finished changes.",
+		AssignedAt:  time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC),
+	}
 }
 
-func testActivateValidates(t *testing.T, newStore RoleFactory) {
-	s := newStore(t)
-	cases := []*role.Activation{
-		{Role: "tester"},
-		{Room: "/repo"},
+func mustAssign(t *testing.T, s store.RoleStore, r *store.Role) {
+	t.Helper()
+	if err := s.Assign(context.Background(), r); err != nil {
+		t.Fatalf("Assign: %v", err)
 	}
-	for _, a := range cases {
-		if err := s.ActivateRole(context.Background(), a); err == nil {
-			t.Errorf("ActivateRole(%+v) = nil, want an error", a)
+}
+
+func roleNames(t *testing.T, s store.RoleStore, f store.RoleFilter) []string {
+	t.Helper()
+	got, err := s.Roles(context.Background(), f)
+	if err != nil {
+		t.Fatalf("Roles: %v", err)
+	}
+	var out []string
+	for _, r := range got {
+		out = append(out, r.SessionKey+"="+r.Name)
+	}
+	return out
+}
+
+func assertRoles(t *testing.T, got []string, want ...string) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("roles = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("roles = %v, want %v", got, want)
 		}
 	}
 }
 
-func testActivateIdempotent(t *testing.T, newStore RoleFactory) {
+func testAssignReplaces(t *testing.T, newStore RoleFactory) {
 	s := newStore(t)
-	ctx := context.Background()
-	first := time.Date(2026, 8, 31, 12, 0, 0, 0, time.UTC)
-	later := first.Add(time.Hour)
+	mustAssign(t, s, role(agentA, worktreeRoom, "tester"))
+	replaced := role(agentA, worktreeRoom, "reviewer")
+	replaced.Description = "Reviews diffs."
+	mustAssign(t, s, replaced)
 
-	if err := s.ActivateRole(ctx, activation("/repo", "tester", first)); err != nil {
-		t.Fatalf("ActivateRole: %v", err)
-	}
-	if err := s.ActivateRole(ctx, activation("/repo", "tester", later)); err != nil {
-		t.Fatalf("ActivateRole (repeat): %v", err)
-	}
-	active, err := s.ActiveRoles(ctx, "/repo")
+	got, err := s.Roles(context.Background(), store.RoleFilter{})
 	if err != nil {
-		t.Fatalf("ActiveRoles: %v", err)
+		t.Fatal(err)
 	}
-	if len(active) != 1 || !active[0].ActivatedAt.Equal(first) {
-		t.Errorf("ActiveRoles = %+v, want one entry activated at %v", active, first)
+	if len(got) != 1 || got[0].Name != "reviewer" || got[0].Description != "Reviews diffs." {
+		t.Fatalf("roles after reassign = %+v, want only reviewer", got)
+	}
+	if !got[0].AssignedAt.Equal(replaced.AssignedAt) || got[0].Room != worktreeRoom {
+		t.Errorf("role round trip = %+v", got[0])
 	}
 }
 
-func testDeactivate(t *testing.T, newStore RoleFactory) {
+func testAssignValidates(t *testing.T, newStore RoleFactory) {
 	s := newStore(t)
-	ctx := context.Background()
-	if err := s.ActivateRole(ctx, activation("/repo", "tester", time.Now())); err != nil {
-		t.Fatalf("ActivateRole: %v", err)
+	bad := role(agentA, worktreeRoom, "Tester")
+	if err := s.Assign(context.Background(), bad); err == nil {
+		t.Error("Assign accepted an invalid role name")
 	}
-	if err := s.DeactivateRole(ctx, "/repo", "tester"); err != nil {
-		t.Fatalf("DeactivateRole: %v", err)
-	}
-	active, err := s.ActiveRoles(ctx, "/repo")
-	if err != nil {
-		t.Fatalf("ActiveRoles: %v", err)
-	}
-	if len(active) != 0 {
-		t.Errorf("ActiveRoles after deactivate = %+v, want none", active)
+	if err := s.Assign(context.Background(), role("", worktreeRoom, "tester")); err == nil {
+		t.Error("Assign accepted a role with no session")
 	}
 }
 
-func testDeactivateUnknown(t *testing.T, newStore RoleFactory) {
+func testDrop(t *testing.T, newStore RoleFactory) {
 	s := newStore(t)
-	if err := s.DeactivateRole(context.Background(), "/repo", "never-activated"); err != nil {
-		t.Errorf("DeactivateRole(unknown) = %v, want nil", err)
+	ctx := context.Background()
+	mustAssign(t, s, role(agentA, worktreeRoom, "tester"))
+	mustAssign(t, s, role(agentB, worktreeRoom, "tester"))
+
+	if dropped, err := s.Drop(ctx, agentA); err != nil || !dropped {
+		t.Fatalf("Drop = (%v, %v), want dropped", dropped, err)
+	}
+	if dropped, err := s.Drop(ctx, agentA); err != nil || dropped {
+		t.Fatalf("second Drop = (%v, %v), want nothing to drop", dropped, err)
+	}
+	assertRoles(t, roleNames(t, s, store.RoleFilter{}), agentB+"=tester")
+}
+
+func testRolesActiveOnly(t *testing.T, newStore RoleFactory) {
+	s := newStore(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	for _, id := range []string{"live", "gone"} {
+		sess := &session.Session{ID: id, Harness: session.HarnessCodex, Status: session.StatusActive, StartedAt: now, LastSeen: now}
+		if err := s.Upsert(ctx, sess); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.End(ctx, "codex:gone", now, "exit"); err != nil {
+		t.Fatal(err)
+	}
+	mustAssign(t, s, role("codex:live", worktreeRoom, "tester"))
+	mustAssign(t, s, role("codex:gone", worktreeRoom, "reviewer"))
+	mustAssign(t, s, role("codex:unknown", worktreeRoom, "writer"))
+
+	assertRoles(t, roleNames(t, s, store.RoleFilter{ActiveOnly: true}), "codex:live=tester")
+	if all := roleNames(t, s, store.RoleFilter{}); len(all) != 3 {
+		t.Errorf("all roles = %v, want 3", all)
 	}
 }
 
-func testActiveRolesScoped(t *testing.T, newStore RoleFactory) {
+func testRolesRoomFilter(t *testing.T, newStore RoleFactory) {
 	s := newStore(t)
-	ctx := context.Background()
-	if err := s.ActivateRole(ctx, activation("/repo-a", "tester", time.Now())); err != nil {
-		t.Fatalf("ActivateRole: %v", err)
-	}
-	if err := s.ActivateRole(ctx, activation("/repo-b", "reviewer", time.Now())); err != nil {
-		t.Fatalf("ActivateRole: %v", err)
-	}
-	active, err := s.ActiveRoles(ctx, "/repo-a")
-	if err != nil {
-		t.Fatalf("ActiveRoles: %v", err)
-	}
-	if len(active) != 1 || active[0].Role != "tester" {
-		t.Errorf("ActiveRoles(/repo-a) = %+v, want only tester", active)
-	}
+	mustAssign(t, s, role(agentA, worktreeRoom, "tester"))
+	mustAssign(t, s, role(agentB, repoRoom, "reviewer"))
+
+	assertRoles(t, roleNames(t, s, store.RoleFilter{Rooms: []string{repoRoom}}), agentB+"=reviewer")
+	assertRoles(t, roleNames(t, s, store.RoleFilter{Rooms: []string{"/nowhere"}}))
 }

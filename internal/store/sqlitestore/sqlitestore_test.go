@@ -11,9 +11,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"github.com/codyhartsook/multiplayer/internal/delegation"
 	"github.com/codyhartsook/multiplayer/internal/session"
-
 	"github.com/codyhartsook/multiplayer/internal/store"
 	"github.com/codyhartsook/multiplayer/internal/store/sqlitestore"
 	"github.com/codyhartsook/multiplayer/internal/store/storetest"
@@ -43,41 +41,8 @@ func TestRoomStore(t *testing.T) {
 	})
 }
 
-func TestMemoryStore(t *testing.T) {
-	storetest.RunMemory(t, func(t *testing.T) store.MemoryStore {
-		s, err := sqlitestore.Open(filepath.Join(t.TempDir(), "sessions.db"))
-		if err != nil {
-			t.Fatalf("Open: %v", err)
-		}
-		t.Cleanup(func() { s.Close() })
-		return s
-	})
-}
-
 func TestRoleStore(t *testing.T) {
-	storetest.RunRoles(t, func(t *testing.T) store.RoleStore {
-		s, err := sqlitestore.Open(filepath.Join(t.TempDir(), "sessions.db"))
-		if err != nil {
-			t.Fatalf("Open: %v", err)
-		}
-		t.Cleanup(func() { s.Close() })
-		return s
-	})
-}
-
-func TestDelegationStore(t *testing.T) {
-	storetest.RunDelegations(t, func(t *testing.T) store.DelegationStore {
-		s, err := sqlitestore.Open(filepath.Join(t.TempDir(), "sessions.db"))
-		if err != nil {
-			t.Fatalf("Open: %v", err)
-		}
-		t.Cleanup(func() { s.Close() })
-		return s
-	})
-}
-
-func TestChannelStore(t *testing.T) {
-	storetest.RunChannel(t, func(t *testing.T) store.ChannelStore {
+	storetest.RunRoles(t, func(t *testing.T) storetest.RoleBackend {
 		s, err := sqlitestore.Open(filepath.Join(t.TempDir(), "sessions.db"))
 		if err != nil {
 			t.Fatalf("Open: %v", err)
@@ -176,78 +141,10 @@ func TestOpenMigratesAdditively(t *testing.T) {
 	}
 }
 
-// A database can already be at the current schema version but still predate
-// a column added to a table introduced in that same version - exactly what
-// happened here when delegations.dir was added after delegations itself
-// shipped at version 9. CREATE TABLE IF NOT EXISTS alone would never notice.
-func TestOpenAddsAColumnMissingFromAnAlreadyCurrentDatabase(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "predates-dir.db")
-	ctx := context.Background()
-
-	s, err := sqlitestore.Open(path)
-	if err != nil {
-		t.Fatalf("open: %v", err)
-	}
-	if err := s.CreateDelegation(ctx, &delegation.Delegation{
-		ID: "d1", Room: "/repo", Dir: "/repo", Role: "tester", Harness: "codex",
-		Requester: "codex:a", Prompt: "run the tests", Status: delegation.StatusPending,
-		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
-	}); err != nil {
-		t.Fatalf("seed delegation: %v", err)
-	}
-	s.Close()
-
-	// Rewind to the shape delegations shipped with before dir existed, at the
-	// same schema version: this is not a version to migrate away from.
-	db, err := sql.Open("sqlite", "file:"+path)
-	if err != nil {
-		t.Fatalf("open raw: %v", err)
-	}
-	if _, err := db.Exec(`ALTER TABLE delegations DROP COLUMN dir`); err != nil {
-		t.Fatalf("rewind: %v", err)
-	}
-	db.Close()
-
-	s, err = sqlitestore.Open(path)
-	if err != nil {
-		t.Fatalf("Open on a database missing delegations.dir: %v", err)
-	}
-	defer s.Close()
-
-	// The pre-existing row survives the reopen; its dir cannot be recovered
-	// (dropping a column destroys that cell), but the row itself must not be
-	// lost, and the restored column must work for anything written from here.
-	if _, err := s.GetDelegation(ctx, "d1"); err != nil {
-		t.Fatalf("GetDelegation after reopen: %v", err)
-	}
-	if err := s.CreateDelegation(ctx, &delegation.Delegation{
-		ID: "d2", Room: "/repo", Dir: "/repo#lease", Role: "tester", Harness: "codex",
-		Requester: "codex:a", Prompt: "run the tests", Status: delegation.StatusPending,
-		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
-	}); err != nil {
-		t.Fatalf("create delegation after reopen: %v", err)
-	}
-	got, err := s.GetDelegation(ctx, "d2")
-	if err != nil {
-		t.Fatalf("GetDelegation(d2): %v", err)
-	}
-	if got.Dir != "/repo#lease" {
-		t.Errorf("Dir = %q, want the restored column to hold what was written", got.Dir)
-	}
-
-	// Reopening again must not fail by trying to add the column twice.
-	s.Close()
-	again, err := sqlitestore.Open(path)
-	if err != nil {
-		t.Fatalf("second Open = %v, want idempotent", err)
-	}
-	again.Close()
-}
-
-// A version 9 database predates the back-channel. Delegations are durable data
-// there, so the upgrade must add the table and the column in place.
-func TestOpenMigratesAVersion9Database(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "v9.db")
+// Version 11 drops the delegation and role tables. A version 10 database
+// still holds them, and must lose them in place while keeping its sessions.
+func TestOpenDropsDelegationTablesFromAVersion10Database(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "v10.db")
 	ctx := context.Background()
 
 	s, err := sqlitestore.Open(path)
@@ -255,55 +152,50 @@ func TestOpenMigratesAVersion9Database(t *testing.T) {
 		t.Fatalf("open: %v", err)
 	}
 	now := time.Now().UTC()
-	if err := s.CreateDelegation(ctx, &delegation.Delegation{
-		ID: "d1", Room: "/repo", Dir: "/repo", Role: "tester", Harness: "codex",
-		Requester: "codex:launcher", Prompt: "run the tests", Status: delegation.StatusPending,
-		CreatedAt: now, UpdatedAt: now,
-	}); err != nil {
-		t.Fatalf("seed delegation: %v", err)
+	seeded := &session.Session{ID: "old-1", Harness: session.HarnessCodex, Status: session.StatusActive, StartedAt: now, LastSeen: now}
+	if err := s.Upsert(ctx, seeded); err != nil {
+		t.Fatalf("seed session: %v", err)
 	}
 	s.Close()
 
+	dropped := []string{"role_memory", "role_activation", "delegations", "channel_requests"}
 	db, err := sql.Open("sqlite", "file:"+path)
 	if err != nil {
 		t.Fatalf("open raw: %v", err)
 	}
-	for _, stmt := range []string{
-		`ALTER TABLE delegations DROP COLUMN child`,
-		`DROP TABLE channel_requests`,
-		`PRAGMA user_version = 9`,
-	} {
-		if _, err := db.Exec(stmt); err != nil {
-			t.Fatalf("rewind (%s): %v", stmt, err)
+	for _, name := range dropped {
+		if _, err := db.Exec(fmt.Sprintf(`CREATE TABLE %s (id TEXT); INSERT INTO %s VALUES ('x')`, name, name)); err != nil {
+			t.Fatalf("seed %s: %v", name, err)
 		}
+	}
+	if _, err := db.Exec(`PRAGMA user_version = 10`); err != nil {
+		t.Fatal(err)
 	}
 	db.Close()
 
 	s, err = sqlitestore.Open(path)
 	if err != nil {
-		t.Fatalf("Open on a version 9 database: %v", err)
+		t.Fatalf("Open on a version 10 database: %v", err)
 	}
 	defer s.Close()
+	if _, err := s.Get(ctx, seeded.Key()); err != nil {
+		t.Errorf("Get after migration: %v, want the session to survive", err)
+	}
 
-	if _, err := s.GetDelegation(ctx, "d1"); err != nil {
-		t.Fatalf("GetDelegation after migration: %v", err)
-	}
-	if err := s.SetDelegationChild(ctx, "d1", "claude:spawned"); err != nil {
-		t.Fatalf("SetDelegationChild after migration: %v", err)
-	}
-	got, err := s.GetDelegation(ctx, "d1")
+	db, err = sql.Open("sqlite", "file:"+path)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("open raw: %v", err)
 	}
-	if got.Child != "claude:spawned" {
-		t.Errorf("Child = %q, want the restored column to hold what was written", got.Child)
+	defer db.Close()
+	for _, name := range dropped {
+		var n int
+		if err := db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?`, name).Scan(&n); err != nil || n != 0 {
+			t.Errorf("table %s after migration = (%d, %v), want dropped", name, n, err)
+		}
 	}
-	id, err := s.Ask(ctx, "claude:spawned", "codex:launcher", "which config?")
-	if err != nil {
-		t.Fatalf("Ask after migration: %v", err)
-	}
-	if open, err := s.Inbox(ctx, "codex:launcher"); err != nil || len(open) != 1 || open[0].ID != id {
-		t.Errorf("Inbox = %+v, %v, want the request just asked", open, err)
+	var version int
+	if err := db.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != 11 {
+		t.Errorf("user_version = (%d, %v), want 11", version, err)
 	}
 }
 
