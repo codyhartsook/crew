@@ -3,14 +3,11 @@ package hookcmd
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"time"
 
-	"github.com/codyhartsook/multiplayer/internal/cli/cmdutil"
 	"github.com/codyhartsook/multiplayer/internal/cli/roomctx"
-	"github.com/codyhartsook/multiplayer/internal/delegation"
 	"github.com/codyhartsook/multiplayer/internal/hook"
 	"github.com/codyhartsook/multiplayer/internal/prune"
 	"github.com/codyhartsook/multiplayer/internal/room"
@@ -52,28 +49,14 @@ func roomsFor(ctx context.Context, st store.Store, event hook.Event, sess *sessi
 	case hook.EventStart:
 		// Reap sessions whose process is gone before reporting who is here.
 		prune.Quietly(ctx, st)
-		intro, err := introFor(ctx, st, rs, sess)
-		if err != nil || sess == nil {
-			return intro, err
-		}
-		roster, err := rosterFor(ctx, st, sess, room.For(sess.Place))
-		return joinContext(intro, roster), err
+		return introFor(ctx, st, rs, sess)
 	case hook.EventPrompt:
 		// A turn is the only proof a session is still working, so it is what
 		// keeps last-seen meaning last active rather than started.
 		if sessionKey != "" {
 			_ = st.Touch(ctx, sessionKey, time.Now().UTC())
 		}
-		roomNotice, err := noticeFor(ctx, rs, sessionKey)
-		if err != nil {
-			return roomNotice, err
-		}
-		askNotice, err := askNoticeFor(ctx, st, sessionKey)
-		if err != nil {
-			return joinContext(roomNotice, askNotice), err
-		}
-		delegationNotice, err := delegationNoticeFor(ctx, st, sessionKey)
-		return joinContext(roomNotice, askNotice, delegationNotice), err
+		return noticeFor(ctx, rs, sessionKey)
 	default:
 		return "", nil
 	}
@@ -90,10 +73,8 @@ func introFor(ctx context.Context, st store.Store, rs store.RoomStore, sess *ses
 	if len(here) == 0 {
 		return "", nil
 	}
-	if cmdutil.AutoJoinEnabled() {
-		if err := roomctx.Join(ctx, rs, sess.Key(), here); err != nil {
-			return "", err
-		}
+	if err := roomctx.Join(ctx, rs, sess.Key(), here); err != nil {
+		return "", err
 	}
 
 	keys := room.Keys(here)
@@ -106,7 +87,7 @@ func introFor(ctx context.Context, st store.Store, rs store.RoomStore, sess *ses
 	if err != nil {
 		return "", err
 	}
-	return room.Intro(here, entries, others), nil
+	return room.Intro(sess.Alias, here, entries, others), nil
 }
 
 // noticeFor injects a nudge when something is waiting, nothing otherwise. It
@@ -126,38 +107,6 @@ func noticeFor(ctx context.Context, rs store.RoomStore, sessionKey string) (stri
 		return "", err
 	}
 	return room.Notice(entries), nil
-}
-
-// delegationNoticeFor surfaces the requester's finished delegations.
-func delegationNoticeFor(ctx context.Context, st store.Store, sessionKey string) (string, error) {
-	ds, ok := st.(store.DelegationStore)
-	if !ok || sessionKey == "" {
-		return "", nil
-	}
-	done, err := ds.ListDelegations(ctx, delegation.Filter{Requester: sessionKey, Status: delegation.StatusDone, Unnotified: true})
-	if err != nil {
-		return "", err
-	}
-	failed, err := ds.ListDelegations(ctx, delegation.Filter{Requester: sessionKey, Status: delegation.StatusFailed, Unnotified: true})
-	if err != nil {
-		return "", err
-	}
-	finished := append(done, failed...)
-	if len(finished) == 0 {
-		return "", nil
-	}
-
-	// Only what MarkNotified confirmed; a failure stays Unnotified for retry.
-	var notified []*delegation.Delegation
-	var markErr error
-	for _, d := range finished {
-		if err := ds.MarkNotified(ctx, d.ID); err != nil {
-			markErr = errors.Join(markErr, err)
-			continue
-		}
-		notified = append(notified, d)
-	}
-	return delegation.Notice(notified), markErr
 }
 
 func sessionKeyFrom(harness session.Harness, p hook.Payload) string {

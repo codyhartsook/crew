@@ -26,8 +26,8 @@ func New(opts *cmdutil.Options) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "uninstall",
 		Short: "Remove the hooks, skill and sandbox grant init added",
-		Long: `Removes only what init added: its own hook entries, the room skill, and
-Codex's sandbox grant. Other hooks and settings are left alone.
+		Long: `Removes only what init added: its own hook entries, the room skill, role
+skills, and Codex's sandbox grant. Other hooks and settings are left alone.
 
 The store is your data and is kept unless you pass --purge. Without --yes
 nothing is removed; what would go is listed instead.`,
@@ -134,12 +134,23 @@ func uninstallFrom(cmd *cobra.Command, home string, t harness.Spec, dryRun bool)
 		}
 	}
 
-	skillDir := filepath.Join(home, t.SkillsDir, skill.Name)
+	skillDir := filepath.Join(t.SkillsPath(home), skill.Name)
 	if err := removeSkill(cmd, name, skillDir, dryRun); err != nil {
 		return err
 	}
-	if _, err := skill.RemoveLegacy(filepath.Join(home, t.SkillsDir), dryRun); err != nil {
+	if _, err := skill.RemoveLegacy(t.SkillsPath(home), dryRun); err != nil {
 		return err
+	}
+	roles, err := skill.RemoveRoles(t.SkillsPath(home), dryRun)
+	if err != nil {
+		return err
+	}
+	if roles > 0 {
+		verb := "role skills removed"
+		if dryRun {
+			verb = "role skills to remove"
+		}
+		fmt.Fprintf(out, "%s: %s: %d\n", name, verb, roles)
 	}
 
 	if t.SandboxTOML == "" {

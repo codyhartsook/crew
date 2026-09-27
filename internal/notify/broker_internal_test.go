@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/codyhartsook/multiplayer/internal/channel"
 	"github.com/codyhartsook/multiplayer/internal/harness/notifier"
 	"github.com/codyhartsook/multiplayer/internal/room"
 	"github.com/codyhartsook/multiplayer/internal/session"
@@ -18,13 +17,8 @@ import (
 type fakeReader struct {
 	sessions []*session.Session
 	unread   map[string][]*room.Entry
-	inbox    map[string][]*channel.Request
 	asked    []string
 	ended    []string
-}
-
-func (f *fakeReader) Inbox(_ context.Context, self channel.Addr) ([]*channel.Request, error) {
-	return f.inbox[string(self)], nil
 }
 
 func (f *fakeReader) List(context.Context, store.Filter) ([]*session.Session, error) {
@@ -52,7 +46,7 @@ func entries(ids ...int64) []*room.Entry {
 func testBroker(f *fakeReader, w notifyFunc) *Broker {
 	return &Broker{
 		store: f, log: slog.New(slog.NewTextHandler(io.Discard, nil)),
-		woken: map[string]int64{}, asks: f, wokenAsk: map[string]int64{},
+		woken:  map[string]int64{},
 		notify: w,
 	}
 }
@@ -192,36 +186,5 @@ func TestWakeTextNamesTheSender(t *testing.T) {
 	}
 	if !strings.Contains(unnamed, "codex other") {
 		t.Errorf("unnamed sender lost its fallback: %q", unnamed)
-	}
-}
-
-// A delegated role cannot re-ask, so its question must wake the requester -
-// once, and again only for a newer question.
-func TestSweepWakesForAWaitingQuestion(t *testing.T) {
-	f := &fakeReader{
-		sessions: []*session.Session{sess(session.HarnessCodex, "t1")},
-		inbox: map[string][]*channel.Request{
-			"codex:t1": {{ID: 1, From: "claude:role", To: "codex:t1", Body: "which config?"}},
-		},
-	}
-	var texts []string
-	b := testBroker(f, func(_ context.Context, _ *session.Session, text string) error {
-		texts = append(texts, text)
-		return nil
-	})
-
-	b.sweep(context.Background())
-	b.sweep(context.Background())
-	if len(texts) != 1 {
-		t.Fatalf("woke %d times for the same question, want 1", len(texts))
-	}
-	if !strings.Contains(texts[0], "which config?") || !strings.Contains(texts[0], "crew answer") {
-		t.Errorf("wake text = %q, want the question and how to answer it", texts[0])
-	}
-
-	f.inbox["codex:t1"] = append(f.inbox["codex:t1"], &channel.Request{ID: 2, From: "claude:role", To: "codex:t1", Body: "and the fixture?"})
-	b.sweep(context.Background())
-	if len(texts) != 2 {
-		t.Fatalf("woke %d times, want 2 after a second question", len(texts))
 	}
 }

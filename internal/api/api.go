@@ -18,7 +18,6 @@ import (
 
 	"github.com/codyhartsook/multiplayer/internal/documents"
 	"github.com/codyhartsook/multiplayer/internal/room"
-	"github.com/codyhartsook/multiplayer/internal/roomdoc"
 	"github.com/codyhartsook/multiplayer/internal/session"
 	"github.com/codyhartsook/multiplayer/internal/store"
 	"github.com/codyhartsook/multiplayer/internal/usage"
@@ -172,7 +171,7 @@ func (s *Server) openRoomDocuments(w http.ResponseWriter, r *http.Request) {
 	}
 	target := filepath.Dir(dir)
 	here := room.Room{Key: key, Scope: s.scopeOf(r, key), Name: room.NameFor(key)}
-	if _, err := roomdoc.Write(r.Context(), s.store, s.store, dir, here); err != nil {
+	if _, err := documents.WriteTranscript(r.Context(), s.store, s.store, dir, here); err != nil {
 		// The documents are still worth opening without their transcript.
 		s.log.Error("write room transcript", "room", key, "error", err)
 	}

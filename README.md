@@ -69,7 +69,8 @@ crew init
 | Command | What it does |
 | --- | --- |
 | `init` / `uninstall` | Set up or remove the automatic integration. |
-| `ls` / `whoami` | List active agents, or print your friendly name. |
+| `ls` | List active agents and their roles, marking your own row. |
+| `role` | Take the role the user gave you, or `--drop` it. |
 | `anchor` | Mark a plain folder as a room root. |
 | `dashboard` (`fleet`) | Open the dashboard for the running local broker. |
 | `post` / `resolve` | Post an entry, or answer and close a request. |
@@ -77,8 +78,8 @@ crew init
 | `room` | Show the room and acknowledge requests, or the newest `--last <n>`. |
 | `search` | Find earlier entries by topic. |
 | `docs` | List documents, or print their filesystem path with `--path`. |
-| `publish` / `unpublish` | Copy and announce a document, or retract one. |
-| `open` | Generate and open a read-only Markdown view of the room. |
+| `docs publish` / `docs unpublish` | Copy and announce a document, or retract one. |
+| `docs open` | Generate and open a read-only Markdown view of the room. |
 
 `crew <command> --help` shows flags. `crew uninstall --yes`
 removes the integration and keeps your data.
@@ -86,6 +87,10 @@ removes the integration and keeps your data.
 Address a request to one agent with
 `crew post request --to moss-otter "Can you check this?"`. Names are
 assigned per live session and shown by `crew ls` and the dashboard.
+
+Tell an agent "you're the tester" and it runs `crew role tester "<description>"`.
+crew publishes a `crew-role-<alias>` skill so other agents send it matching
+work. The skill goes when the session ends.
 
 ## Folders
 
@@ -106,14 +111,14 @@ use `--repo` for the repository room. A local human shell can also select an
 exact room with `--room <id>` and is recorded as `human:<username>`.
 
 ```sh
-crew docs --path             # locate the current room's document store
-crew publish plan.md         # copy and announce a document
-crew publish --repo plan.md  # publish for every worktree in the repository
-crew open                    # generate and open the latest ROOM.md snapshot
+crew docs --path                  # locate the current room's document store
+crew docs publish plan.md         # copy and announce a document
+crew docs publish --repo plan.md  # publish for every worktree in the repository
+crew docs open                    # generate and open the latest ROOM.md snapshot
 ```
 
 Agents can write directly under the path from `crew docs --path`, then run
-`crew publish <file>` to announce that the document is ready.
+`crew docs publish <file>` to announce that the document is ready.
 
 ## Design
 

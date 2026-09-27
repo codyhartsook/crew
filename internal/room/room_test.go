@@ -174,9 +174,12 @@ func TestIntroCarriesNoEntryBodies(t *testing.T) {
 		{ID: 2, Room: "/src/widget", Mode: room.ModeRequest, Author: "claude:zzz", Body: "this leaks", CreatedAt: now},
 	}
 
-	out := room.Intro(here, entries, []string{"moss-otter (just now)"})
+	out := room.Intro("rust-heron", here, entries, []string{"moss-otter (tester, just now)"})
+	if !strings.HasPrefix(out, "You are rust-heron.\n\n") {
+		t.Errorf("intro does not open with the alias:\n%s", out)
+	}
 	// A note never comes back from Unread, so the count is its only delivery.
-	for _, want := range []string{"crew room: widget (worktree)", "Also here: moss-otter",
+	for _, want := range []string{"crew room: widget (worktree)", "Also here: moss-otter (tester, just now)",
 		"Holds 1 note, 1 open request.", "crew room"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("intro is missing %q:\n%s", want, out)
@@ -191,7 +194,7 @@ func TestIntroCarriesNoEntryBodies(t *testing.T) {
 
 func TestIntroEmpty(t *testing.T) {
 	here := []room.Room{{Key: "/src/widget", Scope: room.ScopeWorktree, Name: "widget"}}
-	if out := room.Intro(here, nil, nil); out != "" {
+	if out := room.Intro("rust-heron", here, nil, nil); out != "" {
 		t.Errorf("intro on an empty room with nobody here = %q, want empty", out)
 	}
 }

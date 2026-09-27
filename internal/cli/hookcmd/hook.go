@@ -16,6 +16,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/codyhartsook/multiplayer/internal/cli/cmdutil"
+	"github.com/codyhartsook/multiplayer/internal/cli/skill"
 	"github.com/codyhartsook/multiplayer/internal/detect"
 	"github.com/codyhartsook/multiplayer/internal/harness"
 	"github.com/codyhartsook/multiplayer/internal/hook"
@@ -100,13 +101,24 @@ func runHook(cmd *cobra.Command, opts *cmdutil.Options, harnessFlag string) erro
 	sessionKey := sessionKeyFrom(h, payload)
 	recordUsage(ctx, st, h, payload, sessionKey)
 
-	childErr := recordDelegationChild(ctx, st, payload.Event(), sessionKey)
-
 	injected, roomErr := roomsFor(ctx, st, payload.Event(), sess, sessionKey)
+	// After prune and after an end is recorded, so role skills match who is left.
+	if err := syncRoles(ctx, st); err != nil {
+		logHookError(opts, fmt.Errorf("sync role skills: %w", err))
+	}
 	if writeErr := writeContext(cmd.OutOrStdout(), payload.Event(), injected); writeErr != nil {
 		roomErr = errors.Join(roomErr, writeErr)
 	}
-	return errors.Join(recordErr, childErr, roomErr)
+	return errors.Join(recordErr, roomErr)
+}
+
+// syncRoles runs outside the agent sandbox, so it can always write skills.
+func syncRoles(ctx context.Context, st store.Store) error {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+	return skill.SyncRoles(ctx, home, st)
 }
 
 func resolveHarness(flag string) (session.Harness, error) {
@@ -135,15 +147,6 @@ func logMissingCapabilities(opts *cmdutil.Options, st store.Store) {
 	var missing []string
 	if _, ok := st.(store.RoomStore); !ok {
 		missing = append(missing, "rooms")
-	}
-	if _, ok := st.(store.RoleStore); !ok {
-		missing = append(missing, "roles")
-	}
-	if _, ok := st.(store.DelegationStore); !ok {
-		missing = append(missing, "delegation")
-	}
-	if _, ok := st.(store.ChannelStore); !ok {
-		missing = append(missing, "channel")
 	}
 	if len(missing) > 0 {
 		logHookLine(opts, "store missing capabilities: "+strings.Join(missing, ", "))

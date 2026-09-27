@@ -10,6 +10,7 @@ import (
 	"github.com/codyhartsook/multiplayer/internal/hook"
 	"github.com/codyhartsook/multiplayer/internal/room"
 	"github.com/codyhartsook/multiplayer/internal/session"
+	"github.com/codyhartsook/multiplayer/internal/store"
 	"github.com/codyhartsook/multiplayer/internal/store/sqlitestore"
 )
 
@@ -76,5 +77,36 @@ func TestSessionStartLeavesEntriesUnread(t *testing.T) {
 	}
 	if !strings.Contains(notice, "unread in this room") {
 		t.Errorf("turn notice = %q, want it to offer the unread entry", notice)
+	}
+}
+
+// Arrival names the agent itself and the roles of the others here.
+func TestSessionStartIntroNamesSelfAndRoles(t *testing.T) {
+	ctx := context.Background()
+	st := roomTestStore(t)
+	dir := t.TempDir()
+	sess := arrival(t, st, dir, room.ModeNote, "context")
+	now := time.Now().UTC()
+	holder := &session.Session{
+		ID: "holder", Harness: session.HarnessClaude, Status: session.StatusActive,
+		Place:     sess.Place,
+		StartedAt: now, LastSeen: now,
+	}
+	if err := st.Upsert(ctx, holder); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Assign(ctx, &store.Role{SessionKey: holder.Key(), Room: dir, Name: "tester", Description: "Runs the suite.", AssignedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+
+	intro, err := roomsFor(ctx, st, hook.EventStart, sess, sess.Key())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(intro, "You are "+sess.Alias+".") {
+		t.Errorf("intro does not open with the alias:\n%s", intro)
+	}
+	if !strings.Contains(intro, "Also here: "+holder.Alias+" (tester, just now)") {
+		t.Errorf("intro does not show the holder's role:\n%s", intro)
 	}
 }

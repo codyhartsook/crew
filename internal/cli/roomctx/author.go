@@ -153,9 +153,21 @@ func ResolveAgent(ctx context.Context, st store.Store, roomKeys []string, name s
 		return matches[0], nil
 	}
 	if len(matches) == 0 {
-		return "", fmt.Errorf("no active agent named %q in this room", name)
+		return "", fmt.Errorf("%s isn't active in this room: it may have left, so any role it held is free; check crew ls", name)
 	}
 	return "", fmt.Errorf("agent name %q is ambiguous", name)
+}
+
+// Self is the calling agent's session key, or "" in a person's shell.
+func Self(ctx context.Context, st store.Store, cwd string) string {
+	if !AgentEnvironment() {
+		return ""
+	}
+	key, err := ResolveAuthor(ctx, st, room.Keys(room.For(placeFor(ctx, cwd))))
+	if err != nil {
+		return ""
+	}
+	return key
 }
 
 // OwnAlias is the friendly name of the session running this command.

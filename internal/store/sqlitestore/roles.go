@@ -5,70 +5,84 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/codyhartsook/multiplayer/internal/role"
 	"github.com/codyhartsook/multiplayer/internal/store"
 )
 
-// roleActivationSchema is which roles a room has turned on.
-const roleActivationSchema = `
-CREATE TABLE IF NOT EXISTS role_activation (
-    room         TEXT NOT NULL,
-    role         TEXT NOT NULL,
-    activated_at TEXT NOT NULL,
-    PRIMARY KEY (room, role)
+// roleSchema sits beside sessions because SessionStart rewrites the sessions row.
+const roleSchema = `
+CREATE TABLE IF NOT EXISTS role_assignments (
+    session_key TEXT PRIMARY KEY,
+    room        TEXT NOT NULL,
+    name        TEXT NOT NULL,
+    description TEXT NOT NULL,
+    assigned_at TEXT NOT NULL
 );
-`
-
-const roleActivationIndex = `
-CREATE INDEX IF NOT EXISTS role_activation_room ON role_activation(room);
 `
 
 var _ store.RoleStore = (*Store)(nil)
 
-func (s *Store) ActivateRole(ctx context.Context, a *role.Activation) error {
-	if a == nil || a.Room == "" || a.Role == "" {
-		return errors.New("activate role: room and role are required")
+func (s *Store) Assign(ctx context.Context, r *store.Role) error {
+	if r == nil || r.SessionKey == "" || r.Room == "" {
+		return errors.New("assign: session key and room are required")
+	}
+	if err := r.Validate(); err != nil {
+		return err
 	}
 	const q = `
-INSERT INTO role_activation (room, role, activated_at)
-VALUES (?, ?, ?)
-ON CONFLICT(room, role) DO NOTHING`
-
-	if _, err := s.db.ExecContext(ctx, q, a.Room, a.Role, formatTime(a.ActivatedAt)); err != nil {
-		return fmt.Errorf("activate role %s in %s: %w", a.Role, a.Room, err)
+INSERT INTO role_assignments (session_key, room, name, description, assigned_at)
+VALUES (?, ?, ?, ?, ?)
+ON CONFLICT(session_key) DO UPDATE SET
+    room = excluded.room,
+    name = excluded.name,
+    description = excluded.description,
+    assigned_at = excluded.assigned_at`
+	if _, err := s.db.ExecContext(ctx, q, r.SessionKey, r.Room, r.Name, r.Description, formatTime(r.AssignedAt)); err != nil {
+		return fmt.Errorf("assign role: %w", err)
 	}
 	return nil
 }
 
-func (s *Store) DeactivateRole(ctx context.Context, roomKey, roleName string) error {
-	const q = `DELETE FROM role_activation WHERE room = ? AND role = ?`
-	if _, err := s.db.ExecContext(ctx, q, roomKey, roleName); err != nil {
-		return fmt.Errorf("deactivate role %s in %s: %w", roleName, roomKey, err)
-	}
-	return nil
-}
-
-func (s *Store) ActiveRoles(ctx context.Context, roomKey string) ([]*role.Activation, error) {
-	const q = `SELECT room, role, activated_at FROM role_activation WHERE room = ? ORDER BY role`
-	rows, err := s.db.QueryContext(ctx, q, roomKey)
+func (s *Store) Drop(ctx context.Context, sessionKey string) (bool, error) {
+	res, err := s.db.ExecContext(ctx, `DELETE FROM role_assignments WHERE session_key = ?`, sessionKey)
 	if err != nil {
-		return nil, fmt.Errorf("list active roles: %w", err)
+		return false, fmt.Errorf("drop role: %w", err)
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
+}
+
+func (s *Store) Roles(ctx context.Context, f store.RoleFilter) ([]*store.Role, error) {
+	q := `SELECT r.session_key, r.room, r.name, r.description, r.assigned_at FROM role_assignments r`
+	var args []any
+	if f.ActiveOnly {
+		q += ` JOIN sessions s ON s.key = r.session_key AND s.status = 'active'`
+	}
+	if len(f.Rooms) > 0 {
+		q += ` WHERE r.room IN (` + placeholders(len(f.Rooms)) + `)`
+		for _, key := range f.Rooms {
+			args = append(args, key)
+		}
+	}
+	q += ` ORDER BY r.assigned_at, r.session_key`
+
+	rows, err := s.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list roles: %w", err)
 	}
 	defer rows.Close()
-
-	out := []*role.Activation{}
+	var out []*store.Role
 	for rows.Next() {
 		var (
-			a           role.Activation
-			activatedAt string
+			r  store.Role
+			at string
 		)
-		if err := rows.Scan(&a.Room, &a.Role, &activatedAt); err != nil {
-			return nil, fmt.Errorf("list active roles: %w", err)
+		if err := rows.Scan(&r.SessionKey, &r.Room, &r.Name, &r.Description, &at); err != nil {
+			return nil, fmt.Errorf("list roles: %w", err)
 		}
-		if a.ActivatedAt, err = parseTime(activatedAt); err != nil {
-			return nil, fmt.Errorf("parse activated_at: %w", err)
+		if r.AssignedAt, err = parseTime(at); err != nil {
+			return nil, fmt.Errorf("parse assigned_at: %w", err)
 		}
-		out = append(out, &a)
+		out = append(out, &r)
 	}
 	return out, rows.Err()
 }

@@ -1,6 +1,7 @@
 package harness_test
 
 import (
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -121,5 +122,17 @@ func TestEndBudgetFitsInstalledTimeout(t *testing.T) {
 			t.Errorf("%s: EndBudget %v does not fit the installed SessionEnd timeout %v",
 				s.Harness, s.EndBudget, installed)
 		}
+	}
+}
+
+func TestCodexSkillsFollowCodexHome(t *testing.T) {
+	spec, _ := harness.For(session.HarnessCodex)
+	t.Setenv("CODEX_HOME", "")
+	if got := spec.SkillsPath("/h"); got != filepath.Join("/h", ".codex", "skills") {
+		t.Errorf("default = %q", got)
+	}
+	t.Setenv("CODEX_HOME", "/c")
+	if got := spec.SkillsPath("/h"); got != filepath.Join("/c", "skills") {
+		t.Errorf("with CODEX_HOME = %q", got)
 	}
 }

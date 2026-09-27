@@ -23,9 +23,8 @@ func hookLog(t *testing.T, dbDir string) string {
 	return string(data)
 }
 
-// A store that cannot inject a roster or delegate a role fails open rather
-// than breaking the harness, so "nothing happened" needs a reason findable
-// somewhere - CREW_DEBUG=1 and the hook log, not silence all the way down.
+// A store without rooms fails open rather than breaking the harness, so
+// "nothing happened" needs a reason in the hook log under CREW_DEBUG=1.
 func TestLogMissingCapabilitiesRecordsWhatAStoreLacks(t *testing.T) {
 	dir := t.TempDir()
 	opts := &cmdutil.Options{DB: filepath.Join(dir, "sessions.db")}
@@ -34,7 +33,7 @@ func TestLogMissingCapabilitiesRecordsWhatAStoreLacks(t *testing.T) {
 	logMissingCapabilities(opts, st)
 
 	log := hookLog(t, dir)
-	for _, want := range []string{"rooms", "roles", "delegation"} {
+	for _, want := range []string{"rooms"} {
 		if !strings.Contains(log, want) {
 			t.Errorf("hook.log = %q, want it to name the missing %q capability", log, want)
 		}

@@ -13,10 +13,10 @@ import (
 
 	"github.com/codyhartsook/multiplayer/internal/detect"
 	"github.com/codyhartsook/multiplayer/internal/harness"
+	"github.com/codyhartsook/multiplayer/internal/harness/thread"
 	"github.com/codyhartsook/multiplayer/internal/proc"
 	"github.com/codyhartsook/multiplayer/internal/session"
 	"github.com/codyhartsook/multiplayer/internal/store"
-	"github.com/codyhartsook/multiplayer/internal/thread"
 )
 
 // deadReason is recorded against sessions closed by pruning rather than by the

@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/codyhartsook/multiplayer/internal/cli/cmdutil"
+	"github.com/codyhartsook/multiplayer/internal/cli/roomctx"
 	"github.com/codyhartsook/multiplayer/internal/cli/view"
 	"github.com/codyhartsook/multiplayer/internal/room"
 	"github.com/codyhartsook/multiplayer/internal/session"
@@ -53,10 +54,25 @@ func New(opts *cmdutil.Options) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if asJSON {
-				return cmdutil.WriteJSON(cmd.OutOrStdout(), sessions)
+			roles := map[string]*store.Role{}
+			if rs, ok := st.(store.RoleStore); ok {
+				held, err := rs.Roles(cmd.Context(), store.RoleFilter{})
+				if err != nil {
+					return err
+				}
+				for _, r := range held {
+					roles[r.SessionKey] = r
+				}
 			}
-			return writeTable(cmd.OutOrStdout(), opts.Human, sessions)
+			if asJSON {
+				rows := make([]jsonRow, 0, len(sessions))
+				for _, s := range sessions {
+					rows = append(rows, jsonRow{s, roles[s.Key()]})
+				}
+				return cmdutil.WriteJSON(cmd.OutOrStdout(), rows)
+			}
+			self := roomctx.Self(cmd.Context(), st, roomctx.Cwd())
+			return writeTable(cmd.OutOrStdout(), opts.Human, sessions, roles, self)
 		},
 	}
 
@@ -73,6 +89,12 @@ func New(opts *cmdutil.Options) *cobra.Command {
 	return cmd
 }
 
+// jsonRow is a session with the role it holds, if any.
+type jsonRow struct {
+	*session.Session
+	Role *store.Role `json:"role,omitempty"`
+}
+
 // sessionColumns is what ls shows. An agent addresses agents by alias, so the
 // session id is a person's column, and the default filter is already
 // active-only, so is the status.
@@ -80,29 +102,42 @@ var sessionColumns = []view.Column{
 	{Name: "AGENT"},
 	{Name: "HARNESS"},
 	{Name: "WHERE"},
+	{Name: "ROLE"},
 	{Name: "FREE"},
 	{Name: "SEEN"},
 	{Name: "SESSION", Human: true},
 	{Name: "WORKTREE", Human: true},
 	{Name: "STATUS", Human: true},
+	{Name: "DESCRIPTION", Human: true},
 }
 
-func writeTable(w io.Writer, human bool, sessions []*session.Session) error {
+// writeTable marks self's row, so an agent can tell which one it is.
+func writeTable(w io.Writer, human bool, sessions []*session.Session, roles map[string]*store.Role, self string) error {
 	if len(sessions) == 0 {
 		_, err := fmt.Fprintln(w, "no sessions")
 		return err
 	}
 	rows := make([][]string, 0, len(sessions))
 	for _, s := range sessions {
+		name := room.Display(s)
+		if s.Key() == self {
+			name += " (you)"
+		}
+		role, desc := "-", "-"
+		if r := roles[s.Key()]; r != nil {
+			role, desc = r.Name, r.Description
+		}
 		rows = append(rows, []string{
-			room.Display(s),
+			name,
 			dash(string(s.Harness)),
 			where(s),
+			role,
 			freeContext(s),
 			age(s.LastSeen),
 			shortID(s.ID),
 			worktreeOf(s),
 			dash(string(s.Status)),
+			desc,
 		})
 	}
 	return view.Table(w, human, sessionColumns, rows)

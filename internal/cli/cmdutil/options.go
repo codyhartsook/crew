@@ -15,14 +15,9 @@ import (
 
 // Environment variables that supply defaults for the global flags.
 const (
-	EnvDB       = "CREW_DB"
-	EnvServer   = "CREW_SERVER"
-	EnvDebug    = "CREW_DEBUG"
-	EnvAutoJoin = "CREW_AUTO_JOIN"
-	// EnvRole names the role identity a spawned role runs as.
-	EnvRole = "CREW_ROLE"
-	// EnvDelegation carries the delegation id on a spawned role's environment.
-	EnvDelegation = "CREW_DELEGATION"
+	EnvDB     = "CREW_DB"
+	EnvServer = "CREW_SERVER"
+	EnvDebug  = "CREW_DEBUG"
 )
 
 // Options holds the global flags that decide which store the command talks to.
@@ -73,19 +68,6 @@ func (o *Options) StoreDir() (string, error) {
 		return "", err
 	}
 	return filepath.Dir(path), nil
-}
-
-// AutoJoinEnabled reports whether a session should auto-join its rooms.
-// CREW_AUTO_JOIN=0 marks a delegated role deliberately not a member.
-func AutoJoinEnabled() bool {
-	switch os.Getenv(EnvAutoJoin) {
-	case "":
-		return true
-	case "0", "false", "no":
-		return false
-	default:
-		return true
-	}
 }
 
 // SignalBroker asks the broker to sweep now. A missed signal only costs
