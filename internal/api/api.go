@@ -95,6 +95,7 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("GET /v1/rooms/documents", s.local(s.listDocuments))
 		mux.HandleFunc("POST /v1/rooms/documents", s.local(s.addDocument))
 		mux.HandleFunc("DELETE /v1/rooms/documents", s.local(s.removeDocument))
+		mux.HandleFunc("DELETE /v1/entries/{id}", s.local(s.deleteEntry))
 	}
 	if s.table != nil {
 		mux.Handle("GET /table", s.table)
@@ -107,15 +108,14 @@ func (s *Server) Handler() http.Handler {
 	return s.logRequests(mux)
 }
 
-// local rejects anything but the dashboard on this machine. Documents are
-// files on disk, so the surface is loopback-only and never cross-origin.
+// local limits operator endpoints to the dashboard on this machine.
 func (s *Server) local(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		host, _, err := net.SplitHostPort(r.RemoteAddr)
 		origin := r.Header.Get("Origin")
 		if err != nil || !net.ParseIP(host).IsLoopback() ||
 			(origin != "" && origin != "http://"+r.Host && origin != "https://"+r.Host) {
-			writeError(w, http.StatusForbidden, errors.New("room documents are local dashboard access only"))
+			writeError(w, http.StatusForbidden, errors.New("local dashboard access only"))
 			return
 		}
 		next(w, r)
@@ -256,6 +256,25 @@ func (s *Server) removeDocument(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.announce(r, key, documents.RemovedNote+name)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// deleteEntry removes a post and its replies, whoever wrote them.
+func (s *Server) deleteEntry(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil || id <= 0 {
+		writeError(w, http.StatusBadRequest, errors.New("id must be a positive integer"))
+		return
+	}
+	removed, err := s.store.DeleteThread(r.Context(), id)
+	if err != nil {
+		s.fail(w, err)
+		return
+	}
+	if !removed {
+		writeError(w, http.StatusNotFound, fmt.Errorf("entry %d not found", id))
+		return
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 

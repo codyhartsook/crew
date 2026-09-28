@@ -33,6 +33,7 @@ func RunRooms(t *testing.T, newStore RoomFactory) {
 		"Search":                  testSearch,
 		"Clear":                   testClear,
 		"RemoveEntry":             testRemoveEntry,
+		"DeleteThread":            testDeleteThread,
 		"ConcurrentPost":          testConcurrentPost,
 	}
 	for name, fn := range tests {
@@ -521,6 +522,31 @@ func testRemoveEntry(t *testing.T, newStore RoomFactory) {
 		t.Fatalf("Entries: %v", err)
 	}
 	assertIDs(t, entries, []int64{other.ID, answered.ID, answer.ID})
+}
+
+func testDeleteThread(t *testing.T, newStore RoomFactory) {
+	s := newStore(t)
+	ctx := context.Background()
+	question := mustPost(t, s, entry(worktreeRoom, room.ModeRequest, agentA, "who owns retries?"))
+	answer := entry(worktreeRoom, room.ModeRequest, agentB, "the gateway does")
+	answer.Resolves = question.ID
+	mustPost(t, s, answer)
+	followUp := entry(worktreeRoom, room.ModeNote, agentA, "thanks")
+	followUp.Resolves = answer.ID
+	mustPost(t, s, followUp)
+	kept := mustPost(t, s, entry(worktreeRoom, room.ModeNote, agentB, "keep"))
+
+	if removed, err := s.DeleteThread(ctx, question.ID); err != nil || !removed {
+		t.Fatalf("DeleteThread = (%v, %v), want (true, nil)", removed, err)
+	}
+	if removed, err := s.DeleteThread(ctx, question.ID); err != nil || removed {
+		t.Errorf("DeleteThread again = (%v, %v), want (false, nil)", removed, err)
+	}
+	entries, err := s.Entries(ctx, room.Filter{})
+	if err != nil {
+		t.Fatalf("Entries: %v", err)
+	}
+	assertIDs(t, entries, []int64{kept.ID})
 }
 
 func ids(entries []*room.Entry) []int64 {

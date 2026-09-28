@@ -41,6 +41,10 @@ type RoomStore interface {
 	// the entry does not exist, belongs to someone else, or has a reply.
 	RemoveEntry(ctx context.Context, id int64, author string) (bool, error)
 
+	// DeleteThread removes an entry and every reply that resolves it, whoever
+	// wrote them. It reports false when the entry does not exist.
+	DeleteThread(ctx context.Context, id int64) (bool, error)
+
 	// Unread returns the open, addressed entries in the rooms this session has
 	// joined that it has not yet been shown and did not write itself.
 	Unread(ctx context.Context, sessionKey string) ([]*room.Entry, error)

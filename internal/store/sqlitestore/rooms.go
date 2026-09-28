@@ -238,6 +238,23 @@ WHERE id = ? AND author = ? AND resolves = 0
 	return n != 0, nil
 }
 
+func (s *Store) DeleteThread(ctx context.Context, id int64) (bool, error) {
+	const q = `DELETE FROM entries WHERE id IN (
+    WITH RECURSIVE thread(id) AS (
+        SELECT id FROM entries WHERE id = ?
+        UNION SELECT e.id FROM entries e JOIN thread t ON e.resolves = t.id)
+    SELECT id FROM thread)`
+	res, err := s.db.ExecContext(ctx, q, id)
+	if err != nil {
+		return false, fmt.Errorf("delete thread %d: %w", id, err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("delete thread %d: %w", id, err)
+	}
+	return n != 0, nil
+}
+
 func (s *Store) Unread(ctx context.Context, sessionKey string) ([]*room.Entry, error) {
 	const q = `
 SELECT ` + entryColumns + entryFrom + `

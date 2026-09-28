@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -230,5 +231,58 @@ func TestMetaReportsHome(t *testing.T) {
 	}
 	if meta.Home != home {
 		t.Errorf("home = %q, want %q", meta.Home, home)
+	}
+}
+
+// Removing a post from the dashboard takes its replies with it, and only the
+// local operator can do it.
+func TestDeleteEntry(t *testing.T) {
+	st, err := sqlitestore.Open(filepath.Join(t.TempDir(), "sessions.db"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(func() { st.Close() })
+	post := func(mode room.Mode, body string, resolves int64) int64 {
+		e := &room.Entry{Room: "/repo", Scope: room.ScopeWorktree, Mode: mode, Author: "codex:one",
+			Body: body, Resolves: resolves, CreatedAt: time.Now().UTC()}
+		if err := st.Post(t.Context(), e); err != nil {
+			t.Fatalf("Post: %v", err)
+		}
+		return e.ID
+	}
+	question := post(room.ModeRequest, "who owns retries?", 0)
+	post(room.ModeRequest, "the gateway does", question)
+	kept := post(room.ModeNote, "keep", 0)
+
+	root := t.TempDir()
+	h := api.New(st, nil, api.WithDocuments(func(key string) (string, error) {
+		return documents.Dir(root, key)
+	})).Handler()
+	target := "http://localhost/v1/entries/" + strconv.FormatInt(question, 10)
+
+	remote := httptest.NewRequest(http.MethodDelete, target, nil)
+	remote.RemoteAddr = "10.0.0.4:5555"
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, remote)
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("off-host delete = %d, want 403", rec.Code)
+	}
+
+	if rec := call(t, h, http.MethodDelete, target); rec.Code != http.StatusNoContent {
+		t.Fatalf("delete = %d, want 204", rec.Code)
+	}
+	entries, err := st.Entries(t.Context(), room.Filter{})
+	if err != nil {
+		t.Fatalf("Entries: %v", err)
+	}
+	if len(entries) != 1 || entries[0].ID != kept {
+		t.Errorf("entries after delete = %v, want only %d", entries, kept)
+	}
+
+	if rec := call(t, h, http.MethodDelete, target); rec.Code != http.StatusNotFound {
+		t.Errorf("repeat delete = %d, want 404", rec.Code)
+	}
+	if rec := call(t, h, http.MethodDelete, "http://localhost/v1/entries/abc"); rec.Code != http.StatusBadRequest {
+		t.Errorf("bad id = %d, want 400", rec.Code)
 	}
 }
