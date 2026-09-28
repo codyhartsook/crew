@@ -168,6 +168,11 @@ func TestWakeTextNamesTheEntry(t *testing.T) {
 	if !strings.Contains(many, "2 entries") || !strings.Contains(many, "[13]") || !strings.Contains(many, "crew room") {
 		t.Errorf("multi-entry text lost detail: %q", many)
 	}
+	answer := entries(12)
+	answer[0].Resolves = 7
+	if got := noticeText(answer, named); !strings.Contains(got, "answer [12] to [7]") || strings.Contains(got, "request") {
+		t.Errorf("answer text should name what it resolves: %q", got)
+	}
 }
 
 // A woken agent should not have to look up who wrote to it, and an unnamed

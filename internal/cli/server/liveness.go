@@ -33,7 +33,7 @@ type livenessCoordinator struct {
 	store store.Store
 	log   *slog.Logger
 	host  string
-	// skillsHome is where role skills live; empty skips the sync, as in tests.
+	// skillsHome holds the legacy global skill dirs; empty skips the sync, as in tests.
 	skillsHome string
 }
 

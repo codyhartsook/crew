@@ -143,10 +143,14 @@ func (b *Broker) sweepSession(ctx context.Context, s *session.Session, authors r
 func noticeText(unread []*room.Entry, authors room.Authors) string {
 	newest := unread[len(unread)-1]
 	from := authors.Name(newest.Author)
-	if len(unread) == 1 {
-		return fmt.Sprintf("crew: %s [%d] from %s is addressed to you. Read it with: crew room",
-			newest.Mode, newest.ID, from)
+	what := fmt.Sprintf("%s [%d]", newest.Mode, newest.ID)
+	if newest.Resolves != 0 {
+		// An answer is listed under the entry it resolves, not by its own id.
+		what = fmt.Sprintf("answer [%d] to [%d]", newest.ID, newest.Resolves)
 	}
-	return fmt.Sprintf("crew: %d entries are addressed to you, newest %s [%d] from %s. Read them with: crew room",
-		len(unread), newest.Mode, newest.ID, from)
+	if len(unread) == 1 {
+		return fmt.Sprintf("crew: %s from %s is addressed to you. Read it with: crew room", what, from)
+	}
+	return fmt.Sprintf("crew: %d entries are addressed to you, newest %s from %s. Read them with: crew room",
+		len(unread), what, from)
 }

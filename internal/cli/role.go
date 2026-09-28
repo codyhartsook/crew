@@ -23,9 +23,9 @@ func newRole(opts *cmdutil.Options) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   `role <name> "<description>"`,
 		Short: "Take the role the user gave you",
-		Long: `Publishes a skill telling other agents what to send you. Describe which
-tasks to send and what you won't take. Assigning again replaces it; --drop
-gives it up. It ends with your session.`,
+		Long: `Publishes a skill telling agents in this room what to send you. Describe
+which tasks to send and what you won't take. Assigning again replaces it;
+--drop gives it up. It ends with your session.`,
 		Args: func(cmd *cobra.Command, args []string) error {
 			if drop {
 				return cobra.NoArgs(cmd, args)

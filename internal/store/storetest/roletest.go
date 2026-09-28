@@ -27,6 +27,7 @@ func RunRoles(t *testing.T, newStore RoleFactory) {
 		"Drop":            testDrop,
 		"ActiveOnly":      testRolesActiveOnly,
 		"RoomFilter":      testRolesRoomFilter,
+		"SkillDirs":       testSkillDirs,
 	}
 	for name, fn := range tests {
 		t.Run(name, func(t *testing.T) { fn(t, newStore) })
@@ -148,4 +149,20 @@ func testRolesRoomFilter(t *testing.T, newStore RoleFactory) {
 
 	assertRoles(t, roleNames(t, s, store.RoleFilter{Rooms: []string{repoRoom}}), agentB+"=reviewer")
 	assertRoles(t, roleNames(t, s, store.RoleFilter{Rooms: []string{"/nowhere"}}))
+}
+
+func testSkillDirs(t *testing.T, newStore RoleFactory) {
+	s := newStore(t)
+	ctx := context.Background()
+	for _, dir := range []string{"/b", "/a", "/b"} {
+		if err := s.RecordSkillDir(ctx, dir); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.ForgetSkillDir(ctx, "/a"); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := s.SkillDirs(ctx); err != nil || len(got) != 1 || got[0] != "/b" {
+		t.Fatalf("SkillDirs = (%v, %v), want [/b]", got, err)
+	}
 }

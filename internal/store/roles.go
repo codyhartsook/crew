@@ -60,4 +60,13 @@ type RoleStore interface {
 
 	// Roles lists assignments matching f, oldest first.
 	Roles(ctx context.Context, f RoleFilter) ([]*Role, error)
+
+	// RecordSkillDir notes a directory crew wrote role skills into.
+	RecordSkillDir(ctx context.Context, dir string) error
+
+	// ForgetSkillDir drops a recorded directory.
+	ForgetSkillDir(ctx context.Context, dir string) error
+
+	// SkillDirs lists the recorded directories, sorted.
+	SkillDirs(ctx context.Context) ([]string, error)
 }

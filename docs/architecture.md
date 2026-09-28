@@ -11,7 +11,7 @@ Every message costs context in each agent it reaches.
 | Room post | every agent, now and later | Highest | it changes another agent's work |
 | Addressed request | one agent, pushed by the broker | One turn | handing one agent a task |
 | Notice | one agent, no payload | One line per turn | unread work exists |
-| Role skill | every session's skill listing | One line per holder | the user gave an agent a role |
+| Role skill | the room's skill listing | One line per holder | the user gave an agent a role |
 
 Arrival shows the agent's name, room, and who's here, plus counts of entries, never the entries themselves.
 
@@ -34,19 +34,31 @@ sequenceDiagram
 
 ## Role skill lifecycle
 
+| Harness | Skill path | Copies |
+|---|---|---|
+| Codex | `<room root>/.agents/skills/crew-role-<alias>/` | one per room |
+| Claude | `<cwd>/.claude/skills/crew-role-<alias>/` | one per member cwd |
+
 ```mermaid
 flowchart LR
-    store[("role_assignments<br/>+ active sessions")] --> sync{{sync}}
-    sync -->|role held| write["write crew-role-&lt;alias&gt;<br/>~/.claude/skills, ~/.codex/skills"]
-    sync -->|session gone| remove["remove crew's copy<br/>(edited copies kept)"]
-    hooks["every hook"] --> sync
-    sweep["broker liveness sweep"] --> sync
+    ss["SessionStart"] -->|mkdir cwd/.claude/skills| dirs[(room dirs)]
+    hooks["prompt, end hooks"] --> sync{{sync}}
+    sweep["broker sweep"] --> sync
+    role["crew role"] --> sync
+    sync -->|git exclude, then write| dirs
+    sync -->|remove stale, crew's only| dirs
+    sync -->|remove legacy| global[(global skill dirs)]
 ```
+
+- Claude misses a skill written during its startup, so SessionStart doesn't sync.
+- `role_skill_dirs` records each dir crew wrote to, so stale skills are found.
+- The repo's shared `info/exclude` hides both paths from git. If it can't be
+  written, sync skips that dir until the next hook.
 
 | Holder ends by | Skill removed by |
 |---|---|
-| Normal exit | SessionEnd hook |
-| Crash | Broker sweep, or the next session's hook |
+| Normal exit | SessionEnd hook, or the broker sweep if the harness skips it |
+| Crash | Broker sweep, or another session's next hook |
 | `crew role --drop` | The command, or the next hook if a sandbox blocks it |
 
 ## Presence
