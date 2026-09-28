@@ -4,6 +4,19 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>crew context</title>
+<script>
+// Sidebar width: 400px is the floor, and the graph keeps at least 360px.
+const ROOMS_MIN = 400;
+function roomsWidth(w) {
+  const cols = Math.min(document.documentElement.clientWidth - 48, 1700);
+  return Math.round(Math.max(ROOMS_MIN, Math.min(w, cols - 26 - 360)));
+}
+// Set before first paint so a saved width does not jump in.
+try {
+  const saved = +localStorage.getItem("crew.roomsWidth");
+  if (saved) document.documentElement.style.setProperty("--rooms-w", roomsWidth(saved) + "px");
+} catch { /* private mode */ }
+</script>
 <style>
   :root {
     --window: #f2f2f7; --card: #fff; --fill: rgba(116,116,128,0.08);
@@ -11,7 +24,7 @@
     --separator: rgba(60,60,67,0.14); --edge: rgba(60,60,67,0.3);
     --orange:#ff9500; --teal:#0fa3b1; --gray:#8e8e93; --violet:#8b5cf6;
     --raised: rgba(120,120,128,0.12); --accent-soft: rgba(255,149,0,0.13);
-    --green:#34c759;
+    --green:#34c759; --orange-ink:#9c4700;
     --mono: ui-monospace,"SF Mono",SFMono-Regular,Menlo,monospace;
     --sans: -apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",sans-serif;
   }
@@ -22,7 +35,7 @@
       --separator:rgba(84,84,88,0.6); --edge:rgba(235,235,245,0.3);
       --orange:#ff9f0a; --teal:#40c8e0; --gray:#98989d; --violet:#c4b5fd;
       --raised: rgba(120,120,128,0.24); --accent-soft: rgba(255,159,10,0.16);
-      --green:#30d158;
+      --green:#30d158; --orange-ink:#ff9f0a;
     }
   }
   * { box-sizing: border-box; }
@@ -41,7 +54,7 @@
           flex:1 1 auto; min-height:0; align-items:stretch; }
   .stage { flex:1 1 auto; min-width:0; display:flex; flex-direction:column; min-height:0; }
   .graph { position:relative; flex:1 1 auto; min-height:0; }
-  .rooms { flex:0 0 400px; min-height:0;
+  .rooms { flex:0 0 var(--rooms-w, 400px); min-height:0; position:relative;
            display:grid; grid-template-rows:auto auto minmax(0,1fr); gap:8px; }
   .rooms h2 { margin:0 2px; font-size:10px; font-weight:600; color:var(--label-3);
               text-transform:uppercase; letter-spacing:0.07em; }
@@ -52,6 +65,14 @@
                background:var(--card); border-radius:10px; padding:0 12px 12px;
                box-shadow:0 0 0 0.5px rgba(0,0,0,0.08); }
   #inspector.empty { background:none; box-shadow:none; padding:8px 2px; }
+  /* The grip sits in the column gap, centred on it. */
+  .grip { position:absolute; top:0; bottom:0; left:-18px; width:10px; cursor:col-resize;
+          touch-action:none; outline:none; }
+  .grip::after { content:""; position:absolute; top:0; bottom:0; left:4px; width:2px;
+                 border-radius:1px; background:transparent; transition:background 0.12s ease; }
+  .grip:hover::after { background:var(--edge); }
+  .grip.active::after, .grip:focus-visible::after { background:var(--label-2); }
+  body.resizing { cursor:col-resize; user-select:none; -webkit-user-select:none; }
   @media (max-width:1100px) {
     .subrow { gap:12px; }
     body { height:auto; display:block; overflow:visible; }
@@ -60,6 +81,7 @@
     .graph { min-height:0; }
     svg { height:auto; max-height:70vh; }
     .rooms { flex:none; width:100%; grid-template-rows:auto auto auto; }
+    .grip { display:none; }
     #index { max-height:none; }
     #inspector { max-height:70vh; }
   }
@@ -126,7 +148,7 @@
   .doc .x:hover { color:var(--orange); background:var(--fill); }
   .doc .x.armed { color:var(--orange); font-size:10px; font-weight:600; padding:2px 7px;
                   background:var(--accent-soft); }
-  .err { font-size:11px; color:var(--orange); padding:3px 2px; }
+  .err { font-size:11px; color:var(--orange-ink); padding:3px 2px; }
 
   /* timeline */
   .post { padding:8px 0 8px 11px; border-left:2px solid var(--separator); }
@@ -159,6 +181,24 @@
   .evt.gone .ename { text-decoration:line-through; color:var(--label-3); }
   .evt .eat { margin-left:auto; flex:none; font-size:10px; color:var(--label-3);
               font-family:var(--mono); white-space:nowrap; }
+
+  /* Remove control: hidden until the entry is hovered or focused, never out of tab order. */
+  .rm { display:inline-flex; gap:4px; align-self:center; flex:none; opacity:0;
+        transition:opacity 0.12s ease; }
+  .post:hover > .pwho .rm, .evt:hover .rm, .rm:focus-within, .rm.armed { opacity:1; }
+  .rm button { border:0; border-radius:5px; font:inherit; font-size:10px; font-weight:600;
+               line-height:1; padding:3px 7px; cursor:pointer; }
+  .rm button:focus-visible { outline:2px solid var(--label-2); outline-offset:1px; }
+  .rm .rmx { background:none; color:var(--label-2); font-size:12px; font-weight:400; padding:2px 4px; }
+  .rm .rmx:hover { color:var(--orange-ink); background:var(--fill); }
+  .rm .rmx:active { background:var(--raised); }
+  .rm .rmyes { background:var(--accent-soft); color:var(--orange-ink); }
+  .rm .rmyes:hover { background:color-mix(in srgb, var(--orange) 20%, transparent); }
+  .rm .rmyes:active { background:color-mix(in srgb, var(--orange) 26%, transparent); }
+  .rm .rmno { background:var(--fill); color:var(--label); }
+  .rm .rmno:hover { background:var(--raised); }
+  .rm .rmno:active { background:color-mix(in srgb, var(--label) 18%, transparent); }
+  .rm button:disabled { opacity:0.5; cursor:default; }
 
   /* ---- graph ---- */
   svg { display:block; width:100%; height:100%; touch-action:none; cursor:grab; }
@@ -294,6 +334,8 @@
     <div class="graph"><div class="panel" id="panel" hidden></div><svg id="svg"></svg></div>
   </div>
   <aside class="rooms">
+    <div class="grip" id="grip" role="separator" tabindex="0" aria-orientation="vertical"
+         aria-label="Resize sidebar" aria-valuemin="400"></div>
     <h2>Rooms</h2>
     <div id="index"></div>
     <div id="inspector"></div>
@@ -351,6 +393,9 @@ let META = null;
 let SELECTED = remembered("crew.room", "") || null;  // room in the inspector
 const DOCS = new Map();         // room key -> { docs, unavailable, error }
 const OPEN_POSTS = new Set();   // entries the reader expanded
+const GONE = new Set();         // removed entry ids, so a stale poll cannot bring them back
+const POST_ERRORS = new Map();  // entry id -> why its removal failed
+let ARMED = null;               // entry id whose removal awaits confirmation
 const KEEP = new Map();         // id -> {x,y,vx,vy}, so a poll does not restart the layout
 let PICK = null;                // { node, sessionKey } while something is selected
 let HOVER = null;
@@ -385,7 +430,7 @@ async function load() {
     json(API + "/v1/sessions"),
     json(API + "/v1/entries"),
   ]);
-  const sessions = s.sessions || [], entries = e.entries || [];
+  const sessions = s.sessions || [], entries = (e.entries || []).filter((x) => !GONE.has(x.id));
   const sig = signature(sessions, entries);
   if (sig === SIG) return false;
   SIG = sig;
@@ -1598,8 +1643,11 @@ function renderInspector() {
     return;
   }
   const scroll = host.scrollTop;
+  // A poll re-renders; keep a remove control's keyboard focus across it.
+  const focus = host.contains(document.activeElement) && document.activeElement.dataset.focus;
   host.replaceChildren(inspectorHead(r), members(r), documentSection(r), timeline(r));
   host.scrollTop = scroll;
+  if (focus) host.querySelector('[data-focus="' + focus + '"]')?.focus();
 }
 
 function inspectorHead(r) {
@@ -1863,8 +1911,8 @@ function documentEvent(e) {
   row.append(mark("doc"), document.createTextNode(removed ? "removed" : "published"), label);
   const at = tag("span", "eat");
   at.append(named(e.author), document.createTextNode(" · " + age(e.created_at)));
-  row.append(at);
-  return row;
+  row.append(at, removeControl(e));
+  return withError(row, e);
 }
 
 function postRow(e, byId) {
@@ -1874,7 +1922,7 @@ function postRow(e, byId) {
   who.append(named(e.author));
   if (isOpen(e)) who.append(tag("span", "pmode", e.to ? "asking" : "request"));
   if (e.to) who.append(tag("span", "pmode", "→"), named(e.to));
-  who.append(tag("span", "pat", "#" + e.id + " · " + age(e.created_at)));
+  who.append(tag("span", "pat", "#" + e.id + " · " + age(e.created_at)), removeControl(e));
   row.append(who, body(e.body, e.id));
 
   const answer = e.resolved_by && byId.get(e.resolved_by);
@@ -1885,7 +1933,74 @@ function postRow(e, byId) {
     wrap.append(line, body(answer.body, answer.id));
     row.append(wrap);
   }
+  return withError(row, e);
+}
+
+// Removing is two steps: the x arms it, then Remove or Cancel.
+function removeControl(e) {
+  const box = tag("span", "rm");
+  const paint = (armed, focus) => {
+    if (armed) ARMED = e.id;
+    else if (ARMED === e.id) ARMED = null;
+    box.classList.toggle("armed", armed);
+    if (!armed) {
+      const x = tag("button", "rmx", "✕");
+      x.type = "button";
+      x.title = "Remove post";
+      x.setAttribute("aria-label", "Remove post");
+      x.dataset.focus = "rm" + e.id;
+      x.addEventListener("click", () => paint(true, true));
+      box.replaceChildren(x);
+      if (focus) x.focus();
+      return;
+    }
+    const yes = tag("button", "rmyes", "Remove");
+    const no = tag("button", "rmno", "Cancel");
+    yes.type = no.type = "button";
+    yes.dataset.focus = "rmyes" + e.id;
+    no.dataset.focus = "rmno" + e.id;
+    yes.addEventListener("click", () => {
+      yes.disabled = no.disabled = true;
+      removePost(e);
+    });
+    no.addEventListener("click", () => paint(false, true));
+    box.replaceChildren(yes, no);
+    if (focus) yes.focus();
+  };
+  box.addEventListener("keydown", (ev) => {
+    if (ev.key !== "Escape" || !box.classList.contains("armed")) return;
+    ev.stopPropagation();  // cancel only, keep the room open
+    paint(false, true);
+  });
+  paint(ARMED === e.id, false);
+  return box;
+}
+
+function withError(row, e) {
+  const text = POST_ERRORS.get(e.id);
+  if (text) row.append(tag("div", "err", text));
   return row;
+}
+
+async function removePost(e) {
+  try {
+    const res = await fetch(API + "/v1/entries/" + e.id, { method: "DELETE" });
+    // 404 means it is already gone, which is what was asked for.
+    if (!res.ok && res.status !== 404) throw new Error(await message(res));
+  } catch (err) {
+    if (ARMED === e.id) ARMED = null;
+    POST_ERRORS.set(e.id, "Could not remove: " + err.message);
+    renderInspector();
+    setTimeout(() => { POST_ERRORS.delete(e.id); if (VIEW) renderInspector(); }, 5000);
+    return;
+  }
+  if (ARMED === e.id) ARMED = null;
+  // Replies go with it. Ids ascend, so one pass follows a chain of replies.
+  GONE.add(e.id);
+  for (const x of DATA.entries) if (GONE.has(x.resolves)) GONE.add(x.id);
+  DATA = { sessions: DATA.sessions, entries: DATA.entries.filter((x) => !GONE.has(x.id)) };
+  SIG = signature(DATA.sessions, DATA.entries);
+  draw();
 }
 
 // CLAMP is a character count rather than a measured height: an agent note runs
@@ -2008,6 +2123,52 @@ function buildLegend() {
   );
 }
 
+// ---- sidebar width ----
+
+// initGrip keeps the chosen width and re-clamps it when the window changes.
+function initGrip() {
+  const grip = document.getElementById("grip");
+  let want = +remembered("crew.roomsWidth", "") || ROOMS_MIN;
+  const apply = () => {
+    const w = roomsWidth(want);
+    document.documentElement.style.setProperty("--rooms-w", w + "px");
+    grip.setAttribute("aria-valuenow", w);
+    grip.setAttribute("aria-valuemax", roomsWidth(Infinity));
+  };
+  const set = (w) => {
+    want = roomsWidth(w);
+    apply();
+    remember("crew.roomsWidth", String(want));
+  };
+
+  let drag = null;
+  grip.addEventListener("pointerdown", (ev) => {
+    if (ev.button !== 0) return;
+    ev.preventDefault();  // keeps the drag from selecting text
+    drag = { x: ev.clientX, w: roomsWidth(want) };
+    grip.setPointerCapture(ev.pointerId);
+    grip.classList.add("active");
+    document.body.classList.add("resizing");
+  });
+  grip.addEventListener("pointermove", (ev) => {
+    if (drag) set(drag.w + drag.x - ev.clientX);
+  });
+  grip.addEventListener("lostpointercapture", () => {
+    drag = null;
+    grip.classList.remove("active");
+    document.body.classList.remove("resizing");
+  });
+  grip.addEventListener("dblclick", () => set(ROOMS_MIN));
+  grip.addEventListener("keydown", (ev) => {
+    const step = { ArrowLeft: 20, ArrowRight: -20 }[ev.key];
+    if (!step) return;
+    ev.preventDefault();
+    set(roomsWidth(want) + step);
+  });
+  addEventListener("resize", apply);
+  apply();
+}
+
 // ---- controls ----
 
 const usageBox = document.getElementById("opt-usage");
@@ -2034,6 +2195,7 @@ document.getElementById("recentre").addEventListener("click", recentre);
 
 buildLegend();
 initStage();
+initGrip();
 load().catch((err) => {
   document.getElementById("sub").textContent = "Failed to load: " + err.message;
 });
