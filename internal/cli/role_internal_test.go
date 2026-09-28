@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -15,22 +16,21 @@ import (
 	"github.com/codyhartsook/multiplayer/internal/store/sqlitestore"
 )
 
-// roleWorld registers codex sessions in this checkout's room under a temp
-// HOME and database, identifies the caller as the first, and returns them.
+// roleWorld seeds codex sessions in a temp repo's room and returns its root.
 func roleWorld(t *testing.T, ids ...string) (string, string, []*session.Session) {
 	t.Helper()
 	ctx := context.Background()
-	cwd, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
+	cwd := t.TempDir()
+	if out, err := exec.Command("git", "-C", cwd, "init", "-q").CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v\n%s", err, out)
 	}
+	t.Chdir(cwd)
 	loc, err := detect.New().Detect(ctx, cwd)
 	if err != nil {
 		t.Fatal(err)
 	}
-	home := t.TempDir()
 	path := filepath.Join(t.TempDir(), "sessions.db")
-	t.Setenv("HOME", home)
+	t.Setenv("HOME", t.TempDir())
 	t.Setenv("CREW_DB", path)
 	clearSessionEnv(t)
 	t.Setenv("CODEX_THREAD_ID", ids[0])
@@ -48,7 +48,7 @@ func roleWorld(t *testing.T, ids ...string) (string, string, []*session.Session)
 		}
 		out = append(out, sess)
 	}
-	return home, path, out
+	return loc.Repo.Root, path, out
 }
 
 // clearSessionEnv hides the harness running the tests, so only the identity a
@@ -62,14 +62,15 @@ func clearSessionEnv(t *testing.T) {
 	}
 }
 
-func roleSkillExists(home, alias string) (claude, codex bool) {
-	_, errClaude := os.Stat(filepath.Join(home, ".claude", "skills", "crew-role-"+alias, "SKILL.md"))
-	_, errCodex := os.Stat(filepath.Join(home, ".codex", "skills", "crew-role-"+alias, "SKILL.md"))
+// roleSkillExists reports the Claude copy (no Claude member here) and Codex's.
+func roleSkillExists(root, alias string) (claude, codex bool) {
+	_, errClaude := os.Stat(filepath.Join(root, ".claude", "skills", "crew-role-"+alias, "SKILL.md"))
+	_, errCodex := os.Stat(filepath.Join(root, ".agents", "skills", "crew-role-"+alias, "SKILL.md"))
 	return errClaude == nil, errCodex == nil
 }
 
 func TestRoleCommandPublishesAndDropsSkills(t *testing.T) {
-	home, path, sessions := roleWorld(t, "holder")
+	root, path, sessions := roleWorld(t, "holder")
 	alias := sessions[0].Alias
 
 	if err := run(t, "role", "Tester", "Runs the suite."); err == nil || !strings.Contains(err.Error(), "lowercase") {
@@ -78,10 +79,13 @@ func TestRoleCommandPublishesAndDropsSkills(t *testing.T) {
 	if err := run(t, "role", "tester", "Runs the suite and reports failures with file:line."); err != nil {
 		t.Fatalf("role: %v", err)
 	}
-	if claude, codex := roleSkillExists(home, alias); !claude || !codex {
-		t.Fatalf("role skill written = claude %v, codex %v, want both", claude, codex)
+	if claude, codex := roleSkillExists(root, alias); claude || !codex {
+		t.Fatalf("role skill written = claude %v, codex %v, want codex only", claude, codex)
 	}
-	got, err := os.ReadFile(filepath.Join(home, ".codex", "skills", "crew-role-"+alias, "SKILL.md"))
+	if out, err := exec.Command("git", "-C", root, "status", "--porcelain").Output(); err != nil || len(out) != 0 {
+		t.Errorf("git status = (%s, %v), want clean", out, err)
+	}
+	got, err := os.ReadFile(filepath.Join(root, ".agents", "skills", "crew-role-"+alias, "SKILL.md"))
 	if err != nil || !strings.Contains(string(got), `"`+alias+` holds the tester role in crew room `) {
 		t.Errorf("role skill = (%s, %v)", got, err)
 	}
@@ -102,7 +106,7 @@ func TestRoleCommandPublishesAndDropsSkills(t *testing.T) {
 	if err := run(t, "role", "--drop"); err != nil {
 		t.Fatalf("drop: %v", err)
 	}
-	if claude, codex := roleSkillExists(home, alias); claude || codex {
+	if claude, codex := roleSkillExists(root, alias); claude || codex {
 		t.Errorf("role skill after drop = claude %v, codex %v, want gone", claude, codex)
 	}
 }
@@ -179,4 +183,28 @@ func runOut(t *testing.T, args ...string) (string, error) {
 	root.SetErr(&out)
 	err := root.Execute()
 	return out.String(), err
+}
+
+func TestUninstallClearsRoomRoleSkills(t *testing.T) {
+	root, path, sessions := roleWorld(t, "holder")
+	if err := run(t, "role", "tester", "Runs the suite."); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := runOut(t, "uninstall"); err != nil || !strings.Contains(out, "role skills to remove: 1") {
+		t.Fatalf("uninstall dry run = (%s, %v)", out, err)
+	}
+	if err := run(t, "uninstall", "--yes"); err != nil {
+		t.Fatal(err)
+	}
+	if _, codex := roleSkillExists(root, sessions[0].Alias); codex {
+		t.Error("role skill survived uninstall")
+	}
+	st, err := sqlitestore.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if dirs, err := st.SkillDirs(context.Background()); err != nil || len(dirs) != 0 {
+		t.Errorf("recorded dirs after uninstall = (%v, %v), want none", dirs, err)
+	}
 }

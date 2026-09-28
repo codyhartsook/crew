@@ -17,6 +17,10 @@ CREATE TABLE IF NOT EXISTS role_assignments (
     description TEXT NOT NULL,
     assigned_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS role_skill_dirs (
+    dir TEXT PRIMARY KEY
+);
 `
 
 var _ store.RoleStore = (*Store)(nil)
@@ -83,6 +87,37 @@ func (s *Store) Roles(ctx context.Context, f store.RoleFilter) ([]*store.Role, e
 			return nil, fmt.Errorf("parse assigned_at: %w", err)
 		}
 		out = append(out, &r)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) RecordSkillDir(ctx context.Context, dir string) error {
+	if _, err := s.db.ExecContext(ctx, `INSERT OR IGNORE INTO role_skill_dirs (dir) VALUES (?)`, dir); err != nil {
+		return fmt.Errorf("record skill dir: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) ForgetSkillDir(ctx context.Context, dir string) error {
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM role_skill_dirs WHERE dir = ?`, dir); err != nil {
+		return fmt.Errorf("forget skill dir: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) SkillDirs(ctx context.Context) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT dir FROM role_skill_dirs ORDER BY dir`)
+	if err != nil {
+		return nil, fmt.Errorf("list skill dirs: %w", err)
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var dir string
+		if err := rows.Scan(&dir); err != nil {
+			return nil, fmt.Errorf("list skill dirs: %w", err)
+		}
+		out = append(out, dir)
 	}
 	return out, rows.Err()
 }

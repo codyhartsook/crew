@@ -20,6 +20,7 @@ import (
 	"github.com/codyhartsook/multiplayer/internal/detect"
 	"github.com/codyhartsook/multiplayer/internal/harness"
 	"github.com/codyhartsook/multiplayer/internal/hook"
+	"github.com/codyhartsook/multiplayer/internal/room"
 	"github.com/codyhartsook/multiplayer/internal/session"
 	"github.com/codyhartsook/multiplayer/internal/store"
 )
@@ -102,8 +103,13 @@ func runHook(cmd *cobra.Command, opts *cmdutil.Options, harnessFlag string) erro
 	recordUsage(ctx, st, h, payload, sessionKey)
 
 	injected, roomErr := roomsFor(ctx, st, payload.Event(), sess, sessionKey)
-	// After prune and after an end is recorded, so role skills match who is left.
-	if err := syncRoles(ctx, st); err != nil {
+	if payload.Event() == hook.EventStart {
+		// Claude misses skills written during its startup, so start doesn't sync.
+		if err := makeSkillsDir(sess); err != nil {
+			logHookError(opts, fmt.Errorf("create skills dir: %w", err))
+		}
+	} else if err := syncRoles(ctx, st); err != nil {
+		// After an end is recorded, so role skills match who is left.
 		logHookError(opts, fmt.Errorf("sync role skills: %w", err))
 	}
 	if writeErr := writeContext(cmd.OutOrStdout(), payload.Event(), injected); writeErr != nil {
@@ -119,6 +125,14 @@ func syncRoles(ctx context.Context, st store.Store) error {
 		return err
 	}
 	return skill.SyncRoles(ctx, home, st)
+}
+
+// makeSkillsDir creates the dir Claude watches for project skills mid-session.
+func makeSkillsDir(sess *session.Session) error {
+	if sess == nil || sess.Harness != session.HarnessClaude || sess.CWD == "" || len(room.For(sess.Place)) == 0 {
+		return nil
+	}
+	return os.MkdirAll(skill.ClaudeDir(sess.CWD), 0o755)
 }
 
 func resolveHarness(flag string) (session.Harness, error) {

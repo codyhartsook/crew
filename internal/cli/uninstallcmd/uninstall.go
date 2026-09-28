@@ -15,6 +15,7 @@ import (
 	"github.com/codyhartsook/multiplayer/internal/harness"
 	"github.com/codyhartsook/multiplayer/internal/harness/codex"
 	"github.com/codyhartsook/multiplayer/internal/session"
+	"github.com/codyhartsook/multiplayer/internal/store"
 )
 
 func New(opts *cmdutil.Options) *cobra.Command {
@@ -27,7 +28,8 @@ func New(opts *cmdutil.Options) *cobra.Command {
 		Use:   "uninstall",
 		Short: "Remove the hooks, skill and sandbox grant init added",
 		Long: `Removes only what init added: its own hook entries, the room skill, role
-skills, and Codex's sandbox grant. Other hooks and settings are left alone.
+skills wherever crew wrote them, and Codex's sandbox grant. Other hooks and
+settings are left alone. Git exclude lines stay.
 
 The store is your data and is kept unless you pass --purge. Without --yes
 nothing is removed; what would go is listed instead.`,
@@ -44,6 +46,10 @@ nothing is removed; what would go is listed instead.`,
 				if err := uninstallFrom(cmd, home, t, dryRun); err != nil {
 					return fmt.Errorf("%s: %w", t.Harness, err)
 				}
+			}
+
+			if err := removeRoomRoles(cmd, opts, dryRun); err != nil {
+				fmt.Fprintln(cmd.ErrOrStderr(), "crew: room role skills:", err)
 			}
 
 			if purge {
@@ -172,6 +178,50 @@ func uninstallFrom(cmd *cobra.Command, home string, t harness.Spec, dryRun bool)
 			verb = "would remove sandbox grant from"
 		}
 		fmt.Fprintf(out, "%s: %s %s\n", name, verb, sandboxPath)
+	}
+	return nil
+}
+
+// removeRoomRoles clears role skills from every directory sync wrote to.
+func removeRoomRoles(cmd *cobra.Command, opts *cmdutil.Options, dryRun bool) error {
+	path, err := opts.DBPath()
+	if err != nil || opts.Server != "" {
+		return err
+	}
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return nil
+	}
+	st, err := opts.OpenStore()
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	rs, ok := st.(store.RoleStore)
+	if !ok {
+		return nil
+	}
+	ctx := cmd.Context()
+	dirs, err := rs.SkillDirs(ctx)
+	if err != nil {
+		return err
+	}
+	for _, dir := range dirs {
+		n, err := skill.RemoveRoles(dir, dryRun)
+		if err != nil {
+			return err
+		}
+		if n > 0 {
+			verb := "role skills removed"
+			if dryRun {
+				verb = "role skills to remove"
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "%s: %s: %d\n", dir, verb, n)
+		}
+		if !dryRun {
+			if err := rs.ForgetSkillDir(ctx, dir); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }

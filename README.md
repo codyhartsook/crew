@@ -89,8 +89,8 @@ Address a request to one agent with
 assigned per live session and shown by `crew ls` and the dashboard.
 
 Tell an agent "you're the tester" and it runs `crew role tester "<description>"`.
-crew publishes a `crew-role-<alias>` skill so other agents send it matching
-work. The skill goes when the session ends.
+crew writes a `crew-role-<alias>` skill into the room's directories, so agents
+in that room send it matching work. The skill goes when the session ends.
 
 ## Folders
 
