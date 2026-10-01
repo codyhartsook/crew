@@ -74,9 +74,8 @@ func writeCodexRollout(t *testing.T, home, id, cwd, threadSource, originator str
 	}
 }
 
-// A guardian_review thread must never be adopted: only thread_source "user" is
-// a conversation a person is driving. Without this filter one terminal opening
-// a guardian review would register as a second session.
+// Only thread_source "user" is adopted; a guardian_review thread would
+// otherwise register as a second session.
 func TestLivenessAdoptsOnlyUserThreads(t *testing.T) {
 	home := codexHomeFixture(t)
 	cwd := t.TempDir()
@@ -166,10 +165,8 @@ func TestLivenessDoesNotReadoptARegisteredThread(t *testing.T) {
 	}
 }
 
-// last_seen takes the later of the stored value and the conversation file's
-// mtime: a stale one is pulled forward, a fresher one is left alone. This
-// covers both a codex session (rollout mtime via the thread source) and a
-// claude session (transcript mtime, which has no thread source at all).
+// last_seen takes the later of stored and mtime, for both codex (rollout) and
+// claude (transcript, no thread source).
 func TestLivenessRefreshesLastSeenToTheLaterOfStoredAndMtime(t *testing.T) {
 	home := codexHomeFixture(t)
 	cwd := t.TempDir()

@@ -1,8 +1,5 @@
-// Package store defines the persistence boundary for session records.
-//
-// Store is the only interface the hook, API and CLI depend on. The conformance
-// suite in internal/store/storetest holds every implementation to the same
-// semantics.
+// Package store defines the persistence boundary for session records. The
+// storetest suite holds every Store implementation to the same semantics.
 package store
 
 import (
@@ -30,14 +27,11 @@ type Filter struct {
 	Limit int
 }
 
-// Store persists agent session records.
-//
-// Implementations must be safe for concurrent use: several agent harnesses can
-// fire session hooks against the same store at the same moment.
+// Store persists agent session records. Implementations must be safe for
+// concurrent use, since several harnesses fire session hooks at once.
 type Store interface {
-	// Upsert records a session. A repeat write for the same key replaces the
-	// mutable fields and preserves StartedAt, so a resumed session keeps its
-	// original start time.
+	// Upsert records a session. A repeat write replaces mutable fields but
+	// preserves StartedAt, so a resumed session keeps its start time.
 	Upsert(ctx context.Context, s *session.Session) error
 
 	// End marks a session ended. It returns ErrNotFound if the key is unknown,
@@ -45,8 +39,7 @@ type Store interface {
 	End(ctx context.Context, key string, at time.Time, reason string) error
 
 	// Touch records that a session is still active at time at. It returns
-	// ErrNotFound for an unknown key and does nothing to a session that has
-	// already ended.
+	// ErrNotFound for an unknown key and ignores an already ended session.
 	Touch(ctx context.Context, key string, at time.Time) error
 
 	// SetUsage records what a session has spent. Reported by a turn, so it

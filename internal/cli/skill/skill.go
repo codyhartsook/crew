@@ -39,11 +39,8 @@ const (
 	Preserved // you edited it; a new version was left alongside
 )
 
-// Install writes content to path.
-//
-// Overwriting a hand-edited skill is the obvious way to get this wrong: the
-// skill is meant to be tuned once you see what agents actually write. A hash of
-// the last version this tool wrote distinguishes its own output from yours.
+// Install writes content to path. A hash of the last version this tool wrote
+// tells its output from a hand-edited skill, which must not be overwritten.
 func Install(path string, content []byte, dryRun bool) (Outcome, error) {
 	existing, err := os.ReadFile(path)
 	switch {
@@ -57,9 +54,8 @@ func Install(path string, content []byte, dryRun bool) (Outcome, error) {
 	}
 
 	if bytes.Equal(existing, content) {
-		// Content is ours even if no marker was recorded - an init from
-		// before the marker existed. Record it, or the next change would be
-		// mistaken for a local edit.
+		// Ours with no marker recorded (init predates markers). Record it,
+		// or the next change would look like a local edit.
 		if !dryRun && !Ours(path, existing) {
 			if err := writeMarker(path, existing, ""); err != nil {
 				return Unchanged, err

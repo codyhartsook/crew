@@ -23,24 +23,16 @@ type Reader interface {
 	Unread(ctx context.Context, sessionKey string) ([]*room.Entry, error)
 }
 
-// Broker wakes sessions that have entries addressed to them and have not been
-// told yet.
-//
-// Loop suppression comes from three places. Unread excludes a session's own
-// entries, so posting never wakes the author. The per-session cursor below
-// stops a repeat wake while the agent has still not read what it was told
-// about. And a sweep wakes a session at most once, so the interval bounds the
-// rate no matter how fast entries arrive.
+// Broker wakes sessions that have unread entries addressed to them. Unread
+// skips own entries, the woken cursor stops repeats, and a sweep wakes once.
 type Broker struct {
 	store    Reader
 	log      *slog.Logger
 	interval time.Duration
 	trigger  chan struct{}
 
-	// woken is the highest entry id each session has been woken for. It is
-	// touched only by Run's goroutine, so it needs no lock. Losing it on
-	// restart is harmless: a session with genuinely unread entries is woken
-	// once more, which is true rather than noisy.
+	// woken is the highest entry id each session was woken for. Only Run's
+	// goroutine touches it, so no lock; losing it on restart just re-wakes once.
 	woken map[string]int64
 	// notify is the harness call, injected so tests do not shell out.
 	notify notifyFunc
@@ -136,10 +128,8 @@ func (b *Broker) sweepSession(ctx context.Context, s *session.Session, authors r
 	return nil
 }
 
-// noticeText names what is waiting without reproducing it, so the agent reads
-// the room and acks rather than acting on a copy that may already be stale.
-// The sender is named, never keyed: an agent should not have to look up who
-// wrote to it.
+// noticeText names what is waiting without copying it, so the agent reads the
+// room rather than acting on a stale copy. The sender is named, never keyed.
 func noticeText(unread []*room.Entry, authors room.Authors) string {
 	newest := unread[len(unread)-1]
 	from := authors.Name(newest.Author)

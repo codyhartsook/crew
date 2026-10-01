@@ -21,9 +21,8 @@ import (
 	"github.com/codyhartsook/multiplayer/internal/store/storetest"
 )
 
-// Opening a room reveals its whole folder: the generated transcript of what
-// happened there, and the documents beside it. Opening only the documents is
-// the bug this guards.
+// Opening a room reveals its whole folder: the generated transcript and the
+// documents. Opening only the documents is the bug this guards.
 func TestOpenRoomDocuments(t *testing.T) {
 	st, err := sqlitestore.Open(filepath.Join(t.TempDir(), "sessions.db"))
 	if err != nil {
@@ -182,9 +181,8 @@ func TestOpenRoomIsLocalOnly(t *testing.T) {
 	}
 }
 
-// TestAPIConformance runs the store conformance suite through the HTTP API, so
-// the server and its client are held to exactly the semantics the local store
-// provides.
+// TestAPIConformance runs the store conformance suite through the HTTP API,
+// holding server and client to the local store's semantics.
 func TestAPIConformance(t *testing.T) {
 	storetest.Run(t, func(t *testing.T) store.Store {
 		backing, err := sqlitestore.Open(filepath.Join(t.TempDir(), "sessions.db"))

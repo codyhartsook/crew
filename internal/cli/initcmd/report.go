@@ -44,11 +44,8 @@ func state(dryRun, changed bool) stepState {
 	}
 }
 
-// report renders the checklist: a section per harness, a step per hook.
-//
-// Steps are buffered rather than printed as they land. Re-running init is the
-// common case and changes nothing, so a run that reports every unchanged item
-// spends the reader's attention on news that is not there.
+// report renders the checklist: a section per harness, a step per hook. Steps
+// are buffered so a no-op re-run does not print every unchanged item.
 type report struct {
 	out     io.Writer
 	view    initView
@@ -127,9 +124,8 @@ func (r *report) pause(ctx context.Context, label string) {
 	}
 }
 
-// initView renders styled text via lipgloss, bound to the destination
-// writer. Color and pacing both need a terminal: a pipe, a test, or
-// NO_COLOR falls back to plain strings at full speed.
+// initView renders lipgloss text for one writer. A pipe, a test, or NO_COLOR
+// falls back to plain strings at full speed.
 type initView struct {
 	color   bool
 	animate bool

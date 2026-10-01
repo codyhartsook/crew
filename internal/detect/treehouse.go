@@ -12,9 +12,8 @@ const (
 	// treehouseStateFile is the pool manifest treehouse maintains next to its
 	// numbered worktree slots.
 	treehouseStateFile = "treehouse-state.json"
-	// treehouseMaxAscent bounds the walk toward the filesystem root. A pool
-	// worktree sits two levels below its manifest; the headroom covers
-	// in-project pools.
+	// treehouseMaxAscent bounds the walk to the root: a pool worktree sits two
+	// levels below its manifest, with headroom for in-project pools.
 	treehouseMaxAscent = 6
 )
 
@@ -34,9 +33,8 @@ type treehouse struct{}
 
 func (treehouse) Name() string { return "treehouse" }
 
-// Lookup walks up to the manifest and matches on the recorded path rather than
-// pattern-matching TREEHOUSE_ROOT, so a pool relocated with --root, or an
-// in-project one, is still found.
+// Lookup walks up to the manifest and matches the recorded path, not the
+// TREEHOUSE_ROOT pattern, so relocated or in-project pools are still found.
 func (t treehouse) Lookup(worktreeRoot string) (*session.Pool, error) {
 	root := normalize(worktreeRoot)
 	if root == "" {
@@ -59,9 +57,8 @@ func (t treehouse) Lookup(worktreeRoot string) (*session.Pool, error) {
 	return nil, nil
 }
 
-// match returns the slot whose recorded path is worktreeRoot. Finding the
-// manifest but no matching slot is not an error: the checkout sits under a pool
-// directory without being one of its worktrees.
+// match returns the slot recorded at worktreeRoot. No match is not an error: the
+// checkout sits under a pool directory without being one of its worktrees.
 func (t treehouse) match(manifest, poolDir, worktreeRoot string) (*session.Pool, error) {
 	data, err := os.ReadFile(manifest)
 	if err != nil {

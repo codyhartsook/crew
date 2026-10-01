@@ -52,9 +52,8 @@ func consumeCodexLine(raw []byte, s *Snapshot) bool {
 	return true
 }
 
-// FindCodexRollout locates a thread's rollout under codexHome. Prefer an exact
-// session id in the filename; older Codex rollouts may only share its prefix,
-// which is safe only when that match is unique.
+// FindCodexRollout locates a thread's rollout under codexHome. An exact session
+// id in the filename wins; a shared prefix (older rollouts) is safe only if unique.
 func FindCodexRollout(codexHome, threadID string) (string, error) {
 	prefix, _, ok := strings.Cut(threadID, "-")
 	if !ok || prefix == "" {

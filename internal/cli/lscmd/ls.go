@@ -95,9 +95,8 @@ type jsonRow struct {
 	Role *store.Role `json:"role,omitempty"`
 }
 
-// sessionColumns is what ls shows. An agent addresses agents by alias, so the
-// session id is a person's column, and the default filter is already
-// active-only, so is the status.
+// sessionColumns is what ls shows. Session id and status are Human-only: agents
+// use aliases, and the default filter is already active-only.
 var sessionColumns = []view.Column{
 	{Name: "AGENT"},
 	{Name: "HARNESS"},
@@ -193,8 +192,7 @@ func branchOf(s *session.Session) string {
 }
 
 // worktreeOf names the checkout: the pool slot for a lent-out worktree, the
-// directory name for any other linked worktree, and "main" for the primary
-// checkout.
+// directory name for other linked worktrees, and "main" for the primary one.
 func worktreeOf(s *session.Session) string {
 	if s.Pool != nil {
 		return s.Pool.Name + "/" + s.Pool.Slot

@@ -21,9 +21,8 @@ const gitTimeout = 3 * time.Second
 // ErrGitMissing reports that no git binary is on PATH.
 var ErrGitMissing = errors.New("git not found on PATH")
 
-// runGit runs git in dir and returns its trimmed stdout. The second return
-// value is false when git exited non-zero, which callers treat as "this
-// question has no answer here" rather than as a failure.
+// runGit runs git in dir and returns its trimmed stdout. The bool is false on a
+// non-zero exit, which callers treat as "no answer here", not a failure.
 func runGit(ctx context.Context, dir string, args ...string) (string, bool, error) {
 	ctx, cancel := context.WithTimeout(ctx, gitTimeout)
 	defer cancel()
@@ -44,9 +43,8 @@ func runGit(ctx context.Context, dir string, args ...string) (string, bool, erro
 		return out, true, nil
 	}
 
-	// A killed process reports an ExitError, so only the context distinguishes
-	// "git timed out" from "git answered no" - and the latter would record the
-	// session as if it were outside any checkout.
+	// Only the context tells a timeout from "git answered no", which would
+	// wrongly record the session as outside any checkout.
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return "", false, fmt.Errorf("git %s: %w", args[0], ctxErr)
 	}
@@ -69,9 +67,8 @@ func (gitAnchor) Name() string { return "git" }
 func (gitAnchor) Lookup(ctx context.Context, dir string) (*session.Place, error) {
 	repo, err := gitRepo(ctx, dir)
 	if err != nil {
-		// No git binary is a definite answer everywhere on this machine, so
-		// the next anchor gets its turn. Any other failure is local and
-		// unresolved, and must not let a later anchor claim this directory.
+		// No git binary is a definite answer, so the next anchor runs. Other failures
+		// are unresolved and must not let a later anchor claim this directory.
 		if errors.Is(err, ErrGitMissing) {
 			return nil, fmt.Errorf("%w: %w", ErrAnchorUnavailable, err)
 		}
@@ -84,12 +81,10 @@ func (gitAnchor) Lookup(ctx context.Context, dir string) (*session.Place, error)
 }
 
 // gitRepo describes the checkout containing dir. It returns (nil, nil) when dir
-// is not inside a git working tree, which is an ordinary outcome: agents are
-// often started somewhere that is not a repo.
+// is not in a git working tree, an ordinary outcome.
 func gitRepo(ctx context.Context, dir string) (*session.Repo, error) {
-	// --path-format=absolute matters: without it the git dirs are reported
-	// relative to the process cwd, so running from a subdirectory yields
-	// "../.git" instead of a usable path.
+	// --path-format=absolute matters: otherwise git dirs are relative to the cwd,
+	// giving "../.git" from a subdirectory.
 	out, ok, err := runGit(ctx, dir, "rev-parse", "--path-format=absolute",
 		"--show-toplevel", "--git-dir", "--git-common-dir")
 	if err != nil {
@@ -109,9 +104,8 @@ func gitRepo(ctx context.Context, dir string) (*session.Repo, error) {
 
 	repo := &session.Repo{
 		Root: root,
-		// The two dirs differ exactly in a linked worktree, whatever the
-		// layout. Comparing paths instead misreads submodules and
-		// --separate-git-dir checkouts as worktrees.
+		// The two dirs differ exactly in a linked worktree. Comparing paths misreads
+		// submodules and --separate-git-dir checkouts as worktrees.
 		IsWorktree: gitDir != commonDir,
 	}
 	repo.MainRoot = mainRootFrom(root, commonDir, repo.IsWorktree)
@@ -143,9 +137,8 @@ func gitRepo(ctx context.Context, dir string) (*session.Repo, error) {
 	return repo, nil
 }
 
-// mainRootFrom identifies the repository a worktree belongs to. Normally that
-// is the checkout holding .git; a bare host or --separate-git-dir has no
-// primary checkout, so the common dir stands in for it.
+// mainRootFrom identifies the repository a worktree belongs to: the checkout
+// holding .git, or the common dir when a bare host has no primary checkout.
 func mainRootFrom(root, commonDir string, isWorktree bool) string {
 	if !isWorktree {
 		return root

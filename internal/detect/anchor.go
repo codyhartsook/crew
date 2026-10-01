@@ -17,11 +17,8 @@ type Anchor interface {
 	Lookup(ctx context.Context, dir string) (*session.Place, error)
 }
 
-// ErrAnchorUnavailable reports that an anchor cannot run on this machine at
-// all - git is not installed, say. The chain moves on, because a later anchor
-// may still recognize the directory. Any other error stops the chain: an
-// anchor that failed to answer might have owned this directory, and letting a
-// later one claim it would file the session in the wrong room.
+// ErrAnchorUnavailable reports that an anchor cannot run here, so the chain moves
+// on. Any other error stops it, so a later anchor cannot claim the directory.
 var ErrAnchorUnavailable = errors.New("anchor unavailable")
 
 // anchors are tried in order, first match winning. Git leads: honouring a

@@ -1,6 +1,5 @@
 // Package storetest is a conformance suite every store.Store implementation
-// must pass, so a new backend satisfies one interface and runs one test rather
-// than rediscovering the semantics the hook relies on.
+// must pass, so backends share one set of semantics.
 package storetest
 
 import (

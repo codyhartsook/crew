@@ -16,8 +16,8 @@ repository.
 Build from source with Go 1.26.5 and make:
 
 ```sh
-git clone https://github.com/codyhartsook/multiplayer.git
-cd multiplayer
+git clone https://github.com/codyhartsook/crew.git
+cd crew
 make install
 ```
 

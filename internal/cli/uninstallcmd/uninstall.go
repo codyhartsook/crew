@@ -98,9 +98,8 @@ func uninstallFrom(cmd *cobra.Command, home string, t harness.Spec, dryRun bool)
 		return err
 	}
 	if len(original) > 0 {
-		// An empty tracked set makes the same merge that installs also
-		// uninstall: every managed event is visited and this tool's entries
-		// swept.
+		// An empty tracked set turns the install merge into an uninstall, sweeping
+		// this tool's entries from every managed event.
 		hooks := hookconfig.Merge(hookconfig.MapAt(config, t.ConfigRoot), nil, "", name)
 		if len(hooks) == 0 {
 			delete(config, t.ConfigRoot)

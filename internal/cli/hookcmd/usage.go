@@ -9,12 +9,8 @@ import (
 	"github.com/codyhartsook/multiplayer/internal/store"
 )
 
-// recordUsage stores what the session has spent so work can be routed to the
-// agent with the most headroom. Neither harness puts usage in its payload, so
-// it is read from the file each one writes.
-//
-// Best effort throughout: usage is a routing hint, and failing to read it must
-// never disturb a session.
+// recordUsage stores session spend so work can route to the agent with the most
+// headroom. Best effort: a failed read must never disturb a session.
 func recordUsage(ctx context.Context, st store.Store, h session.Harness, p hook.Payload, sessionKey string) {
 	if sessionKey == "" {
 		return

@@ -84,9 +84,8 @@ VALUES ('/src/widget', 'worktree', 'decision', 'codex:a', 'chose sqlite', '2026-
 	}
 }
 
-// Adding columns is additive, so a version 5 database must come forward in
-// place. Room entries are the durable data here; making people throw them away
-// for a column add is the wrong trade.
+// Adding columns is additive, so a version 5 database must migrate in place and
+// keep its room entries.
 func TestOpenMigratesAdditively(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "v5.db")
 	ctx := context.Background()

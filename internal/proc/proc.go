@@ -19,11 +19,8 @@ type Process struct {
 
 type Table map[int]Process
 
-// Snapshot reads every running process in one pass. Callers checking many pids
-// should take one snapshot rather than probing each in turn.
-//
-// It can fail or come back empty where a sandbox blocks process inspection,
-// which callers must treat as "cannot tell" rather than "nothing is running".
+// Snapshot reads every running process in one pass. It can fail or come back
+// empty under a sandbox, which callers must treat as "cannot tell", not "nothing running".
 func Snapshot() (Table, error) {
 	out, err := exec.Command("ps", "-eo", "pid=,ppid=,comm=").Output()
 	if err != nil {
@@ -45,9 +42,8 @@ func Snapshot() (Table, error) {
 	return table, nil
 }
 
-// Running reports whether pid is live and its command still looks like want.
-// Checking the command guards against a recycled pid being mistaken for the
-// original process; an empty want checks existence only.
+// Running reports whether pid is live and its command still looks like want,
+// guarding against a recycled pid. An empty want checks existence only.
 func (t Table) Running(pid int, want string) bool {
 	p, ok := t[pid]
 	if !ok {

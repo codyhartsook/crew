@@ -1,14 +1,11 @@
-// Package usage records a session's context and token use.
-//
-// Neither harness puts usage in its hook payload, but both write it to a local
-// file the hook can read: Claude to its transcript, Codex to its rollout.
+// Package usage records a session's context and token use, read from local
+// files: Claude's transcript and Codex's rollout (hook payloads carry none).
 package usage
 
 import "time"
 
-// Snapshot is what one session has spent. Zero fields mean "not known", which
-// is normal: a harness may not report a figure, and a missing one must never
-// read as zero spend.
+// Snapshot is what one session has spent. Zero fields mean "not known", so a
+// missing figure must never read as zero spend.
 type Snapshot struct {
 	Model string `json:"model,omitempty"`
 	// ContextWindow is the model's capacity in tokens.
@@ -16,9 +13,8 @@ type Snapshot struct {
 	// ContextUsed is the latest request's input, which is what occupies the
 	// window right now. It does not grow monotonically: a compaction drops it.
 	ContextUsed int `json:"context_used,omitempty"`
-	// InputTokens and OutputTokens are cumulative over the session.
-	// CachedInputTokens is the share of InputTokens served from cache, kept
-	// apart because it is billed at a fraction of the input rate.
+	// InputTokens and OutputTokens are cumulative. CachedInputTokens is the part of
+	// InputTokens served from cache, kept apart as it bills at a fraction of the rate.
 	InputTokens       int64     `json:"input_tokens,omitempty"`
 	CachedInputTokens int64     `json:"cached_input_tokens,omitempty"`
 	OutputTokens      int64     `json:"output_tokens,omitempty"`
@@ -30,9 +26,8 @@ func (s Snapshot) Known() bool {
 	return s.ContextUsed > 0 || s.InputTokens > 0 || s.OutputTokens > 0
 }
 
-// Headroom is the share of the context window still free, from 0 to 1. The
-// second result is false when the window or its occupancy is unknown, so a
-// caller ranks on what it actually measured rather than on a default.
+// Headroom is the share of the context window still free, from 0 to 1. The bool
+// is false when the window or occupancy is unknown, so callers do not rank on a default.
 func (s Snapshot) Headroom() (float64, bool) {
 	if s.ContextWindow <= 0 || s.ContextUsed <= 0 {
 		return 0, false

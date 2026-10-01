@@ -1,7 +1,5 @@
 // Package hook turns a harness session-lifecycle hook into a store record.
-//
-// Claude Code and Codex share a hook wire format, which is why one binary
-// serves both; the hook configuration names which harness is calling.
+// Claude Code and Codex share a hook wire format, so one binary serves both.
 package hook
 
 import (
@@ -68,9 +66,8 @@ type Payload struct {
 	TurnID         string `json:"turn_id"`
 }
 
-// ParsePayload reads a hook payload from r. Empty input is not an error: it
-// yields a zero payload and Record falls back to the environment, so a harness
-// that sends nothing cannot break the session.
+// ParsePayload reads a hook payload from r. Empty input is not an error: Record
+// falls back to the environment, so a silent harness cannot break the session.
 func ParsePayload(r io.Reader) (Payload, error) {
 	data, err := io.ReadAll(io.LimitReader(r, 1<<20))
 	if err != nil {
@@ -86,9 +83,8 @@ func ParsePayload(r io.Reader) (Payload, error) {
 	return p, nil
 }
 
-// Event normalizes the payload's event name. Both harnesses send PascalCase on
-// the wire while naming the same events in snake_case in configuration, so both
-// spellings are accepted.
+// Event normalizes the payload's event name. The wire is PascalCase but config
+// uses snake_case, so both spellings are accepted.
 func (p Payload) Event() Event {
 	switch strings.ToLower(strings.ReplaceAll(p.HookEventName, "_", "")) {
 	case "sessionstart":
@@ -102,9 +98,8 @@ func (p Payload) Event() Event {
 	}
 }
 
-// BudgetFor is how long the hook may take to handle this payload. Only the start
-// path does git work; the others run in front of the user every turn, and each
-// harness caps the session-end hook differently.
+// BudgetFor is how long the hook may take for this payload. Only start does git
+// work; the rest run in front of the user, and harnesses cap session-end differently.
 func BudgetFor(h session.Harness, p Payload) time.Duration {
 	if p.Event() == EventStart {
 		return StartBudget
@@ -170,9 +165,8 @@ func (r *Recorder) recordStart(ctx context.Context, harness session.Harness, p P
 	return sess, errors.Join(r.Store.Upsert(ctx, sess), detectErr)
 }
 
-// buildStart assembles a start record and detects where it is working, without
-// storing it. Location detection is best effort: a session outside a git
-// checkout, or one whose git call fails, is still worth recording.
+// buildStart assembles a start record and detects its location, without storing
+// it. Detection is best effort: a session outside git is still worth recording.
 func (r *Recorder) buildStart(ctx context.Context, harness session.Harness, p Payload, at time.Time) (*session.Session, error) {
 	sess := newSession(harness, p, at)
 	loc, detectErr := r.detect(ctx, p.CWD)
@@ -180,18 +174,14 @@ func (r *Recorder) buildStart(ctx context.Context, harness session.Harness, p Pa
 	return sess, detectErr
 }
 
-// Adopt assembles the session a start event would record, without storing it,
-// for a caller that learned of the session from a harness's own records rather
-// than from a hook. The pid and timestamps newSession infers from the calling
-// process do not apply to such a session, so they are the caller's to set
-// before it stores the result once.
+// Adopt assembles the session a start event would record, without storing it, for
+// a session learned from harness records. The caller sets the pid and timestamps.
 func (r *Recorder) Adopt(ctx context.Context, harness session.Harness, p Payload) (*session.Session, error) {
 	return r.buildStart(ctx, harness, p, r.at())
 }
 
-// recordEnd closes out a session. The common case touches no git: only the key
-// is needed. Detection runs only for a session the store never saw - hook
-// installed mid-session, or store reset - recorded already-ended.
+// recordEnd closes out a session. The common case touches no git; detection runs
+// only for a session the store never saw (hook installed mid-session, or reset).
 func (r *Recorder) recordEnd(ctx context.Context, harness session.Harness, p Payload, at time.Time) (*session.Session, error) {
 	sess := newSession(harness, p, at)
 	sess.Status = session.StatusEnded
@@ -236,9 +226,8 @@ func applyLocation(sess *session.Session, place *session.Place) {
 	sess.Place = *place
 }
 
-// detect resolves the session's location, preferring the cwd the harness
-// reported and falling back to the hook process's own working directory, which
-// the harness sets to the session root.
+// detect resolves the session's location from the payload cwd, falling back to
+// the hook's working directory, which the harness sets to the session root.
 func (r *Recorder) detect(ctx context.Context, payloadCWD string) (*session.Place, error) {
 	cwd := payloadCWD
 	if cwd == "" {
@@ -256,8 +245,7 @@ func (r *Recorder) detect(ctx context.Context, payloadCWD string) (*session.Plac
 }
 
 // harnessPID identifies the harness process this hook belongs to. The parent is
-// normally it, but a harness that spawns hooks through a shell would record a
-// pid that exits at once - indistinguishable from a dead session when reaping.
+// usually it, but via a shell it is a short-lived pid that reaping reads as dead.
 func harnessPID(h session.Harness) int {
 	parent := os.Getppid()
 	table, err := proc.Snapshot()

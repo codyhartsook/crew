@@ -1,7 +1,5 @@
-// Package httpstore implements store.Store against the registry HTTP API.
-//
-// Satisfying the same interface as the local store means the API is held to the
-// same conformance suite, and callers cannot tell which they got.
+// Package httpstore implements store.Store against the registry HTTP API. It
+// runs the local store's conformance suite, so callers cannot tell them apart.
 package httpstore
 
 import (

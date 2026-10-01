@@ -12,9 +12,8 @@ import (
 	"github.com/codyhartsook/multiplayer/internal/session"
 )
 
-// Detector resolves a working directory into a place. The hook depends on this
-// interface rather than the concrete implementation so tests can supply a fixed
-// place without a git binary or a real pool on disk.
+// Detector resolves a working directory into a place. Hooks use the interface so
+// tests can supply a fixed place without git or a real pool.
 type Detector interface {
 	Detect(ctx context.Context, cwd string) (*session.Place, error)
 }
@@ -60,9 +59,8 @@ func (l *Local) Detect(ctx context.Context, cwd string) (*session.Place, error) 
 	return place, nil
 }
 
-// normalize makes a path absolute and resolves symlinks so that paths coming
-// from different sources - a hook payload, a pool manifest, git output -
-// compare equal. On macOS this collapses /var against /private/var.
+// normalize makes a path absolute and resolves symlinks so paths from different
+// sources compare equal (macOS: /var vs /private/var).
 func normalize(path string) string {
 	if path == "" {
 		return ""

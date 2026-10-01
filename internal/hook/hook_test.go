@@ -81,9 +81,8 @@ func TestPayloadEvent(t *testing.T) {
 	}
 }
 
-// fixedDetector stands in for the git and pool probes so recorder tests
-// do not need a real checkout on disk. It counts calls, which is how the tests
-// assert that the end path avoids git work it does not need.
+// fixedDetector stands in for the git and pool probes so tests need no checkout.
+// It counts calls to assert the end path avoids git work.
 type fixedDetector struct {
 	loc   *session.Place
 	err   error

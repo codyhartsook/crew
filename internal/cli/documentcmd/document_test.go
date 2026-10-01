@@ -62,6 +62,15 @@ func TestPublishAndOpen(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "plan.md")); err != nil {
 		t.Fatalf("published document: %v", err)
 	}
+	ls := newLs(opts)
+	var listed bytes.Buffer
+	ls.SetOut(&listed)
+	if err := ls.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(listed.String(), "plan.md") {
+		t.Errorf("docs ls output missing plan.md:\n%s", &listed)
+	}
 	open := newOpen(opts)
 	open.SetArgs([]string{"--no-open"})
 	open.SetOut(new(bytes.Buffer))

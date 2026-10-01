@@ -222,9 +222,8 @@ func TestDetectHungGitIsAnError(t *testing.T) {
 	}
 }
 
-// A submodule is its own primary checkout with its git dir parked under the
-// superproject. Deriving the repository from the common dir's parent named it
-// after the containing directory and made sibling submodules share one room.
+// A submodule keeps its git dir under the superproject. Naming the repo from the
+// common dir's parent made sibling submodules share one room.
 func TestDetectSubmodule(t *testing.T) {
 	base := t.TempDir()
 	lib := initRepo(t, filepath.Join(base, "lib"))

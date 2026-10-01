@@ -41,42 +41,60 @@ func New(opts *cmdutil.Options) *cobra.Command {
 		Short:   "List, publish or open this room's documents",
 		Long:    "Lists this room's documents. A shell without an agent identity is treated as the local person.",
 		Args:    cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			rc, err := roomctx.Open(cmd.Context(), opts, roomctx.Cwd())
-			if err != nil {
-				return err
-			}
-			defer rc.Close()
-			r, _, err := resolve(cmd.Context(), rc, isHuman(), target)
-			if err != nil {
-				return err
-			}
-			dir, err := documentDir(opts, r.Key)
-			if err != nil {
-				return err
-			}
-			if path {
-				fmt.Fprintln(cmd.OutOrStdout(), dir)
-				return nil
-			}
-			docs, err := documents.List(dir)
-			if err != nil {
-				return err
-			}
-			fmt.Fprintf(cmd.OutOrStdout(), "%s (%s)  %s\n", r.Name, r.Scope, dir)
-			if len(docs) == 0 {
-				fmt.Fprintln(cmd.OutOrStdout(), "No documents yet.")
-				return nil
-			}
-			for _, doc := range docs {
-				fmt.Fprintln(cmd.OutOrStdout(), doc.Name)
-			}
-			return nil
-		},
+		RunE:    listRun(opts, &target, &path),
 	}
 	target.bind(cmd)
 	cmd.Flags().BoolVar(&path, "path", false, "print only the document directory")
-	cmd.AddCommand(newPublish(opts), newUnpublish(opts), newOpen(opts))
+	cmd.AddCommand(newLs(opts), newPublish(opts), newUnpublish(opts), newOpen(opts))
+	return cmd
+}
+
+// listRun prints the room's documents, or only their directory with path.
+func listRun(opts *cmdutil.Options, target *targetFlags, path *bool) func(*cobra.Command, []string) error {
+	return func(cmd *cobra.Command, _ []string) error {
+		rc, err := roomctx.Open(cmd.Context(), opts, roomctx.Cwd())
+		if err != nil {
+			return err
+		}
+		defer rc.Close()
+		r, _, err := resolve(cmd.Context(), rc, isHuman(), *target)
+		if err != nil {
+			return err
+		}
+		dir, err := documentDir(opts, r.Key)
+		if err != nil {
+			return err
+		}
+		if *path {
+			fmt.Fprintln(cmd.OutOrStdout(), dir)
+			return nil
+		}
+		docs, err := documents.List(dir)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(cmd.OutOrStdout(), "%s (%s)  %s\n", r.Name, r.Scope, dir)
+		if len(docs) == 0 {
+			fmt.Fprintln(cmd.OutOrStdout(), "No documents yet.")
+			return nil
+		}
+		for _, doc := range docs {
+			fmt.Fprintln(cmd.OutOrStdout(), doc.Name)
+		}
+		return nil
+	}
+}
+
+func newLs(opts *cmdutil.Options) *cobra.Command {
+	var target targetFlags
+	cmd := &cobra.Command{
+		Use:     "ls",
+		Aliases: []string{"list"},
+		Short:   "List this room's documents",
+		Args:    cobra.NoArgs,
+		RunE:    listRun(opts, &target, new(bool)),
+	}
+	target.bind(cmd)
 	return cmd
 }
 

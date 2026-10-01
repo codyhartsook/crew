@@ -87,9 +87,8 @@ func sourceFor(src thread.Source) func(session.Harness) thread.Source {
 	return func(session.Harness) thread.Source { return src }
 }
 
-// A thread source that says a session is still open overrides a pid that
-// looks dead: this is the missing-session bug, a live thread whose recorded
-// pid does not match a running process.
+// An open thread overrides a dead-looking pid: the missing-session bug, where
+// a live thread's recorded pid matches no running process.
 func TestDeadAmongThreadSourceSaysOpenKeepsADeadPidAlive(t *testing.T) {
 	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
 	old := now.Add(-time.Hour)
@@ -102,9 +101,8 @@ func TestDeadAmongThreadSourceSaysOpenKeepsADeadPidAlive(t *testing.T) {
 	}
 }
 
-// A thread source that says a session is absent overrides a pid that looks
-// alive: this is the ghost-session bug, a daemon pid that outlives every
-// thread it ever hosted.
+// An absent thread overrides a live-looking pid: the ghost-session bug, where
+// a daemon pid outlives every thread it hosted.
 func TestDeadAmongThreadSourceSaysAbsentReapsALiveDaemonPid(t *testing.T) {
 	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
 	old := now.Add(-time.Hour)
@@ -135,9 +133,8 @@ func TestDeadAmongThreadSourceErrorFallsBackToPid(t *testing.T) {
 	}
 }
 
-// An empty open set must not be read as "nothing is open": an older codex
-// that writes no locks, or a different CODEX_HOME, would otherwise reap every
-// session of that harness at once.
+// An empty open set means cannot tell, not nothing open: an older codex with no
+// locks, or a different CODEX_HOME, would otherwise reap every session.
 func TestDeadAmongThreadSourceEmptyFallsBackRatherThanReapingEverything(t *testing.T) {
 	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
 	old := now.Add(-time.Hour)

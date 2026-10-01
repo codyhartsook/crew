@@ -34,9 +34,8 @@ func FromEnv() *Options {
 	return &Options{DB: os.Getenv(EnvDB), Server: os.Getenv(EnvServer)}
 }
 
-// OpenStore returns the store the flags select: a registry server when one is
-// configured, otherwise the local SQLite database. Both satisfy store.Store, so
-// no command needs to know which it got.
+// OpenStore returns a registry server store when configured, otherwise the
+// local SQLite database. Both satisfy store.Store.
 func (o *Options) OpenStore() (store.Store, error) {
 	if o.Server != "" {
 		return httpstore.New(o.Server), nil
