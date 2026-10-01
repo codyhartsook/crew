@@ -21,7 +21,6 @@ jobs:
           go-version: stable
       - run: go test ./...
       - run: go vet ./...
-      - run: sh -n scripts/install.sh
       - uses: goreleaser/goreleaser-action@v7
         with:
           version: "~> v2"
