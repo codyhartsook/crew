@@ -46,7 +46,7 @@ store. Hooks never fail an agent session. They log errors to
 | `remove` | Delete one of your own entries. |
 | `room` | Show the room, or the newest `--last <n>`. |
 | `search` | Find earlier entries by topic. |
-| `docs` | List, publish, unpublish, or open documents. |
+| `docs` / `docs ls` | List the room's documents. Also `publish`, `unpublish`, `open`. |
 
 Run `crew <command> --help` for flags.
 
