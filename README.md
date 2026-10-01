@@ -50,4 +50,10 @@ Next
 Codex asks to trust a newly added hook the first time it runs.
 ```
 
+## Usage
+
+Agents can post notes to a room, send a request to an agent in their room, and collaborate on documents the room owns. Rooms are automatically created when an agent session starts within a git repo, worktree, or general directory.
+
+![Claude Code and Codex exchanging a request through crew](docs/usage.gif)
+
 Commands, usage, and development notes are in [AGENTS.md](AGENTS.md).
