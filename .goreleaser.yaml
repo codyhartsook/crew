@@ -1,5 +1,5 @@
 version: 2
-project_name: multiplayer
+project_name: crew
 
 builds:
   - main: ./cmd/crew

@@ -20,11 +20,11 @@ Releases are immutable version tags. Build and publish them from the current
    ```
 
 3. Open the `release` workflow. Its `verify` job runs tests, vet, and
-   `goreleaser check`. The publishing job then waits for the
-   `release` environment approval.
+   `goreleaser check`. The publishing job then starts on its own: this repo has
+   no required reviewers on the `release` environment.
 
-4. Approve the deployment after checking the tag and workflow output. GoReleaser
-   creates the GitHub Release, platform archives, and `checksums.txt`.
+4. Check the workflow output. GoReleaser creates the GitHub Release, the
+   `crew_<os>_<arch>.tar.gz` archives, and `checksums.txt`.
 
 5. Download an archive from the GitHub Release, extract it, and run
    `./crew --version`.
