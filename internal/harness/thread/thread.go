@@ -1,6 +1,5 @@
-// Package thread reports the conversations a harness has open right now, from
-// its own on-disk records rather than the process table. One harness process
-// can host many conversations, so a pid says nothing about which are live.
+// Package thread reports a harness's open conversations from its own on-disk
+// records, since one process can host many and a pid cannot say which are live.
 package thread
 
 import "time"

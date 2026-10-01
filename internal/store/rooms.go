@@ -23,9 +23,8 @@ type RoomStore interface {
 	// Members lists the sessions listening to a room.
 	Members(ctx context.Context, roomKey string) ([]*room.Membership, error)
 
-	// Post appends an entry and assigns its ID. Entry ids are monotonic across
-	// every room, which is what lets a single per-session cursor track what has
-	// been delivered.
+	// Post appends an entry and assigns its ID. IDs are monotonic across every
+	// room, so one per-session cursor tracks what has been delivered.
 	Post(ctx context.Context, e *room.Entry) error
 
 	// Entries lists entries matching f, oldest first.

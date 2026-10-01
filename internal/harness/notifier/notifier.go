@@ -1,6 +1,5 @@
-// Package notifier is the seam between the harness registry and each harness's
-// own way of reaching a live session. A harness package implements a Notifier;
-// the registry stores one per row.
+// Package notifier is the seam between the harness registry and each harness's own
+// way of reaching a live session; the registry stores one Notifier per row.
 package notifier
 
 import (

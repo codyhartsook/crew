@@ -20,9 +20,8 @@ func dashboardPage() http.Handler {
 	return page(crewHTML)
 }
 
-// tablePage serves the older row-per-session view at /table. The ring is better
-// for noticing, a table is better for reading, and the table costs nothing to
-// keep.
+// tablePage serves the older row-per-session view at /table, better for
+// reading than the ring.
 func tablePage() http.Handler {
 	return page(indexHTML)
 }

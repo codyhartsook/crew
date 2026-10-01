@@ -17,9 +17,8 @@ import (
 // trash holds removed documents. Dotted, so a listing skips it.
 const trash = ".trash"
 
-// Publishing and removing announce themselves in the room timeline. The
-// prefixes are the contract the dashboard reads to render an artifact event
-// rather than another wall of note text.
+// Publishing and removing post these prefixed notes to the room timeline; the
+// dashboard reads the prefixes to render artifact events.
 const (
 	PublishedNote = "Published document: "
 	RemovedNote   = "Removed document: "
@@ -204,9 +203,8 @@ func Publish(source, dir string) (string, error) {
 	return Add(dir, filepath.Base(source), in)
 }
 
-// Remove takes a document out of the room, moving it to the store's trash
-// rather than unlinking it, so a mistake stays recoverable. Nothing empties
-// the trash automatically.
+// Remove moves a document to the store's trash instead of unlinking it, so a
+// mistake stays recoverable. Nothing empties the trash.
 func Remove(dir, name string) (string, error) {
 	clean, err := documentName(name)
 	if err != nil {

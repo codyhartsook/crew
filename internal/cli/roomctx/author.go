@@ -13,11 +13,8 @@ import (
 	"github.com/codyhartsook/multiplayer/internal/store"
 )
 
-// sessionKeysFromEnv lists every identity the environment advertises. A harness
-// puts its session id in the environment of the commands it runs, which is exact
-// and, unlike process inspection, survives a sandbox. A harness launched from
-// inside another inherits its variables, so the first one found is not
-// necessarily ours.
+// sessionKeysFromEnv lists every session id the environment advertises. It survives
+// a sandbox, but a nested harness inherits variables, so the first may not be ours.
 func sessionKeysFromEnv() []string {
 	var keys []string
 	seen := map[string]bool{}
@@ -37,9 +34,8 @@ func sessionKeysFromEnv() []string {
 	return keys
 }
 
-// AgentEnvironment reports whether a harness identified the current process.
-// Human-facing commands use this to avoid attributing a person's shell to the
-// sole agent that happens to be active in the same worktree.
+// AgentEnvironment reports whether a harness identified the current process, so
+// human commands do not attribute a person's shell to the lone active agent.
 func AgentEnvironment() bool { return len(sessionKeysFromEnv()) > 0 }
 
 // ResolveAuthor works out which registered session is running this command,
@@ -66,9 +62,8 @@ func ResolveAuthor(ctx context.Context, st store.Store, roomKeys []string) (stri
 		inRoom[s.Key()] = true
 	}
 
-	// 1. The harness told us who we are. Where a nested harness offers several
-	//    identities, keep the ones the registry recognises and, if that is
-	//    still ambiguous, the one in this room.
+	// 1. The harness told us who we are. Among several (nested harness), keep
+	//    registered ones, then the one in this room.
 	if matches := filterKnown(sessionKeysFromEnv(), known); len(matches) > 0 {
 		if narrowed := filterHere(matches, here); len(narrowed) == 1 {
 			return narrowed[0], nil
@@ -77,10 +72,8 @@ func ResolveAuthor(ctx context.Context, st store.Store, roomKeys []string) (stri
 			return "", fmt.Errorf("the active agent is not in this room")
 		}
 	}
-	// 2. An ancestor process is a registered harness. Unavailable behind a
-	//    sandbox. A pid claimed by two sessions proves nothing, and a match
-	//    outside this room is likely coincidence: guessing wrong files an entry
-	//    under another agent's name.
+	// 2. An ancestor process is a registered harness; unavailable in a sandbox.
+	//    Skip a shared or out-of-room pid: a wrong guess files under another agent.
 	if table, err := proc.Snapshot(); err == nil {
 		for _, pid := range table.Ancestors(os.Getpid()) {
 			candidates := byPID[pid]
@@ -135,9 +128,8 @@ func ambiguous(here []*session.Session) error {
 		len(here), strings.Join(keys, "  "))
 }
 
-// ResolveAgent turns an agent's friendly name into the session key that owns
-// it. Names are unique among active sessions, so an ambiguous one means the
-// registry has drifted and guessing would address the wrong agent.
+// ResolveAgent turns an agent's friendly name into the session key that owns it.
+// Names are unique among active sessions, so an ambiguous one means registry drift.
 func ResolveAgent(ctx context.Context, st store.Store, roomKeys []string, name string) (string, error) {
 	active, err := st.List(ctx, store.Filter{Status: session.StatusActive})
 	if err != nil {

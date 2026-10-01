@@ -16,8 +16,7 @@ import (
 const lockDir = "thread-writer-locks"
 
 // CodexSource reports open codex threads from their writer locks, rooted at
-// Home. A nil Home uses CODEX_HOME or the conventional ~/.codex, matching
-// usage.codexHome.
+// Home. A nil Home falls back to CODEX_HOME or ~/.codex, as usage.codexHome does.
 type CodexSource struct {
 	Home func() string
 }
@@ -63,9 +62,8 @@ func (s CodexSource) Open() (map[string]Thread, error) {
 	return open, nil
 }
 
-// probeLockHeld reports whether path's flock is held by another process. An
-// unreadable lock is not evidence of death, so any failure to probe it reads
-// as held.
+// probeLockHeld reports whether path's flock is held by another process. Any
+// probe failure reads as held, since an unreadable lock is not evidence of death.
 func probeLockHeld(path string) bool {
 	f, err := os.OpenFile(path, os.O_RDWR, 0o644)
 	if err != nil {
@@ -79,14 +77,12 @@ func probeLockHeld(path string) bool {
 	return false
 }
 
-// rolloutIDPattern pulls a rollout's own thread id from its filename: the
-// standard 8-4-4-4-12 hex groups right before the extension. The timestamp
-// earlier in the name never has this shape, so this is unambiguous.
+// rolloutIDPattern pulls the thread id (8-4-4-4-12 hex) from a rollout filename,
+// just before the extension; the earlier timestamp never has this shape.
 var rolloutIDPattern = regexp.MustCompile(`([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$`)
 
-// indexRollouts globs every rollout once and indexes it by the full thread id
-// in its filename. A partial-id match would be genuinely ambiguous: two
-// threads from the same terminal share their first UUID segment.
+// indexRollouts globs every rollout once, indexed by the full thread id in its
+// filename. Partial ids are ambiguous: threads from one terminal share a prefix.
 func indexRollouts(home string) map[string]string {
 	matches, err := filepath.Glob(filepath.Join(home, "sessions", "*", "*", "*", "rollout-*.jsonl"))
 	if err != nil {

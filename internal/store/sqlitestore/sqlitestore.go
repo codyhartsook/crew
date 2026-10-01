@@ -1,8 +1,5 @@
-// Package sqlitestore implements store.Store on top of SQLite.
-//
-// Location lives in flat, indexed columns rather than a JSON blob, so "which
-// agents are in this worktree" stays a plain indexed query. The driver is
-// modernc.org/sqlite, so the binary builds without cgo.
+// Package sqlitestore implements store.Store on SQLite (modernc, no cgo).
+// Location is in flat indexed columns so worktree lookups stay plain queries.
 package sqlitestore
 
 import (
@@ -23,9 +20,8 @@ import (
 	"github.com/codyhartsook/multiplayer/internal/usage"
 )
 
-// timeFormat is the on-disk encoding for timestamps. RFC3339 with nanoseconds
-// sorts lexically in the same order it sorts chronologically, which lets SQLite
-// order by it directly.
+// timeFormat is the on-disk timestamp encoding. RFC3339Nano sorts lexically
+// in chronological order, so SQLite can order by it directly.
 const timeFormat = time.RFC3339Nano
 
 // SchemaVersion is the store layout this binary understands. Raise it whenever
@@ -100,8 +96,7 @@ type Store struct {
 var _ store.Store = (*Store)(nil)
 
 // Open opens (creating if needed) the database at path and applies the schema.
-// The special path ":memory:" gives a private in-memory database, which the
-// tests use.
+// The path ":memory:" gives a private in-memory database.
 func Open(path string) (*Store, error) {
 	dsn, err := dsnFor(path)
 	if err != nil {
@@ -112,9 +107,8 @@ func Open(path string) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite %s: %w", path, err)
 	}
-	// Several harnesses fire hooks at once. WAL plus a busy timeout lets readers
-	// through while one writer holds the lock, and serialising writers here
-	// keeps that timeout from being spent on self-contention.
+	// Hooks fire concurrently. WAL plus a busy timeout lets readers past a writer;
+	// capping connections here keeps that timeout from going to self-contention.
 	db.SetMaxOpenConns(8)
 
 	if err := migrate(db); err != nil {
@@ -125,8 +119,7 @@ func Open(path string) (*Store, error) {
 }
 
 // additive lists the statements that carry a database up to each version.
-// SQLite adds a column in place, so a version reachable this way keeps every
-// row; a version that needs more than this still demands a fresh database.
+// Columns add in place so rows survive; any other change needs a fresh database.
 var additive = map[int][]string{
 	6: {
 		`ALTER TABLE sessions ADD COLUMN has_folder INTEGER NOT NULL DEFAULT 0`,
@@ -147,10 +140,8 @@ var additive = map[int][]string{
 	},
 }
 
-// upgrade walks a database forward one version at a time and reports the
-// version it reached, stopping short at the first one with no additive path.
-// All of it commits or none does, so a failure never leaves a half-migrated
-// layout behind a stale user_version.
+// upgrade steps a database forward one version at a time and returns the version
+// reached, stopping at the first with no additive path. It commits all or nothing.
 func upgrade(ctx context.Context, db *sql.DB, from int) (int, error) {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
@@ -184,9 +175,8 @@ func upgrade(ctx context.Context, db *sql.DB, from int) (int, error) {
 func migrate(db *sql.DB) error {
 	ctx := context.Background()
 
-	// Refuse a database a newer binary has already migrated. Forward migration
-	// is handled below; going backwards is not, and failing loudly beats
-	// writing rows an older layout cannot represent.
+	// Refuse a database a newer binary migrated: downgrading is unsupported, and
+	// writing rows an older layout cannot represent is worse than failing.
 	var found int
 	if err := db.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&found); err != nil {
 		return fmt.Errorf("read schema version: %w", err)

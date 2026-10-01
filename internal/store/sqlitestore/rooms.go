@@ -10,10 +10,8 @@ import (
 	"github.com/codyhartsook/multiplayer/internal/store"
 )
 
-// roomSchema is applied alongside the session schema.
-//
-// AUTOINCREMENT matters here: it guarantees entry ids are never reused, so a
-// per-session cursor can be a single integer watermark across every room.
+// roomSchema is applied alongside the session schema. AUTOINCREMENT never
+// reuses entry ids, so one integer watermark can cursor every room.
 const roomSchema = `
 CREATE TABLE IF NOT EXISTS entries (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -49,9 +47,8 @@ CREATE INDEX IF NOT EXISTS memberships_room ON memberships(room);
 
 var _ store.RoomStore = (*Store)(nil)
 
-// entryColumns is the projection every entry read shares. resolved_by is
-// derived rather than stored, so resolution stays an append and never a write
-// back over somebody else's row.
+// entryColumns is the projection every entry read shares. resolved_by is derived,
+// so resolving an entry is an append and never rewrites another row.
 const entryColumns = `e.id, e.room, e.scope, e.mode, e.author, e.recipient, e.body, e.resolves,
     COALESCE(r.id, 0) AS resolved_by, e.created_at`
 
@@ -154,9 +151,8 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
 	return nil
 }
 
-// Entries treats an empty Rooms list as unfiltered: the API and dashboard list
-// every room that way. A caller with a membership-derived list must check it
-// for empty first, as roomcmd and searchcmd do.
+// Entries treats an empty Rooms list as unfiltered (the API and dashboard rely
+// on it). Callers with a membership-derived list must check for empty first.
 func (s *Store) Entries(ctx context.Context, f room.Filter) ([]*room.Entry, error) {
 	var (
 		where []string
@@ -189,9 +185,8 @@ func (s *Store) Entries(ctx context.Context, f room.Filter) ([]*room.Entry, erro
 		q += " WHERE " + strings.Join(where, " AND ")
 	}
 	if f.Limit > 0 {
-		// A limit keeps the newest entries, not the oldest: every caller wants
-		// recent context, and a briefing that truncated the other way would go
-		// stale the moment a room outgrew it. Callers still read oldest first.
+		// A limit keeps the newest entries so a briefing never goes stale as a room
+		// grows. Callers still read oldest first.
 		q += " ORDER BY e.id DESC LIMIT ?"
 		args = append(args, f.Limit)
 		q = "SELECT * FROM (" + q + ") ORDER BY id"
@@ -205,9 +200,8 @@ func (s *Store) Entries(ctx context.Context, f room.Filter) ([]*room.Entry, erro
 // not itself a resolution, and nothing has closed it.
 const openPredicate = `e.mode = 'request' AND e.resolves = 0 AND r.id IS NULL`
 
-// answersToMe matches a resolution of something this session asked. Without it
-// an agent is never told that its own request was answered, since a resolution
-// is by definition not open.
+// answersToMe matches a resolution of this session's own request. Without it the
+// agent is never told, since a resolution is not itself open.
 const answersToMe = `e.resolves != 0 AND EXISTS (
     SELECT 1 FROM entries t WHERE t.id = e.resolves AND t.author = ?)`
 
@@ -316,12 +310,8 @@ func scanEntry(sc scanner) (*room.Entry, error) {
 	return &e, nil
 }
 
-// Search treats an empty Rooms list as unfiltered, as Entries does; see there.
-//
-// Search matches with LIKE rather than a full-text index. A room holds
-// hundreds of rows, not millions, so a scan is instant - and an FTS table would
-// need keeping in step with the rows, which is the drift a single source of
-// truth exists to avoid.
+// Search treats an empty Rooms list as unfiltered, as Entries does. It uses LIKE
+// not FTS: rooms hold hundreds of rows, and an FTS table could drift from them.
 func (s *Store) Search(ctx context.Context, q room.Query) ([]*room.Entry, error) {
 	term := strings.TrimSpace(q.Text)
 	if term == "" {

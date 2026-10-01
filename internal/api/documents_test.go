@@ -175,9 +175,8 @@ func TestUploadDoesNotOverwrite(t *testing.T) {
 	}
 }
 
-// A filename is data from the browser. RFC 7578 forbids honouring its
-// directory part and mime/multipart strips it, so an upload lands as a plain
-// name in the room and never above it.
+// A filename is browser data. mime/multipart strips its directory part (RFC 7578),
+// so an upload lands as a plain name in the room, never above it.
 func TestUploadFilenameCannotEscapeTheStore(t *testing.T) {
 	h, dir := docServer(t)
 	for _, name := range []string{"../escape.md", "sub/nested.md"} {

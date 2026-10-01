@@ -1,9 +1,5 @@
-// Package room models the shared context agents exchange while working in the
-// same place: a working tree or a repository, keyed by its path. Rooms are the
-// engineer's own process, never committed to the repository.
-//
-// Entries are append-only. Resolution posts an entry pointing at what it
-// resolves, so concurrent agents never contend for a row.
+// Package room models context agents share per working tree or repository.
+// Entries are append-only, so concurrent agents never contend for a row.
 package room
 
 import (
@@ -48,8 +44,7 @@ const (
 	// own room, separate from the repository's main checkout.
 	ScopeWorktree Scope = "worktree"
 	// ScopeRepo is the repository that owns the working tree. Entries here
-	// outlive any single worktree and any single lease of one, which is where
-	// anything durable belongs.
+	// outlive any worktree or lease, so anything durable belongs here.
 	ScopeRepo Scope = "repo"
 	// ScopeFolder is a plain directory outside any checkout. Nothing owns it,
 	// so it is the only room its sessions have.
@@ -127,11 +122,8 @@ type Query struct {
 	Limit int
 }
 
-// For returns the rooms a place belongs to: its working tree and the repository
-// that owns it. In a primary checkout the two are one path, so a single room
-// comes back and nothing is said twice. An anchored folder is one room keyed on
-// its anchor, which is what lets a subdirectory share it. Anchored by nothing,
-// the working directory is its own room.
+// For returns the rooms a place belongs to: its working tree and owning repo
+// (one room in a primary checkout), else its anchor, else the working directory.
 func For(p session.Place) []Room {
 	switch {
 	case p.Repo != nil:
@@ -157,9 +149,8 @@ func Keys(rooms []Room) []string {
 	return keys
 }
 
-// worktreeKey identifies the working-tree room. A pooled slot's path is handed
-// to the next lease, so the lease is part of the room's identity: keyed on the
-// path alone, a returned slot gives the next feature the previous room context.
+// worktreeKey identifies the working-tree room. A pooled slot's path is reused
+// by the next lease, so the lease is part of the key or context would leak.
 func worktreeKey(repo *session.Repo, pool *session.Pool) string {
 	if pool != nil && pool.LeaseID != "" {
 		return repo.Root + "#" + pool.LeaseID
@@ -168,9 +159,7 @@ func worktreeKey(repo *session.Repo, pool *session.Pool) string {
 }
 
 // worktreeName labels a working tree distinctly from its repository. A pooled
-// worktree is usually a directory named after the repo inside a numbered slot,
-// so naming it after its own leaf gives "widget/widget"; the slot is what
-// actually tells two of them apart.
+// worktree's leaf often repeats the repo name, so the slot tells them apart.
 func worktreeName(repo *session.Repo, pool *session.Pool) string {
 	if !repo.IsWorktree {
 		return repo.Name

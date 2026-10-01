@@ -1,6 +1,5 @@
-// Package api exposes the session store over HTTP. The surface is a direct
-// projection of store.Store, so a remote client can present itself as just
-// another implementation.
+// Package api exposes the session store over HTTP, a direct projection of
+// store.Store so a remote client can stand in for any implementation.
 package api
 
 import (
@@ -160,9 +159,8 @@ func (s *Server) roomDir(r *http.Request) (string, string, error) {
 	return key, dir, err
 }
 
-// openRoomDocuments reveals a room's folder: the generated transcript and the
-// documents beside it. The transcript is regenerated on the way out, so what
-// opens is the room as it is now rather than as it was last time.
+// openRoomDocuments reveals a room's folder: the transcript and the documents
+// beside it. The transcript is regenerated first so it is current.
 func (s *Server) openRoomDocuments(w http.ResponseWriter, r *http.Request) {
 	key, dir, err := s.roomDir(r)
 	if err != nil {
@@ -327,9 +325,8 @@ type EntriesResponse struct {
 	Count   int           `json:"count"`
 }
 
-// MetaResponse describes the machine whose sessions this registry holds. The
-// store records absolute paths; a client needs Home to show them the way the
-// engineer reads them.
+// MetaResponse describes the machine whose sessions this registry holds. Home
+// lets a client show the stored absolute paths the way the engineer reads them.
 type MetaResponse struct {
 	Home string `json:"home"`
 	Host string `json:"host,omitempty"`

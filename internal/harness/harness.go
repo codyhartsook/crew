@@ -1,6 +1,5 @@
-// Package harness describes the coding-agent CLIs this registry supports.
-// Everything that varies between them is one row of a table, so supporting
-// another is a row rather than an edit in every package that cares.
+// Package harness describes the coding-agent CLIs this registry supports. What
+// varies between them is one table row, so adding one is not an edit per package.
 package harness
 
 import (
@@ -113,9 +112,8 @@ func For(h session.Harness) (Spec, bool) {
 	return Spec{}, false
 }
 
-// Detect infers the calling harness from the environment. The hook
-// configuration names the harness explicitly, so this only covers a hook
-// invoked without that flag.
+// Detect infers the calling harness from the environment. Hook configuration
+// names it, so this only covers a hook invoked without that flag.
 func Detect() session.Harness {
 	for _, s := range specs {
 		for _, env := range s.EnvMarkers {

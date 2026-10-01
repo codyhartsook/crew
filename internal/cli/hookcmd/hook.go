@@ -146,10 +146,8 @@ func resolveHarness(flag string) (session.Harness, error) {
 	return "", fmt.Errorf("unknown harness %q", flag)
 }
 
-// debugEnabled reports whether every invocation should be logged. An
-// environment variable rather than a flag: a flag would live in the hook
-// config, and editing that changes its hash, re-triggering Codex's trust
-// prompt.
+// debugEnabled reports whether to log every invocation. It is an env var because
+// a config flag would change the hook hash and re-trigger Codex's trust prompt.
 func debugEnabled() bool {
 	v := os.Getenv(cmdutil.EnvDebug)
 	return v != "" && v != "0" && v != "false"

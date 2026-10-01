@@ -24,9 +24,8 @@ func TestLiveWakeCodex(t *testing.T) {
 	t.Logf("wake queued for %s", thread)
 }
 
-// TestLiveWakeClaude wakes a real Claude session, named by the pid its control
-// socket is named for. Skipped unless LIVE_CLAUDE_PID is set, because it
-// spawns a print-mode process and injects a turn into that session.
+// TestLiveWakeClaude wakes a real Claude session by its control-socket pid.
+// Skipped unless LIVE_CLAUDE_PID is set, as it spawns a process and injects a turn.
 func TestLiveWakeClaude(t *testing.T) {
 	pid, _ := strconv.Atoi(os.Getenv("LIVE_CLAUDE_PID"))
 	if pid == 0 {

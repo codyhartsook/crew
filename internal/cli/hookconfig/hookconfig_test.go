@@ -32,9 +32,8 @@ func commands(t *testing.T, hooks map[string]any, event string) []string {
 	return out
 }
 
-// An event this tool has stopped installing must have its entry removed, not
-// left firing with no way to uninstall it. Tracked separately from whatever
-// happens to be installed today, so retiring an event stays covered.
+// An event this tool has stopped installing must have its entry removed. Tracked
+// separately from today's installs so retiring an event stays covered.
 func TestMergeHooksSweepsRetiredEvents(t *testing.T) {
 	hooks := hookMap(t, `{
 	  "SessionStart":     [{"hooks": [{"type":"command","command":"\"/old/mp\" hook --harness codex --quiet"}]}],

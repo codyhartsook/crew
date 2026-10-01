@@ -53,9 +53,8 @@ func New(opts *cmdutil.Options) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			// The cursor is a high-water mark, so acking the newest entry of a
-			// truncated view would also silence the older requests it hid.
-			// A partial read leaves them waiting.
+			// The cursor is a high-water mark: acking the newest entry of a truncated
+			// view would silence the older requests it hid.
 			truncated := last > 0 && len(entries) == last
 			ack := func() error {
 				if self == "" || len(entries) == 0 || truncated {

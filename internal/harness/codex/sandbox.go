@@ -10,10 +10,8 @@ import (
 
 const sandboxSection = "[sandbox_workspace_write]"
 
-// EnsureWritableRoot grants Codex's sandbox write access to dir. Codex runs
-// agent commands under seatbelt with only the workspace writable, so without
-// this every room write fails as a readonly database. Hooks are unsandboxed,
-// which is why the breakage looks selective.
+// EnsureWritableRoot grants Codex's sandbox write access to dir. Agent commands run
+// under seatbelt with only the workspace writable, so room writes fail as readonly.
 func EnsureWritableRoot(path, dir string, dryRun bool) (bool, error) {
 	original, err := os.ReadFile(path)
 	if err != nil {
@@ -44,9 +42,8 @@ func EnsureWritableRoot(path, dir string, dryRun bool) (bool, error) {
 	return true, nil
 }
 
-// addWritableRoot edits the config text in place rather than round-tripping it
-// through a TOML encoder, which would discard the comments and ordering the
-// file was written with.
+// addWritableRoot edits the config text in place; a TOML round trip would discard
+// the file's comments and ordering.
 func addWritableRoot(content, dir string) (string, bool) {
 	quoted := fmt.Sprintf("%q", dir)
 	if strings.Contains(content, quoted) {

@@ -22,13 +22,8 @@ import (
 // open thread's lock file and is not needed at 1s cadence.
 const livenessInterval = 10 * time.Second
 
-// livenessCoordinator keeps the registry's active sessions matched to what
-// each harness actually has open: it reaps sessions with no open thread,
-// adopts open threads the registry never saw start, and refreshes last_seen
-// from the conversation file rather than only the prompt hook.
-//
-// store.Store, not a narrower surface: adoption goes through hook.Recorder,
-// which needs the whole thing.
+// livenessCoordinator reaps, adopts, and refreshes sessions against each
+// harness's open threads. It takes store.Store whole because hook.Recorder does.
 type livenessCoordinator struct {
 	store store.Store
 	log   *slog.Logger
@@ -88,10 +83,8 @@ func (c *livenessCoordinator) reap(ctx context.Context) {
 	}
 }
 
-// reconcileThreads adopts unregistered live threads and refreshes last_seen
-// from each session's conversation file, one harness at a time. Every known
-// harness is visited, not just ones with an existing session: adoption's
-// whole point is a harness the registry has zero sessions for yet.
+// reconcileThreads adopts unregistered live threads and refreshes last_seen.
+// Every harness is visited, even one with no sessions, so it can be adopted.
 func (c *livenessCoordinator) reconcileThreads(ctx context.Context) {
 	sessions, err := c.store.List(ctx, store.Filter{Status: session.StatusActive})
 	if err != nil {
@@ -124,9 +117,8 @@ func (c *livenessCoordinator) reconcileThreads(ctx context.Context) {
 	}
 }
 
-// adopt registers a session for every held thread a person is driving that
-// the registry does not already have active. Filtering on thread_source is
-// what keeps a guardian_review or subagent thread off the graph.
+// adopt registers user-driven threads the registry lacks. The thread_source
+// filter keeps guardian_review and subagent threads off the graph.
 func (c *livenessCoordinator) adopt(ctx context.Context, h session.Harness, open map[string]thread.Thread, registered map[string]bool) {
 	for id, th := range open {
 		if th.Source != "user" {
@@ -145,11 +137,8 @@ func (c *livenessCoordinator) adopt(ctx context.Context, h session.Harness, open
 	}
 }
 
-// register builds the same record a SessionStart hook would, so an adopted
-// session gets repo/worktree detection, an alias, and a room, then corrects
-// the fields the hook infers from its own process before the single write.
-// The pid is one of them: liveness here comes from the thread lock, and the
-// pid the hook would infer belongs to this registry, not the thread's holder.
+// register builds the record a SessionStart hook would, then fixes the pid the
+// hook infers from this process rather than the thread's holder.
 func (c *livenessCoordinator) register(ctx context.Context, h session.Harness, th thread.Thread) error {
 	recorder := &hook.Recorder{Store: c.store, Detector: detect.New()}
 	payload := hook.Payload{SessionID: th.ID, CWD: th.CWD, HookEventName: string(hook.EventStart), Source: "adopted"}

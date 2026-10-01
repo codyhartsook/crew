@@ -1,10 +1,5 @@
-// Package view renders tabular output. Two audiences read this CLI: agents,
-// which pay for every token they read, and people, who want the detail.
-//
-// A command declares its columns once and tags the ones only a person needs,
-// rather than branching on the audience wherever it prints. A column is Human
-// when an agent cannot act on it: a session id it can never pass to --to, a
-// status the default filter already implies.
+// Package view renders tabular output for agents, which pay per token, and people.
+// A command declares its columns once and tags Human those an agent cannot act on.
 package view
 
 import (

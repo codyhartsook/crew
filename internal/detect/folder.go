@@ -22,9 +22,8 @@ type folderAnchor struct{}
 
 func (folderAnchor) Name() string { return "folder" }
 
-// Lookup walks up for the marker. The walk stops at the home directory, and a
-// marker at the filesystem root is ignored: one that high would pull every
-// folder on the machine into a single room.
+// Lookup walks up for the marker, stopping at the home directory. A marker at the
+// filesystem root is ignored: it would pull every folder into one room.
 func (folderAnchor) Lookup(_ context.Context, dir string) (*session.Place, error) {
 	root := normalize(dir)
 	if root == "" {

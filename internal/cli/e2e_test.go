@@ -12,9 +12,8 @@ import (
 	"github.com/codyhartsook/multiplayer/internal/harness"
 )
 
-// runInit executes init against a throwaway home directory and a canceled,
-// ephemeral broker, so command-level setup remains testable without a daemon,
-// and returns its output.
+// runInit executes init against a throwaway home and a canceled, ephemeral
+// broker, so no daemon is needed, and returns its output.
 func runInit(t *testing.T, home string, args ...string) string {
 	t.Helper()
 	t.Setenv("HOME", home)

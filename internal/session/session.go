@@ -19,9 +19,8 @@ const (
 )
 
 func (h Harness) Valid() bool {
-	// Sessions may outlive the binary that knows a harness's capabilities, so
-	// persistence accepts every non-empty harness name. The harness registry
-	// decides which local integrations are available.
+	// Any non-empty name persists, as sessions may outlive the binary that knows
+	// the harness. The harness registry decides what is available locally.
 	return h != ""
 }
 
@@ -35,11 +34,8 @@ const (
 	StatusEnded Status = "ended"
 )
 
-// Session is one agent CLI process and the place it is working.
-//
-// ID is the harness-assigned session id. It is unique per harness but not
-// guaranteed unique across harnesses, so stores key on the (Harness, ID) pair
-// projected into Key.
+// Session is one agent CLI process and where it works. ID is unique per
+// harness only, so stores key on the (Harness, ID) pair projected into Key.
 type Session struct {
 	ID      string  `json:"id"`
 	Harness Harness `json:"harness"`
@@ -99,9 +95,8 @@ func RandomAlias(used map[string]bool) (string, bool) {
 	return "", false
 }
 
-// Place is where a session is working: the directory it started in, and
-// whatever owns that directory. At most one owner is set - a session sits in a
-// git checkout or in an anchored folder, never both.
+// Place is where a session is working: its directory plus at most one owner,
+// either a git checkout or an anchored folder.
 type Place struct {
 	CWD string `json:"cwd"`
 	// Repo is nil when the session opened outside any git checkout.
@@ -113,19 +108,14 @@ type Place struct {
 }
 
 // Folder is a plain directory a session works in, outside any git checkout.
-//
-// Root is the anchor: every session under it shares one room, so an agent
-// started in a subdirectory joins the room of one started at the top.
+// Root is the anchor: sessions under it, even in subdirectories, share one room.
 type Folder struct {
 	Name string `json:"name"`
 	Root string `json:"root"`
 }
 
-// Repo is the git checkout a session is working in.
-//
-// Root is the working tree the session sits in. MainRoot is the primary
-// checkout that owns the shared .git directory; the two differ exactly when
-// Root is a linked worktree.
+// Repo is the git checkout a session works in. Root is its working tree;
+// MainRoot is the primary checkout owning .git, and differs only in a linked worktree.
 type Repo struct {
 	Name       string `json:"name"`
 	Root       string `json:"root"`
@@ -138,10 +128,7 @@ type Repo struct {
 }
 
 // Pool is a worktree manager that lends out checkouts, and the one it lent here.
-//
-// Manager names the tool (treehouse, ...), Name identifies the pool and Slot the
-// worktree within it. Leased is what the manager recorded, independent of
-// whether an agent session is currently registered here.
+// Leased is what the manager recorded, regardless of any registered session.
 type Pool struct {
 	Manager     string `json:"manager"`
 	Name        string `json:"name"`

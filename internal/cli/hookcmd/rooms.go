@@ -62,9 +62,8 @@ func roomsFor(ctx context.Context, st store.Store, event hook.Event, sess *sessi
 	}
 }
 
-// introFor says which rooms a session arrived in and how to read them. It
-// acknowledges nothing: entries stay unread so the turn notice can offer them,
-// rather than every arrival paying for the whole backlog.
+// introFor says which rooms a session arrived in and how to read them. It leaves
+// entries unread so the turn notice can offer them, not dump the whole backlog.
 func introFor(ctx context.Context, st store.Store, rs store.RoomStore, sess *session.Session) (string, error) {
 	if sess == nil {
 		return "", nil
@@ -90,9 +89,8 @@ func introFor(ctx context.Context, st store.Store, rs store.RoomStore, sess *ses
 	return room.Intro(sess.Alias, here, entries, others), nil
 }
 
-// noticeFor injects a nudge when something is waiting, nothing otherwise. It
-// deliberately does not advance the cursor, so the notice persists until the
-// agent actually reads rather than being mentioned once and missed.
+// noticeFor injects a nudge when something is waiting, nothing otherwise. It does
+// not advance the cursor, so the notice persists until the agent actually reads.
 func noticeFor(ctx context.Context, rs store.RoomStore, sessionKey string) (string, error) {
 	if sessionKey == "" {
 		return "", nil

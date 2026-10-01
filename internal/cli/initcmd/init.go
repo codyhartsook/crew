@@ -112,9 +112,8 @@ the broker wakes live sessions when they have addressed entries.`,
 
 			fmt.Fprintln(out)
 			baseURL := "http://" + addr
-			// Someone else is already serving, so this command has nothing
-			// left to do. Say that plainly: the same tick that means "now
-			// serving" below would otherwise read as if init stayed up.
+			// Another server is already up; say so, since the "now serving" tick below
+			// would read as if init stayed up.
 			if server.IsUp(cmd.Context(), baseURL) {
 				fmt.Fprintf(out, "  %s broker already running at %s\n", rep.view.success("✓"), baseURL)
 				fmt.Fprintln(out, "  "+rep.view.muted("started by another process, so init is exiting rather than serving"))
@@ -246,9 +245,8 @@ func maybeOpenDashboard(ctx context.Context, url string, headless bool) error {
 	return openDashboard(ctx, url, false)
 }
 
-// transient reports whether a binary path will not exist later. Running
-// "go run ./cmd/crew init" would otherwise record a build-cache path
-// that is deleted on exit, leaving hooks that fail silently forever.
+// transient reports whether a binary path will vanish, like a go run build-cache
+// path that would leave hooks failing silently.
 func transient(path string) bool {
 	return strings.Contains(path, "/go-build") || strings.HasPrefix(path, os.TempDir())
 }

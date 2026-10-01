@@ -81,9 +81,8 @@ func (c *Context) Keys() []string { return room.Keys(c.Here) }
 // Contains reports whether a session is working in one of these rooms.
 func (c *Context) Contains(s *session.Session) bool { return inRooms(s, c.Keys()) }
 
-// Target picks the local room, or the repository room when asked. A folder has
-// no repository above it, so asking for one there fails rather than filing a
-// folder entry under a repo label.
+// Target picks the local room, or the repository room when asked. A folder has no
+// repository, so asking for one there fails rather than filing under a repo label.
 func (c *Context) Target(toRepo bool) (room.Room, error) {
 	target := c.Here[0]
 	if !toRepo {

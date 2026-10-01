@@ -1,8 +1,5 @@
-// Package prune ends sessions whose agent process is gone.
-//
-// A harness that is killed, or whose terminal closes, never fires SessionEnd,
-// so its session would stay active forever. Only sessions on this machine can
-// be checked.
+// Package prune ends sessions whose agent process is gone. A killed harness
+// never fires SessionEnd, and only sessions on this machine can be checked.
 package prune
 
 import (
@@ -23,9 +20,8 @@ import (
 // harness, so the two are distinguishable after the fact.
 const deadReason = "process gone"
 
-// graceperiod protects a session that just started or just worked: a pid
-// recorded moments ago that already looks wrong was more likely misread than
-// orphaned, and reaping a live session is worse than listing a dead one.
+// graceperiod spares recently active sessions: a fresh pid that looks wrong is
+// more likely misread than orphaned, and reaping a live session is worse.
 const graceperiod = 60 * time.Second
 
 // snapshot reads the process table, injected so tests need not shell out.
@@ -45,9 +41,8 @@ func Dead(ctx context.Context, st Lister) ([]*session.Session, error) {
 	if len(active) == 0 {
 		return nil, nil
 	}
-	// Without a process list nothing can be judged dead, and guessing would end
-	// sessions that are running perfectly well. A sandbox that blocks process
-	// inspection lands here, and must read as "cannot tell", not "nothing runs".
+	// No process list means cannot tell, not nothing runs: a sandbox that blocks
+	// process inspection lands here, and guessing would end live sessions.
 	table, err := snapshot()
 	if err != nil {
 		return nil, fmt.Errorf("read process table: %w", err)
@@ -100,10 +95,8 @@ func deadAmong(active []*session.Session, table proc.Table, sourceFor func(sessi
 	return dead
 }
 
-// liveThreadsByHarness asks each present harness's thread source once per
-// sweep what it has open. A harness missing from the result falls back to the
-// pid check: no source, an error, or an empty result all mean cannot tell, not
-// that everything died. Mirrors the empty-process-table guard above.
+// liveThreadsByHarness maps each harness to its open threads. One left out (no
+// source, error, or empty result) falls back to the pid check, not "all died".
 func liveThreadsByHarness(active []*session.Session, sourceFor func(session.Harness) thread.Source) map[session.Harness]map[string]bool {
 	if sourceFor == nil {
 		return nil

@@ -67,9 +67,8 @@ func Intro(self string, rooms []Room, entries []*Entry, others []string) string 
 	return out + "\n\n" + hint
 }
 
-// holdings counts what a room has without reproducing any of it. Notes never
-// come back from Unread, so this line is the only thing telling an arriving
-// agent they are there at all.
+// holdings counts what a room has without reproducing it. Unread never returns
+// notes, so this line is the only sign to an arriving agent that they exist.
 func holdings(entries []*Entry) string {
 	notes, open := 0, 0
 	for _, e := range entries {
@@ -172,8 +171,7 @@ func writeOpen(b *strings.Builder, entries []*Entry, authors Authors) {
 const answeredLimit = 5
 
 // writeAnswered shows resolved threads as question and answer. A closed
-// question is no longer waiting on anyone, but its answer is exactly the
-// context an arriving agent needs.
+// question needs no action, but its answer is context an arriving agent needs.
 func writeAnswered(b *strings.Builder, entries []*Entry, authors Authors) {
 	byID := map[int64]*Entry{}
 	for _, e := range entries {

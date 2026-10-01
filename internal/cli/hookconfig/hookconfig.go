@@ -1,6 +1,5 @@
 // Package hookconfig reads and rewrites the harness config files that hold the
-// session hooks. init and uninstall are the same merge with and without
-// entries, so both live here.
+// session hooks. init and uninstall are one merge, with and without entries.
 package hookconfig
 
 import (
@@ -11,14 +10,12 @@ import (
 	"strings"
 )
 
-// marker identifies hook entries this tool owns. It matches the flag
-// combination rather than the binary path, which is quoted and may be
-// reinstalled from elsewhere.
+// marker identifies hook entries this tool owns. It matches the flag combination,
+// not the quoted binary path, which may be reinstalled from elsewhere.
 const marker = "hook --harness "
 
-// managedEvents is every event this tool has ever installed. An event a harness
-// no longer prices in its Timeouts is swept on init, so dropping one removes
-// it rather than leaving an orphan hook firing with no way to uninstall it.
+// managedEvents is every event this tool has ever installed. Init sweeps those no
+// longer in a harness's Timeouts, so a dropped event leaves no orphan hook.
 var managedEvents = []string{"SessionStart", "UserPromptSubmit", "PreToolUse", "SessionEnd"}
 
 // Events lists the managed events, in firing order.
@@ -48,9 +45,8 @@ func Installed(hooks map[string]any, event, exe, harness string, timeout int) bo
 	return false
 }
 
-// Merge applies this tool's entries to a hook map. Every managed event is
-// visited, not just the tracked ones, so an event this tool has stopped
-// installing is removed rather than orphaned. Other hooks are left alone.
+// Merge applies this tool's entries to a hook map. It visits every managed event,
+// so a stopped event is removed, not orphaned. Other hooks are left alone.
 func Merge(hooks map[string]any, timeouts map[string]int, exe, harness string) map[string]any {
 	for _, name := range managedEvents {
 		remaining := withoutOurs(hooks[name])
@@ -135,8 +131,7 @@ func withoutOurs(existing any) []any {
 }
 
 // isOurs reports whether every command in a matcher group belongs to this tool.
-// A group mixing our hook with someone else's is left alone rather than
-// silently rewritten.
+// A mixed group is left alone, not rewritten.
 func isOurs(entry any) bool {
 	group, ok := entry.(map[string]any)
 	if !ok {
