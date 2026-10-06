@@ -2,7 +2,10 @@
 // files: Claude's transcript and Codex's rollout (hook payloads carry none).
 package usage
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // Snapshot is what one session has spent. Zero fields mean "not known", so a
 // missing figure must never read as zero spend.
@@ -54,12 +57,20 @@ var windows = map[string]int{
 }
 
 // WindowOf returns a model's context capacity, for harnesses that do not say.
+// An unlisted point release or dated ID falls back to its family, so
+// "claude-opus-5-5" reads as "claude-opus-5".
 func WindowOf(model string) (int, bool) {
-	if w, ok := windows[model]; ok {
-		return w, true
+	for m := baseModel(model); m != ""; {
+		if w, ok := windows[m]; ok {
+			return w, true
+		}
+		i := strings.LastIndexByte(m, '-')
+		if i < 0 {
+			break
+		}
+		m = m[:i]
 	}
-	w, ok := windows[baseModel(model)]
-	return w, ok
+	return 0, false
 }
 
 // baseModel strips a bracketed variant, so "claude-opus-5[1m]" prices as
