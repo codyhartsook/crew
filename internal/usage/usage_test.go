@@ -38,6 +38,21 @@ func TestWindowAcceptsAVariantSuffix(t *testing.T) {
 	}
 }
 
+func TestWindowFallsBackToFamily(t *testing.T) {
+	for model, want := range map[string]int{
+		"claude-opus-5-5":           1_000_000,
+		"claude-sonnet-5-5":         1_000_000,
+		"claude-haiku-4-5-20251001": 200_000,
+	} {
+		if w, ok := WindowOf(model); !ok || w != want {
+			t.Errorf("WindowOf(%q) = (%d, %v), want %d", model, w, ok, want)
+		}
+	}
+	if w, ok := WindowOf("claude-opus-4-1"); ok {
+		t.Errorf("WindowOf(unlisted family) = (%d, true), want unknown", w)
+	}
+}
+
 // Codex names a rollout after a sibling uuid sharing only the first segment of
 // the thread id, so the prefix is all there is to match on.
 func TestFindCodexRollout(t *testing.T) {
@@ -118,5 +133,18 @@ func TestClaudeSamplerReadsOnlyAppendedUsage(t *testing.T) {
 	}
 	if got.ContextUsed != 20 || got.InputTokens != 37 || got.OutputTokens != 7 {
 		t.Errorf("appended snapshot = %+v", got)
+	}
+}
+
+func TestClaudeSkipsSyntheticMessages(t *testing.T) {
+	var s Snapshot
+	actual := `{"message":{"model":"claude-opus-5-5","usage":{"input_tokens":10,"output_tokens":2,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}`
+	synthetic := `{"message":{"model":"<synthetic>","usage":{"input_tokens":0,"output_tokens":0,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}`
+	consumeClaudeLine([]byte(actual), &s)
+	if consumeClaudeLine([]byte(synthetic), &s) {
+		t.Error("synthetic line was consumed")
+	}
+	if s.Model != "claude-opus-5-5" || s.ContextUsed != 10 || s.ContextWindow != 1_000_000 {
+		t.Errorf("snapshot after synthetic line = %+v", s)
 	}
 }

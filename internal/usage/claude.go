@@ -21,6 +21,10 @@ func consumeClaudeLine(raw []byte, s *Snapshot) bool {
 	if err := json.Unmarshal(raw, &line); err != nil || line.Message.Usage == nil {
 		return false
 	}
+	// Claude Code writes "<synthetic>" placeholders, such as API errors, with zero usage.
+	if line.Message.Model == "<synthetic>" {
+		return false
+	}
 	u := line.Message.Usage
 	input := u.InputTokens + u.CacheReadInputTokens + u.CacheCreationInputTokens
 	s.InputTokens += input
